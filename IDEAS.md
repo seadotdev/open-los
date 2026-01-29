@@ -155,6 +155,8 @@ related, how do we make vercel sandboxs and agents a first class cicitzen
 look at how agents are repeating patterns, especially where outcome is successful, and repeate
 https://github.com/casey/just/blob/master/examples/cross-platform.just
 
+https://gist.github.com/R44VC0RP/76d4ce74bf3b2cc4949c21d0d8a7274b
+look at learn.md as a great skill to run on each session at the end as a post hook. 
 
 # analytics
 
