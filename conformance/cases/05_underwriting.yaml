@@ -1,0 +1,1179 @@
+version: "0.1.0"
+suite: underwriting
+description: >
+  Financial spreading and ratio computation: create spreads from JSON line items
+  or CSV fixture, verify deterministic ratio calculations, multi-period handling,
+  edge cases, audit trail, and validation. All monetary amounts are in minor
+  units (cents). Ratios are rounded to 3 decimal places unless otherwise noted.
+
+# ─── Test 1: Create spread with income statement line items ─────────────────
+---
+test: spread_create_income_statement
+meta:
+  name: "Create spread with income statement line items"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Northfield Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 50000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_northfield"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Sales Revenue", amount: 120000000 }
+          - { category: "cogs", label: "Cost of Goods Sold", amount: 72000000 }
+          - { category: "operating_expense", label: "SG&A", amount: 18000000 }
+          - { category: "interest_expense", label: "Interest on Term Loan", amount: 4000000 }
+          - { category: "tax", label: "Corporation Tax", amount: 5200000 }
+          - { category: "depreciation", label: "Depreciation & Amortisation", amount: 6000000 }
+    expect:
+      status: 200
+      json_contains:
+        entity_id: "e_northfield"
+        period: "FY2024"
+      json_path_assertions:
+        - path: "$.spread_id"
+          exists: true
+        - path: "$.ratios.gross_margin"
+          eq: 0.4
+
+# ─── Test 2: Create spread with balance sheet line items ────────────────────
+---
+test: spread_create_balance_sheet
+meta:
+  name: "Create spread with balance sheet line items"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Southgate Services Ltd"
+        jurisdiction: "GB"
+        requested_amount: 30000000
+        purpose: "Acquisition finance"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_southgate"
+        period: "FY2024"
+        line_items:
+          - { category: "current_assets", label: "Trade Receivables", amount: 25000000 }
+          - { category: "current_assets", label: "Inventory", amount: 15000000 }
+          - { category: "current_assets", label: "Cash at Bank", amount: 10000000 }
+          - { category: "current_liabilities", label: "Trade Payables", amount: 20000000 }
+          - { category: "current_liabilities", label: "Accruals", amount: 5000000 }
+          - { category: "total_debt", label: "Term Loan", amount: 35000000 }
+          - { category: "total_equity", label: "Share Capital + Reserves", amount: 55000000 }
+          - { category: "cash", label: "Cash and Equivalents", amount: 10000000 }
+    expect:
+      status: 200
+      json_contains:
+        entity_id: "e_southgate"
+        period: "FY2024"
+      json_path_assertions:
+        - path: "$.spread_id"
+          exists: true
+        - path: "$.ratios.current_ratio"
+          eq: 2.0
+        - path: "$.ratios.debt_to_equity"
+          approx: { value: 0.636, tolerance: 0.001 }
+
+# ─── Test 3: Create spread with full financial statements ───────────────────
+---
+test: spread_create_full
+meta:
+  name: "Create spread with complete income statement and balance sheet"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Ridgemont Engineering Ltd"
+        jurisdiction: "GB"
+        requested_amount: 75000000
+        purpose: "Capital expenditure"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_ridgemont"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 200000000 }
+          - { category: "cogs", label: "Cost of Sales", amount: 110000000 }
+          - { category: "operating_expense", label: "Operating Expenses", amount: 35000000 }
+          - { category: "depreciation", label: "Depreciation", amount: 12000000 }
+          - { category: "interest_expense", label: "Interest Expense", amount: 6000000 }
+          - { category: "tax", label: "Tax", amount: 7400000 }
+          - { category: "current_assets", label: "Current Assets", amount: 80000000 }
+          - { category: "current_liabilities", label: "Current Liabilities", amount: 45000000 }
+          - { category: "total_debt", label: "Total Debt", amount: 60000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 95000000 }
+          - { category: "cash", label: "Cash", amount: 18000000 }
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.spread_id"
+          exists: true
+        - path: "$.ratios.gross_margin"
+          eq: 0.45
+        - path: "$.ratios.current_ratio"
+          approx: { value: 1.778, tolerance: 0.001 }
+        - path: "$.ratios.debt_to_equity"
+          approx: { value: 0.632, tolerance: 0.001 }
+
+# ─── Test 4: Ratio computation - current ratio ─────────────────────────────
+---
+test: ratio_current_ratio
+meta:
+  name: "Current ratio = current_assets / current_liabilities"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Ratio Test Corp A"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_ratio_a"
+        period: "FY2024"
+        line_items:
+          - { category: "current_assets", label: "Current Assets", amount: 50000000 }
+          - { category: "current_liabilities", label: "Current Liabilities", amount: 25000000 }
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.current_ratio"
+          eq: 2.0
+
+# ─── Test 5: Ratio computation - debt to equity ────────────────────────────
+---
+test: ratio_debt_to_equity
+meta:
+  name: "Debt to equity = total_debt / total_equity"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Ratio Test Corp B"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_ratio_b"
+        period: "FY2024"
+        line_items:
+          - { category: "total_debt", label: "Total Debt", amount: 40000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 60000000 }
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.debt_to_equity"
+          approx: { value: 0.667, tolerance: 0.001 }
+
+# ─── Test 6: Ratio computation - DSCR ──────────────────────────────────────
+---
+test: ratio_dscr
+meta:
+  name: "DSCR = (net_income + depreciation + interest_expense) / (interest_expense + principal_repayment)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Ratio Test Corp C"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  # net_income = revenue - cogs - operating_expense - interest_expense - tax
+  #            = 100000000 - 60000000 - 10000000 - 3000000 - 7000000 = 20000000
+  # DSCR = (20000000 + 5000000 + 3000000) / (3000000 + 0) = 28000000 / 3000000 = 9.333
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_ratio_c"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 100000000 }
+          - { category: "cogs", label: "COGS", amount: 60000000 }
+          - { category: "operating_expense", label: "OpEx", amount: 10000000 }
+          - { category: "interest_expense", label: "Interest", amount: 3000000 }
+          - { category: "tax", label: "Tax", amount: 7000000 }
+          - { category: "depreciation", label: "Depreciation", amount: 5000000 }
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.dscr"
+          approx: { value: 9.333, tolerance: 0.001 }
+
+# ─── Test 7: Ratio computation - gross margin ──────────────────────────────
+---
+test: ratio_gross_margin
+meta:
+  name: "Gross margin = (revenue - cogs) / revenue"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Ratio Test Corp D"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_ratio_d"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 100000000 }
+          - { category: "cogs", label: "Cost of Goods Sold", amount: 60000000 }
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.gross_margin"
+          eq: 0.4
+
+# ─── Test 8: Ratio computation - leverage ───────────────────────────────────
+---
+test: ratio_leverage
+meta:
+  name: "Leverage = total_debt / (net_income + depreciation)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Ratio Test Corp E"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  # net_income = revenue - cogs - operating_expense - interest_expense - tax
+  #            = 150000000 - 90000000 - 20000000 - 5000000 - 15000000 = 20000000
+  # leverage = total_debt / (net_income + depreciation) = 40000000 / (20000000 + 5000000) = 1.6
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_ratio_e"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 150000000 }
+          - { category: "cogs", label: "COGS", amount: 90000000 }
+          - { category: "operating_expense", label: "OpEx", amount: 20000000 }
+          - { category: "interest_expense", label: "Interest", amount: 5000000 }
+          - { category: "tax", label: "Tax", amount: 15000000 }
+          - { category: "depreciation", label: "Depreciation", amount: 5000000 }
+          - { category: "total_debt", label: "Total Debt", amount: 40000000 }
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.leverage"
+          eq: 1.6
+
+# ─── Test 9: Spread from CSV fixture ───────────────────────────────────────
+---
+test: spread_from_csv_fixture
+meta:
+  name: "Create spread from CSV file upload returns computed ratios"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Small SME Ltd"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      multipart:
+        entity_id: "e_small_sme"
+        period: "FY2024"
+        file:
+          fixture: "conformance/fixtures/deals/deal_001_small_sme/docs/accounts.csv"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.spread_id"
+          exists: true
+        - path: "$.entity_id"
+          eq: "e_small_sme"
+        - path: "$.period"
+          eq: "FY2024"
+      json_matches_fixture: "conformance/fixtures/deals/deal_001_small_sme/expected/ratios.json"
+
+# ─── Test 10: Spread from CSV fixture with ratio verification ──────────────
+---
+test: spread_from_csv_fixture_ratios
+meta:
+  name: "CSV-derived spread ratios match expected fixture values"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Small SME Ltd"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Equipment purchase"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      multipart:
+        entity_id: "e_small_sme"
+        period: "FY2024"
+        file:
+          fixture: "conformance/fixtures/deals/deal_001_small_sme/docs/accounts.csv"
+    expect:
+      status: 200
+      save:
+        spread_id: "$.spread_id"
+
+  - id: get_ratios
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/ratios
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios[0].entity_id"
+          eq: "e_small_sme"
+        - path: "$.ratios[0].period"
+          eq: "FY2024"
+      json_matches_fixture_at:
+        path: "$.ratios[0]"
+        fixture: "conformance/fixtures/deals/deal_001_small_sme/expected/ratios.json"
+
+# ─── Test 11: Multiple periods - submit two years ──────────────────────────
+---
+test: spread_multiple_periods
+meta:
+  name: "Submit spreads for FY2023 and FY2024 and retrieve both"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Dualyear Trading Ltd"
+        jurisdiction: "GB"
+        requested_amount: 40000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: spread_fy2023
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_dualyear"
+        period: "FY2023"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 80000000 }
+          - { category: "cogs", label: "COGS", amount: 52000000 }
+          - { category: "current_assets", label: "Current Assets", amount: 30000000 }
+          - { category: "current_liabilities", label: "Current Liabilities", amount: 20000000 }
+          - { category: "total_debt", label: "Total Debt", amount: 25000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 45000000 }
+    expect:
+      status: 200
+      json_contains:
+        period: "FY2023"
+
+  - id: spread_fy2024
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_dualyear"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 95000000 }
+          - { category: "cogs", label: "COGS", amount: 57000000 }
+          - { category: "current_assets", label: "Current Assets", amount: 38000000 }
+          - { category: "current_liabilities", label: "Current Liabilities", amount: 22000000 }
+          - { category: "total_debt", label: "Total Debt", amount: 20000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 55000000 }
+    expect:
+      status: 200
+      json_contains:
+        period: "FY2024"
+
+  - id: get_ratios
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/ratios
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.length"
+          eq: 2
+        - path: "$.ratios[?(@.period=='FY2023')].current_ratio"
+          eq: 1.5
+        - path: "$.ratios[?(@.period=='FY2024')].current_ratio"
+          approx: { value: 1.727, tolerance: 0.001 }
+
+# ─── Test 12: Multiple periods - trend comparison ──────────────────────────
+---
+test: spread_multiple_periods_trend
+meta:
+  name: "Multi-period ratios show year-over-year trend"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "TrendCo Ltd"
+        jurisdiction: "GB"
+        requested_amount: 60000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: spread_fy2023
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_trendco"
+        period: "FY2023"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 100000000 }
+          - { category: "cogs", label: "COGS", amount: 70000000 }
+          - { category: "total_debt", label: "Total Debt", amount: 50000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 40000000 }
+    expect:
+      status: 200
+
+  - id: spread_fy2024
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_trendco"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 120000000 }
+          - { category: "cogs", label: "COGS", amount: 78000000 }
+          - { category: "total_debt", label: "Total Debt", amount: 45000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 55000000 }
+    expect:
+      status: 200
+
+  - id: get_ratios
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/ratios
+    expect:
+      status: 200
+      json_path_assertions:
+        # FY2023: gross_margin = (100M - 70M) / 100M = 0.3
+        - path: "$.ratios[?(@.period=='FY2023')].gross_margin"
+          eq: 0.3
+        # FY2024: gross_margin = (120M - 78M) / 120M = 0.35
+        - path: "$.ratios[?(@.period=='FY2024')].gross_margin"
+          eq: 0.35
+        # FY2023: debt_to_equity = 50M / 40M = 1.25
+        - path: "$.ratios[?(@.period=='FY2023')].debt_to_equity"
+          eq: 1.25
+        # FY2024: debt_to_equity = 45M / 55M = 0.818
+        - path: "$.ratios[?(@.period=='FY2024')].debt_to_equity"
+          approx: { value: 0.818, tolerance: 0.001 }
+
+# ─── Test 13: Get ratios for a deal ────────────────────────────────────────
+---
+test: get_ratios_basic
+meta:
+  name: "GET ratios returns all computed ratios for a deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "GetRatios Ltd"
+        jurisdiction: "GB"
+        requested_amount: 35000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_getratios"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 85000000 }
+          - { category: "cogs", label: "COGS", amount: 51000000 }
+          - { category: "operating_expense", label: "OpEx", amount: 12000000 }
+          - { category: "interest_expense", label: "Interest", amount: 2500000 }
+          - { category: "tax", label: "Tax", amount: 3900000 }
+          - { category: "depreciation", label: "Depreciation", amount: 4000000 }
+          - { category: "current_assets", label: "Current Assets", amount: 42000000 }
+          - { category: "current_liabilities", label: "Current Liabilities", amount: 28000000 }
+          - { category: "total_debt", label: "Total Debt", amount: 30000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 50000000 }
+    expect:
+      status: 200
+
+  - id: get_ratios
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/ratios
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.length"
+          gte: 1
+        - path: "$.ratios[0].entity_id"
+          eq: "e_getratios"
+        - path: "$.ratios[0].period"
+          eq: "FY2024"
+        - path: "$.ratios[0].current_ratio"
+          eq: 1.5
+        - path: "$.ratios[0].gross_margin"
+          eq: 0.4
+        - path: "$.ratios[0].debt_to_equity"
+          eq: 0.6
+
+# ─── Test 14: Get ratios includes entity_id and period ─────────────────────
+---
+test: get_ratios_entity_and_period
+meta:
+  name: "GET ratios response includes entity_id and period for each entry"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "MultiEntity Holdings Ltd"
+        jurisdiction: "GB"
+        requested_amount: 100000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: spread_entity_a
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_holdco"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 200000000 }
+          - { category: "cogs", label: "COGS", amount: 120000000 }
+          - { category: "total_debt", label: "Total Debt", amount: 80000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 120000000 }
+    expect:
+      status: 200
+
+  - id: spread_entity_b
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_opco"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 150000000 }
+          - { category: "cogs", label: "COGS", amount: 105000000 }
+          - { category: "total_debt", label: "Total Debt", amount: 30000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 60000000 }
+    expect:
+      status: 200
+
+  - id: get_ratios
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/ratios
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.length"
+          eq: 2
+        - path: "$.ratios[?(@.entity_id=='e_holdco')].period"
+          eq: "FY2024"
+        - path: "$.ratios[?(@.entity_id=='e_holdco')].gross_margin"
+          eq: 0.4
+        - path: "$.ratios[?(@.entity_id=='e_opco')].period"
+          eq: "FY2024"
+        - path: "$.ratios[?(@.entity_id=='e_opco')].gross_margin"
+          eq: 0.3
+
+# ─── Test 15: Edge case - zero denominator current ratio ───────────────────
+---
+test: edge_zero_current_liabilities
+meta:
+  name: "Zero current liabilities yields null current ratio (not error)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "ZeroDenom Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_zerodenom"
+        period: "FY2024"
+        line_items:
+          - { category: "current_assets", label: "Current Assets", amount: 50000000 }
+          - { category: "current_liabilities", label: "Current Liabilities", amount: 0 }
+          - { category: "total_debt", label: "Total Debt", amount: 10000000 }
+          - { category: "total_equity", label: "Total Equity", amount: 0 }
+          - { category: "revenue", label: "Revenue", amount: 0 }
+          - { category: "cogs", label: "COGS", amount: 0 }
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.current_ratio"
+          eq: null
+        - path: "$.ratios.debt_to_equity"
+          eq: null
+        - path: "$.ratios.gross_margin"
+          eq: null
+
+# ─── Test 16: Edge case - negative equity ──────────────────────────────────
+---
+test: edge_negative_equity
+meta:
+  name: "Negative equity produces negative debt-to-equity ratio"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "NegEquity Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  # Negative equity = -20000000 (the business has accumulated losses)
+  # debt_to_equity = 50000000 / -20000000 = -2.5
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_negequity"
+        period: "FY2024"
+        line_items:
+          - { category: "total_debt", label: "Total Debt", amount: 50000000 }
+          - { category: "total_equity", label: "Total Equity (Deficit)", amount: -20000000 }
+          - { category: "current_assets", label: "Current Assets", amount: 15000000 }
+          - { category: "current_liabilities", label: "Current Liabilities", amount: 35000000 }
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.debt_to_equity"
+          eq: -2.5
+        # current_ratio still computes normally: 15M / 35M = 0.429
+        - path: "$.ratios.current_ratio"
+          approx: { value: 0.429, tolerance: 0.001 }
+
+# ─── Test 17: Edge case - missing line items default to zero ───────────────
+---
+test: edge_missing_line_items
+meta:
+  name: "Missing line item categories default to 0 for ratio computation"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Partial Data Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  # Only revenue and cogs provided; balance sheet items are absent.
+  # gross_margin = (50000000 - 30000000) / 50000000 = 0.4
+  # current_ratio = 0 / 0 => null (both default to 0, zero denominator)
+  # debt_to_equity = 0 / 0 => null
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_partial"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 50000000 }
+          - { category: "cogs", label: "COGS", amount: 30000000 }
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.ratios.gross_margin"
+          eq: 0.4
+        - path: "$.ratios.current_ratio"
+          eq: null
+        - path: "$.ratios.debt_to_equity"
+          eq: null
+        - path: "$.ratios.leverage"
+          eq: null
+
+# ─── Test 18: Audit trail - spread creation event ──────────────────────────
+---
+test: spread_audit_trail
+meta:
+  name: "Spread creation produces SPREAD_CREATED audit event"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "AuditTrail Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_audit"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 60000000 }
+          - { category: "cogs", label: "COGS", amount: 36000000 }
+          - { category: "current_assets", label: "Current Assets", amount: 25000000 }
+          - { category: "current_liabilities", label: "Current Liabilities", amount: 15000000 }
+    expect:
+      status: 200
+      save:
+        spread_id: "$.spread_id"
+
+  - id: check_audit
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events[?(@.type=='SPREAD_CREATED')]"
+          exists: true
+        - path: "$.events[?(@.type=='SPREAD_CREATED')].actor"
+          eq: "u_underwriter"
+        - path: "$.events[?(@.type=='SPREAD_CREATED')].metadata.spread_id"
+          eq: "${spread_id}"
+        - path: "$.events[?(@.type=='SPREAD_CREATED')].metadata.entity_id"
+          eq: "e_audit"
+        - path: "$.events[?(@.type=='SPREAD_CREATED')].metadata.period"
+          eq: "FY2024"
+
+# ─── Test 19: Validation - missing entity_id ───────────────────────────────
+---
+test: validation_missing_entity_id
+meta:
+  name: "Spread without entity_id fails with 400"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Validation Test Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread_no_entity
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 50000000 }
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+# ─── Test 20: Validation - missing period ──────────────────────────────────
+---
+test: validation_missing_period
+meta:
+  name: "Spread without period fails with 400"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Validation Test Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread_no_period
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_validation"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 50000000 }
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"

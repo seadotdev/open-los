@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/relationship.schema.json",
+  "title": "Relationship",
+  "type": "object",
+  "required": ["id", "from_entity_id", "to_entity_id", "type", "created_at"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "from_entity_id": { "type": "string", "format": "uuid" },
+    "to_entity_id": { "type": "string", "format": "uuid" },
+    "type": {
+      "type": "string",
+      "enum": ["owns", "guarantees", "directs"]
+    },
+    "ownership_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "metadata": { "type": "object", "additionalProperties": true },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

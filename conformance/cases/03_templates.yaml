@@ -1,0 +1,861 @@
+version: "0.1.0"
+suite: templates
+description: >
+  Template rendering conformance: listing, mustache variable injection,
+  overrides, HTML export, frozen artifacts, and version tracking.
+
+# ─── Test 1: List all templates ───────────────────────────────────────────────
+---
+test: templates_list_all
+meta:
+  name: "GET /v1/templates returns all available templates"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "credit_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "1.0.0"
+        body: |
+          # Credit Memo: {{borrower_name}}
+          **Amount:** {{requested_amount}}
+      - id: "deal_summary"
+        phase: "origination"
+        doc_type: "deal_summary"
+        version: "1.0.0"
+        body: |
+          # Deal Summary
+          Borrower: {{borrower_name}}
+          Purpose: {{purpose}}
+      - id: "closing_checklist"
+        phase: "closing"
+        doc_type: "closing_checklist"
+        version: "1.0.0"
+        body: |
+          # Closing Checklist
+          Deal: {{borrower_name}}
+
+steps:
+  - id: list_templates
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/templates
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.templates.length"
+          eq: 3
+
+# ─── Test 2: Filter templates by phase and doc_type ───────────────────────────
+---
+test: templates_filter_by_phase_and_doc_type
+meta:
+  name: "GET /v1/templates with phase and doc_type query filters"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "credit_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "1.0.0"
+        body: |
+          # Credit Memo: {{borrower_name}}
+      - id: "risk_assessment"
+        phase: "underwriting"
+        doc_type: "risk_assessment"
+        version: "1.0.0"
+        body: |
+          # Risk Assessment: {{borrower_name}}
+      - id: "deal_summary"
+        phase: "origination"
+        doc_type: "deal_summary"
+        version: "1.0.0"
+        body: |
+          # Deal Summary: {{borrower_name}}
+
+steps:
+  - id: filter_by_phase
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/templates?phase=underwriting
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.templates.length"
+          eq: 2
+
+  - id: filter_by_phase_and_doc_type
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/templates?phase=underwriting&doc_type=credit_memo
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.templates.length"
+          eq: 1
+        - path: "$.templates[0].id"
+          eq: "credit_memo"
+
+# ─── Test 3: Basic render with mustache variables ─────────────────────────────
+---
+test: templates_render_basic
+meta:
+  name: "Render template with deal context replaces mustache variables"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "credit_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "1.0.0"
+        body: |
+          # Credit Memo: {{borrower_name}}
+          **Amount:** {{requested_amount}}
+          **Purpose:** {{purpose}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: render
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/templates/render
+      json:
+        template_id: "credit_memo"
+        deal_id: "${deal_id}"
+    expect:
+      status: 200
+      json_contains:
+        markdown: |
+          # Credit Memo: Acme Ltd
+          **Amount:** 25000000
+          **Purpose:** Working capital
+
+# ─── Test 4: Missing variables render as empty string ─────────────────────────
+---
+test: templates_render_missing_variables
+meta:
+  name: "Missing deal fields render as empty string in template output"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "full_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "1.0.0"
+        body: |
+          Borrower: {{borrower_name}}
+          Registration: {{borrower_registration_number}}
+          Sector: {{sector}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: render
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/templates/render
+      json:
+        template_id: "full_memo"
+        deal_id: "${deal_id}"
+    expect:
+      status: 200
+      json_contains:
+        markdown: |
+          Borrower: Acme Ltd
+          Registration:
+          Sector:
+
+# ─── Test 5: Template with no variables renders as-is ─────────────────────────
+---
+test: templates_render_no_variables
+meta:
+  name: "Template with no mustache variables renders body unchanged"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "static_notice"
+        phase: "closing"
+        doc_type: "notice"
+        version: "1.0.0"
+        body: |
+          # Standard Notice
+          This document contains no variable placeholders.
+          All content is static.
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: render
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/templates/render
+      json:
+        template_id: "static_notice"
+        deal_id: "${deal_id}"
+    expect:
+      status: 200
+      json_contains:
+        markdown: |
+          # Standard Notice
+          This document contains no variable placeholders.
+          All content is static.
+
+# ─── Test 6: Deal fields inject into template correctly ───────────────────────
+---
+test: templates_inject_deal_fields
+meta:
+  name: "Deal fields inject correctly into rendered template"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "deal_overview"
+        phase: "origination"
+        doc_type: "deal_summary"
+        version: "1.0.0"
+        body: |
+          # Deal Overview
+          **Borrower:** {{borrower_name}}
+          **Registration:** {{borrower_registration_number}}
+          **Amount Requested:** {{requested_amount}}
+          **Purpose:** {{purpose}}
+          **Jurisdiction:** {{jurisdiction}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Beta Corp"
+        borrower_registration_number: "BC-98765"
+        requested_amount: 5000000
+        purpose: "Equipment financing"
+        jurisdiction: "US"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: render
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/templates/render
+      json:
+        template_id: "deal_overview"
+        deal_id: "${deal_id}"
+    expect:
+      status: 200
+      json_contains:
+        markdown: |
+          # Deal Overview
+          **Borrower:** Beta Corp
+          **Registration:** BC-98765
+          **Amount Requested:** 5000000
+          **Purpose:** Equipment financing
+          **Jurisdiction:** US
+
+# ─── Test 7: Nested deal fields inject correctly ──────────────────────────────
+---
+test: templates_inject_nested_fields
+meta:
+  name: "Nested deal fields (jurisdiction, purpose) inject into template"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "jurisdiction_memo"
+        phase: "origination"
+        doc_type: "memo"
+        version: "1.0.0"
+        body: |
+          ## Jurisdiction Review
+          Entity: {{borrower_name}}
+          Domicile: {{jurisdiction}}
+          Stated Purpose: {{purpose}}
+          Stage: {{stage}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Gamma Holdings"
+        jurisdiction: "GB"
+        purpose: "Acquisition finance"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: render
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/templates/render
+      json:
+        template_id: "jurisdiction_memo"
+        deal_id: "${deal_id}"
+    expect:
+      status: 200
+      json_contains:
+        markdown: |
+          ## Jurisdiction Review
+          Entity: Gamma Holdings
+          Domicile: GB
+          Stated Purpose: Acquisition finance
+          Stage: broker
+
+# ─── Test 8: Overrides take precedence over deal data ─────────────────────────
+---
+test: templates_render_overrides_full
+meta:
+  name: "Override variables take precedence over deal data in render"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "credit_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "1.0.0"
+        body: |
+          # Credit Memo: {{borrower_name}}
+          **Amount:** {{requested_amount}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        requested_amount: 25000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: render_with_overrides
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/templates/render
+      json:
+        template_id: "credit_memo"
+        deal_id: "${deal_id}"
+        overrides:
+          borrower_name: "Acme Ltd (Trading As AcmeCo)"
+          requested_amount: 30000000
+    expect:
+      status: 200
+      json_contains:
+        markdown: |
+          # Credit Memo: Acme Ltd (Trading As AcmeCo)
+          **Amount:** 30000000
+
+# ─── Test 9: Partial overrides only replace specified fields ──────────────────
+---
+test: templates_render_overrides_partial
+meta:
+  name: "Partial overrides replace only specified fields, deal data fills the rest"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "deal_letter"
+        phase: "origination"
+        doc_type: "letter"
+        version: "1.0.0"
+        body: |
+          Dear {{borrower_name}},
+          We are pleased to confirm a facility of {{requested_amount}} for {{purpose}}.
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Delta Inc"
+        requested_amount: 10000000
+        purpose: "Trade finance"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: render_partial_override
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/templates/render
+      json:
+        template_id: "deal_letter"
+        deal_id: "${deal_id}"
+        overrides:
+          requested_amount: 12000000
+    expect:
+      status: 200
+      json_contains:
+        markdown: |
+          Dear Delta Inc,
+          We are pleased to confirm a facility of 12000000 for Trade finance.
+
+# ─── Test 10: HTML export from rendered template ──────────────────────────────
+---
+test: templates_render_html_export
+meta:
+  name: "Rendered response includes html field with valid HTML conversion"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "simple_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "1.0.0"
+        body: |
+          # Memo for {{borrower_name}}
+          **Amount:** {{requested_amount}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Echo Partners"
+        requested_amount: 8000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: render
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/templates/render
+      json:
+        template_id: "simple_memo"
+        deal_id: "${deal_id}"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.html"
+          contains: "<h1>"
+        - path: "$.html"
+          contains: "Memo for Echo Partners"
+        - path: "$.html"
+          contains: "<strong>Amount:</strong>"
+        - path: "$.html"
+          contains: "8000000"
+
+# ─── Test 11: Freeze rendered template as immutable artifact ──────────────────
+---
+test: templates_freeze_artifact
+meta:
+  name: "POST /v1/deals/{id}/artifacts freezes a rendered template as immutable artifact"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "credit_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "1.0.0"
+        body: |
+          # Credit Memo: {{borrower_name}}
+          **Amount:** {{requested_amount}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Foxtrot Ltd"
+        requested_amount: 15000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: freeze
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/artifacts
+      json:
+        template_id: "credit_memo"
+    expect:
+      status: 201
+      json_contains:
+        template_id: "credit_memo"
+        deal_id: "${deal_id}"
+      json_path_assertions:
+        - path: "$.markdown"
+          contains: "Credit Memo: Foxtrot Ltd"
+        - path: "$.markdown"
+          contains: "15000000"
+        - path: "$.id"
+          exists: true
+      save:
+        artifact_id: "$.id"
+
+# ─── Test 12: Retrieve frozen artifact ────────────────────────────────────────
+---
+test: templates_get_artifact
+meta:
+  name: "GET /v1/deals/{id}/artifacts returns frozen artifacts"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "credit_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "1.0.0"
+        body: |
+          # Credit Memo: {{borrower_name}}
+          **Amount:** {{requested_amount}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Golf Corp"
+        requested_amount: 20000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: freeze
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/artifacts
+      json:
+        template_id: "credit_memo"
+    expect:
+      status: 201
+      save:
+        artifact_id: "$.id"
+
+  - id: get_artifacts
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/artifacts
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.artifacts.length"
+          eq: 1
+        - path: "$.artifacts[0].id"
+          eq: "${artifact_id}"
+        - path: "$.artifacts[0].template_id"
+          eq: "credit_memo"
+        - path: "$.artifacts[0].markdown"
+          contains: "Credit Memo: Golf Corp"
+
+# ─── Test 13: Frozen artifact is immutable after deal data changes ────────────
+---
+test: templates_artifact_immutable
+meta:
+  name: "Frozen artifact markdown does not change when deal data is updated"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "credit_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "1.0.0"
+        body: |
+          # Credit Memo: {{borrower_name}}
+          **Amount:** {{requested_amount}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Hotel Industries"
+        requested_amount: 30000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: freeze
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/artifacts
+      json:
+        template_id: "credit_memo"
+    expect:
+      status: 201
+      save:
+        artifact_id: "$.id"
+
+  - id: update_deal
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        borrower_name: "Hotel Industries (Renamed)"
+        requested_amount: 50000000
+    expect:
+      status: 200
+
+  - id: verify_artifact_unchanged
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/artifacts
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.artifacts[0].markdown"
+          contains: "Credit Memo: Hotel Industries"
+        - path: "$.artifacts[0].markdown"
+          not_contains: "Renamed"
+        - path: "$.artifacts[0].markdown"
+          contains: "30000000"
+        - path: "$.artifacts[0].markdown"
+          not_contains: "50000000"
+
+# ─── Test 14: Rendered output includes template_version ───────────────────────
+---
+test: templates_render_includes_version
+meta:
+  name: "Rendered output includes template_version field"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "credit_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "2.1.0"
+        body: |
+          # Credit Memo: {{borrower_name}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "India Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: render
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/templates/render
+      json:
+        template_id: "credit_memo"
+        deal_id: "${deal_id}"
+    expect:
+      status: 200
+      json_contains:
+        template_version: "2.1.0"
+
+# ─── Test 15: Artifact stores template_version at freeze time ─────────────────
+---
+test: templates_artifact_stores_version
+meta:
+  name: "Artifact records the template_version used at freeze time"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+    templates:
+      - id: "credit_memo"
+        phase: "underwriting"
+        doc_type: "credit_memo"
+        version: "3.0.0"
+        body: |
+          # Credit Memo: {{borrower_name}}
+          **Amount:** {{requested_amount}}
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Juliet Partners"
+        requested_amount: 7500000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: freeze
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/artifacts
+      json:
+        template_id: "credit_memo"
+    expect:
+      status: 201
+      json_contains:
+        template_version: "3.0.0"
+      save:
+        artifact_id: "$.id"
+
+  - id: get_artifact
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/artifacts
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.artifacts[0].template_version"
+          eq: "3.0.0"

@@ -1,0 +1,23 @@
+category,label,amount,period
+revenue,Total Revenue,100000000,FY2024
+cogs,Cost of Goods Sold,60000000,FY2024
+operating_expense,Operating Expenses,15000000,FY2024
+interest_expense,Interest Expense,3000000,FY2024
+tax,Income Tax,5500000,FY2024
+depreciation,Depreciation & Amortization,5000000,FY2024
+current_assets,Total Current Assets,50000000,FY2024
+current_liabilities,Total Current Liabilities,25000000,FY2024
+total_debt,Total Debt,40000000,FY2024
+total_equity,Total Equity,60000000,FY2024
+cash,Cash and Equivalents,15000000,FY2024
+revenue,Total Revenue,85000000,FY2023
+cogs,Cost of Goods Sold,52000000,FY2023
+operating_expense,Operating Expenses,13000000,FY2023
+interest_expense,Interest Expense,2800000,FY2023
+tax,Income Tax,4300000,FY2023
+depreciation,Depreciation & Amortization,4500000,FY2023
+current_assets,Total Current Assets,42000000,FY2023
+current_liabilities,Total Current Liabilities,22000000,FY2023
+total_debt,Total Debt,38000000,FY2023
+total_equity,Total Equity,52000000,FY2023
+cash,Cash and Equivalents,12000000,FY2023
