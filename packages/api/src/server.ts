@@ -51,11 +51,21 @@ export interface AppContext {
   users?: Map<string, { id: string; role: string }>;
 }
 
+function getCorsOrigins(): string[] | undefined {
+  const raw = process.env.CORS_ORIGINS ?? process.env.CORS_ORIGIN;
+  if (!raw || raw.trim() === "" || raw.trim() === "*") {
+    return undefined;
+  }
+  const origins = raw.split(",").map((origin) => origin.trim()).filter(Boolean);
+  return origins.length > 0 ? origins : undefined;
+}
+
 export function createApp(ctx: AppContext) {
   const app = new Hono();
 
   // CORS
-  app.use("*", cors());
+  const corsOrigins = getCorsOrigins();
+  app.use("*", cors(corsOrigins ? { origin: corsOrigins } : undefined));
 
   // Mount routes
   app.route("/v1", dealRoutes(ctx));
