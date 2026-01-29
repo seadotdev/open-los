@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "paths": {
+      "@open-los/core": ["./packages/core/src"],
+      "@open-los/api": ["./packages/api/src"],
+      "@open-los/conformance": ["./packages/conformance/src"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "**/dist"]
+}

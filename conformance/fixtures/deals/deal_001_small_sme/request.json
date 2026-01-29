@@ -1,0 +1,7 @@
+{
+  "borrower_name": "Acme Manufacturing Ltd",
+  "jurisdiction": "GB",
+  "requested_amount": 25000000,
+  "purpose": "Working capital facility to support seasonal inventory build",
+  "borrower_registration_number": "12345678"
+}

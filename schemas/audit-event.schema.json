@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/audit-event.schema.json",
+  "title": "AuditEventList",
+  "type": "object",
+  "required": ["events", "total"],
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "deal_id", "type", "actor_id", "timestamp"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "deal_id": { "type": "string", "format": "uuid" },
+          "type": {
+            "type": "string",
+            "enum": [
+              "DEAL_CREATED",
+              "DEAL_UPDATED",
+              "STAGE_TRANSITION",
+              "DOCUMENT_UPLOADED",
+              "ENTITY_CREATED",
+              "ENTITY_UPDATED",
+              "RELATIONSHIP_CREATED",
+              "COVENANT_CREATED",
+              "COVENANT_TESTED",
+              "COVENANT_WAIVED",
+              "TEMPLATE_RENDERED",
+              "ARTIFACT_FROZEN",
+              "SPREAD_CREATED",
+              "MONITORING_INGESTED",
+              "EMAIL_INGESTED",
+              "ALERT_CREATED"
+            ]
+          },
+          "actor_id": { "type": "string", "minLength": 1 },
+          "actor": { "type": "string", "minLength": 1 },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "object_type": {
+            "type": "string",
+            "enum": ["deal", "entity", "relationship", "document", "covenant", "spread", "template", "communication"]
+          },
+          "object_id": { "type": "string", "format": "uuid" },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["field"],
+              "properties": {
+                "field": { "type": "string" },
+                "before": {},
+                "after": {}
+              }
+            }
+          },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "details": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "total": { "type": "integer" },
+    "next_cursor": { "type": "string" }
+  }
+}

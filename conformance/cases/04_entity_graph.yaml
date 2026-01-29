@@ -1,0 +1,1345 @@
+version: "0.1.0"
+suite: entity_graph
+description: >
+  Multi-entity graphs and relationships: create entities (company/person),
+  attach identifiers, build ownership/guarantee/director relationships,
+  link to deals, and query borrower-group sub-graphs.
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 1. Create entities
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 1: Create a company entity ──────────────────────────────────────────
+---
+test: create_company_entity
+meta:
+  name: "Create a company entity with minimal fields"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Holdco Ltd"
+    expect:
+      status: 201
+      json_schema: "schemas/entity.schema.json"
+      json_contains:
+        type: "company"
+        name: "Holdco Ltd"
+      json_path_assertions:
+        - path: "$.id"
+          exists: true
+        - path: "$.created_at"
+          exists: true
+
+# ─── Test 2: Create a person entity ──────────────────────────────────────────
+---
+test: create_person_entity
+meta:
+  name: "Create a person entity with minimal fields"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "person"
+        name: "Jane Smith"
+    expect:
+      status: 201
+      json_schema: "schemas/entity.schema.json"
+      json_contains:
+        type: "person"
+        name: "Jane Smith"
+      json_path_assertions:
+        - path: "$.id"
+          exists: true
+        - path: "$.created_at"
+          exists: true
+
+# ─── Test 3: Entity has required fields ──────────────────────────────────────
+---
+test: entity_required_fields
+meta:
+  name: "Entity response includes id, type, name, and created_at"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Required Fields Corp"
+    expect:
+      status: 201
+      json_schema: "schemas/entity.schema.json"
+      save:
+        entity_id: "$.id"
+
+  - id: get
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/entities/${entity_id}
+    expect:
+      status: 200
+      json_schema: "schemas/entity.schema.json"
+      json_contains:
+        id: "${entity_id}"
+        type: "company"
+        name: "Required Fields Corp"
+      json_path_assertions:
+        - path: "$.created_at"
+          exists: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2. Entity with identifiers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 4: Entity with LEI, registration_number, jurisdiction ──────────────
+---
+test: entity_with_statutory_identifiers
+meta:
+  name: "Create entity with LEI, registration_number, and jurisdiction"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Global Finance Ltd"
+        lei: "529900T8BM49AURSDO55"
+        registration_number: "12345678"
+        jurisdiction: "GB"
+    expect:
+      status: 201
+      json_schema: "schemas/entity.schema.json"
+      json_contains:
+        type: "company"
+        name: "Global Finance Ltd"
+        lei: "529900T8BM49AURSDO55"
+        registration_number: "12345678"
+        jurisdiction: "GB"
+
+# ─── Test 5: Entity with external identifiers array ─────────────────────────
+---
+test: entity_with_external_identifiers
+meta:
+  name: "Create entity with external identifiers (scheme/value pairs)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Indexed Corp"
+        registration_number: "12345678"
+        jurisdiction: "GB"
+        identifiers:
+          - scheme: "opencorporates"
+            value: "gb/12345678"
+          - scheme: "companies_house"
+            value: "12345678"
+    expect:
+      status: 201
+      json_schema: "schemas/entity.schema.json"
+      json_contains:
+        name: "Indexed Corp"
+      json_path_assertions:
+        - path: "$.identifiers.length"
+          eq: 2
+        - path: "$.identifiers[0].scheme"
+          eq: "opencorporates"
+        - path: "$.identifiers[0].value"
+          eq: "gb/12345678"
+        - path: "$.identifiers[1].scheme"
+          eq: "companies_house"
+        - path: "$.identifiers[1].value"
+          eq: "12345678"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. Update entity
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 6: PATCH entity updates fields ─────────────────────────────────────
+---
+test: update_entity_fields
+meta:
+  name: "PATCH entity updates name and legal_name"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Old Name Ltd"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: update
+    http:
+      actor: "u_underwriter"
+      method: PATCH
+      path: /v1/entities/${entity_id}
+      json:
+        name: "New Name Ltd"
+        legal_name: "New Name Limited"
+        lei: "529900ABCDEF12345678"
+    expect:
+      status: 200
+      json_schema: "schemas/entity.schema.json"
+      json_contains:
+        id: "${entity_id}"
+        name: "New Name Ltd"
+        legal_name: "New Name Limited"
+        lei: "529900ABCDEF12345678"
+
+  - id: verify
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/entities/${entity_id}
+    expect:
+      status: 200
+      json_contains:
+        name: "New Name Ltd"
+        legal_name: "New Name Limited"
+
+# ─── Test 7: Update entity produces audit event ─────────────────────────────
+---
+test: update_entity_audit_event
+meta:
+  name: "Updating an entity produces an audit event"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Audit Entity Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Audit Entity Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: link_entity
+    http:
+      actor: "u_underwriter"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        primary_entity_id: "${entity_id}"
+    expect:
+      status: 200
+
+  - id: update_entity
+    http:
+      actor: "u_underwriter"
+      method: PATCH
+      path: /v1/entities/${entity_id}
+      json:
+        name: "Audit Entity Corp (Renamed)"
+    expect:
+      status: 200
+
+  - id: check_audit
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          gte: 1
+        - path: "$.events[?(@.type=='ENTITY_UPDATED')]"
+          exists: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. Create relationships
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 8: Create "owns" relationship with ownership_pct ───────────────────
+---
+test: create_owns_relationship
+meta:
+  name: "Create an ownership relationship between two company entities"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_holdco
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Holdco Ltd"
+    expect:
+      status: 201
+      save:
+        holdco_id: "$.id"
+
+  - id: create_opco
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Opco Ltd"
+    expect:
+      status: 201
+      save:
+        opco_id: "$.id"
+
+  - id: create_relationship
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${holdco_id}"
+        to_entity_id: "${opco_id}"
+        type: "owns"
+        ownership_pct: 75.5
+    expect:
+      status: 201
+      json_schema: "schemas/relationship.schema.json"
+      json_contains:
+        from_entity_id: "${holdco_id}"
+        to_entity_id: "${opco_id}"
+        type: "owns"
+        ownership_pct: 75.5
+      json_path_assertions:
+        - path: "$.id"
+          exists: true
+        - path: "$.created_at"
+          exists: true
+
+# ─── Test 9: Create "guarantees" relationship ────────────────────────────────
+---
+test: create_guarantees_relationship
+meta:
+  name: "Create a guarantee relationship between entities"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_guarantor
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Parent Group Plc"
+    expect:
+      status: 201
+      save:
+        guarantor_id: "$.id"
+
+  - id: create_borrower
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Borrower Ltd"
+    expect:
+      status: 201
+      save:
+        borrower_id: "$.id"
+
+  - id: create_guarantee
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${guarantor_id}"
+        to_entity_id: "${borrower_id}"
+        type: "guarantees"
+    expect:
+      status: 201
+      json_schema: "schemas/relationship.schema.json"
+      json_contains:
+        from_entity_id: "${guarantor_id}"
+        to_entity_id: "${borrower_id}"
+        type: "guarantees"
+
+# ─── Test 10: Create "directs" relationship (person directs company) ─────────
+---
+test: create_directs_relationship
+meta:
+  name: "Create a director relationship from person to company"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_director
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "person"
+        name: "John Director"
+    expect:
+      status: 201
+      save:
+        director_id: "$.id"
+
+  - id: create_company
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Directed Corp"
+    expect:
+      status: 201
+      save:
+        company_id: "$.id"
+
+  - id: create_directorship
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${director_id}"
+        to_entity_id: "${company_id}"
+        type: "directs"
+    expect:
+      status: 201
+      json_schema: "schemas/relationship.schema.json"
+      json_contains:
+        from_entity_id: "${director_id}"
+        to_entity_id: "${company_id}"
+        type: "directs"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 5. Relationship validation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 11: Relationship with non-existent entity fails ───────────────────
+---
+test: relationship_nonexistent_entity
+meta:
+  name: "Cannot create relationship referencing non-existent entity IDs"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Real Entity Ltd"
+    expect:
+      status: 201
+      save:
+        real_id: "$.id"
+
+  - id: bad_from_entity
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "00000000-0000-0000-0000-000000000000"
+        to_entity_id: "${real_id}"
+        type: "owns"
+        ownership_pct: 100
+    expect:
+      status: 404
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "NOT_FOUND"
+
+  - id: bad_to_entity
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${real_id}"
+        to_entity_id: "00000000-0000-0000-0000-000000000000"
+        type: "owns"
+        ownership_pct: 100
+    expect:
+      status: 404
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "NOT_FOUND"
+
+# ─── Test 12: Duplicate relationship rejected ───────────────────────────────
+---
+test: relationship_duplicate_rejected
+meta:
+  name: "Cannot create duplicate relationship between the same entities"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_a
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Entity A"
+    expect:
+      status: 201
+      save:
+        a_id: "$.id"
+
+  - id: create_b
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Entity B"
+    expect:
+      status: 201
+      save:
+        b_id: "$.id"
+
+  - id: create_rel
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${a_id}"
+        to_entity_id: "${b_id}"
+        type: "owns"
+        ownership_pct: 100
+    expect:
+      status: 201
+
+  - id: create_duplicate
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${a_id}"
+        to_entity_id: "${b_id}"
+        type: "owns"
+        ownership_pct: 50
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "CONFLICT"
+
+# ─── Test 13: Ownership percentage must be 0-100 ────────────────────────────
+---
+test: ownership_pct_validation
+meta:
+  name: "Ownership_pct must be between 0 and 100 inclusive"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_parent
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Parent Ltd"
+    expect:
+      status: 201
+      save:
+        parent_id: "$.id"
+
+  - id: create_child
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Child Ltd"
+    expect:
+      status: 201
+      save:
+        child_id: "$.id"
+
+  - id: over_100
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${parent_id}"
+        to_entity_id: "${child_id}"
+        type: "owns"
+        ownership_pct: 150
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+  - id: negative
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${parent_id}"
+        to_entity_id: "${child_id}"
+        type: "owns"
+        ownership_pct: -10
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6. Borrower group graph
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 14: Link entity to deal as primary ────────────────────────────────
+---
+test: link_entity_to_deal
+meta:
+  name: "Set primary_entity_id on a deal to link an entity"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Linked Borrower Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Linked Borrower Ltd"
+        registration_number: "99887766"
+        jurisdiction: "GB"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: link
+    http:
+      actor: "u_underwriter"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        primary_entity_id: "${entity_id}"
+    expect:
+      status: 200
+      json_contains:
+        primary_entity_id: "${entity_id}"
+
+  - id: verify
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        primary_entity_id: "${entity_id}"
+
+# ─── Test 15: Get borrower group returns entities and relationships ──────────
+---
+test: borrower_group_basic
+meta:
+  name: "GET borrower-group returns entities and relationships for a deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Opco Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_holdco
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Holdco Ltd"
+    expect:
+      status: 201
+      save:
+        holdco_id: "$.id"
+
+  - id: create_opco
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Opco Ltd"
+    expect:
+      status: 201
+      save:
+        opco_id: "$.id"
+
+  - id: create_ownership
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${holdco_id}"
+        to_entity_id: "${opco_id}"
+        type: "owns"
+        ownership_pct: 100
+    expect:
+      status: 201
+
+  - id: link_deal
+    http:
+      actor: "u_underwriter"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        primary_entity_id: "${opco_id}"
+    expect:
+      status: 200
+
+  - id: get_group
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/borrower-group
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.entities.length"
+          gte: 2
+        - path: "$.relationships.length"
+          gte: 1
+
+# ─── Test 16: Multi-entity borrower group ────────────────────────────────────
+---
+test: borrower_group_multi_entity
+meta:
+  name: "Holdco owns opco, person directs holdco — all appear in borrower group"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Multi-Entity Deal"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_holdco
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Multi Holdco Plc"
+    expect:
+      status: 201
+      save:
+        holdco_id: "$.id"
+
+  - id: create_opco
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Multi Opco Ltd"
+    expect:
+      status: 201
+      save:
+        opco_id: "$.id"
+
+  - id: create_director
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "person"
+        name: "Alice Director"
+    expect:
+      status: 201
+      save:
+        director_id: "$.id"
+
+  - id: holdco_owns_opco
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${holdco_id}"
+        to_entity_id: "${opco_id}"
+        type: "owns"
+        ownership_pct: 100
+    expect:
+      status: 201
+
+  - id: director_directs_holdco
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${director_id}"
+        to_entity_id: "${holdco_id}"
+        type: "directs"
+    expect:
+      status: 201
+
+  - id: link_deal
+    http:
+      actor: "u_underwriter"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        primary_entity_id: "${opco_id}"
+    expect:
+      status: 200
+
+  - id: get_group
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/borrower-group
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.entities.length"
+          gte: 3
+        - path: "$.relationships.length"
+          gte: 2
+        - path: "$.entities[?(@.name=='Multi Holdco Plc')]"
+          exists: true
+        - path: "$.entities[?(@.name=='Multi Opco Ltd')]"
+          exists: true
+        - path: "$.entities[?(@.name=='Alice Director')]"
+          exists: true
+        - path: "$.relationships[?(@.type=='owns')]"
+          exists: true
+        - path: "$.relationships[?(@.type=='directs')]"
+          exists: true
+
+# ─── Test 17: Adding a new relationship updates the group ────────────────────
+---
+test: borrower_group_updates_on_new_relationship
+meta:
+  name: "Adding a new relationship to an entity in the group updates the query"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Growing Group"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_borrower
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Borrower Co"
+    expect:
+      status: 201
+      save:
+        borrower_id: "$.id"
+
+  - id: link_deal
+    http:
+      actor: "u_underwriter"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        primary_entity_id: "${borrower_id}"
+    expect:
+      status: 200
+
+  - id: get_group_before
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/borrower-group
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.entities.length"
+          eq: 1
+        - path: "$.relationships.length"
+          eq: 0
+
+  - id: create_guarantor
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Guarantor Plc"
+    expect:
+      status: 201
+      save:
+        guarantor_id: "$.id"
+
+  - id: add_guarantee
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${guarantor_id}"
+        to_entity_id: "${borrower_id}"
+        type: "guarantees"
+    expect:
+      status: 201
+
+  - id: get_group_after
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/borrower-group
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.entities.length"
+          eq: 2
+        - path: "$.relationships.length"
+          eq: 1
+        - path: "$.entities[?(@.name=='Guarantor Plc')]"
+          exists: true
+        - path: "$.relationships[?(@.type=='guarantees')]"
+          exists: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 7. Entity invariants
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 18: Entity type cannot be changed after creation ───────────────────
+---
+test: entity_type_immutable
+meta:
+  name: "Entity type cannot be changed via PATCH"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Immutable Type Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: try_change_type
+    http:
+      actor: "u_underwriter"
+      method: PATCH
+      path: /v1/entities/${entity_id}
+      json:
+        type: "person"
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/entities/${entity_id}
+    expect:
+      status: 200
+      json_contains:
+        type: "company"
+
+# ─── Test 19: Deleting entity with relationships fails or cascades ───────────
+---
+test: delete_entity_with_relationships
+meta:
+  name: "Deleting an entity that has relationships fails with 409 conflict"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_parent
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Parent With Rels"
+    expect:
+      status: 201
+      save:
+        parent_id: "$.id"
+
+  - id: create_child
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Child With Rels"
+    expect:
+      status: 201
+      save:
+        child_id: "$.id"
+
+  - id: create_rel
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/relationships
+      json:
+        from_entity_id: "${parent_id}"
+        to_entity_id: "${child_id}"
+        type: "owns"
+        ownership_pct: 100
+    expect:
+      status: 201
+
+  - id: try_delete
+    http:
+      actor: "u_underwriter"
+      method: DELETE
+      path: /v1/entities/${parent_id}
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "CONFLICT"
+
+# ─── Test 20: List entities with type filter ─────────────────────────────────
+---
+test: list_entities_type_filter
+meta:
+  name: "List entities filtered by type returns only matching entities"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_company_1
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Filter Co A"
+    expect:
+      status: 201
+
+  - id: create_company_2
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Filter Co B"
+    expect:
+      status: 201
+
+  - id: create_person_1
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "person"
+        name: "Filter Person A"
+    expect:
+      status: 201
+
+  - id: create_person_2
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "person"
+        name: "Filter Person B"
+    expect:
+      status: 201
+
+  - id: list_companies
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/entities?type=company
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.entities.length"
+          eq: 2
+        - path: "$.entities[0].type"
+          eq: "company"
+        - path: "$.entities[1].type"
+          eq: "company"
+
+  - id: list_persons
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/entities?type=person
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.entities.length"
+          eq: 2
+        - path: "$.entities[0].type"
+          eq: "person"
+        - path: "$.entities[1].type"
+          eq: "person"

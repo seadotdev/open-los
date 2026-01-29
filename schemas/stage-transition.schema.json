@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/stage-transition.schema.json",
+  "title": "StageTransition",
+  "type": "object",
+  "required": ["id", "deal_id", "from_stage", "to_stage", "actor", "transitioned_at"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "deal_id": { "type": "string", "format": "uuid" },
+    "from_stage": {
+      "type": "string",
+      "enum": ["broker", "origination", "underwriting", "closing", "monitoring"]
+    },
+    "to_stage": {
+      "type": "string",
+      "enum": ["broker", "origination", "underwriting", "closing", "monitoring"]
+    },
+    "actor": { "type": "string", "minLength": 1 },
+    "rationale": { "type": "string" },
+    "override": { "type": "boolean", "default": false },
+    "override_rationale": { "type": "string" },
+    "checklist_snapshot": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["item", "satisfied"],
+        "properties": {
+          "item": { "type": "string" },
+          "satisfied": { "type": "boolean" }
+        }
+      }
+    },
+    "transitioned_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

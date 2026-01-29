@@ -1,0 +1,1564 @@
+version: "0.1.0"
+suite: covenants
+description: >
+  Typed covenants engine: creation, type variants, test execution (pass/fail),
+  grace periods, waivers, validation, and audit trail.
+
+# ─── 1. Create covenants ──────────────────────────────────────────────────────
+
+# ─── Test 1: Create a financial covenant ──────────────────────────────────────
+---
+test: cov_create_financial
+meta:
+  name: "Create a DSCR financial covenant on a deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+      json_schema: "schemas/covenant.schema.json"
+      json_contains:
+        deal_id: "${deal_id}"
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+      save:
+        covenant_id: "$.id"
+
+# ─── Test 2: Create multiple covenants on one deal ────────────────────────────
+---
+test: cov_create_multiple
+meta:
+  name: "Create multiple covenants (min_liquidity and leverage) on one deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Beta Corp"
+        jurisdiction: "GB"
+        requested_amount: 50000000
+        purpose: "Expansion"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_liquidity_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum Liquidity"
+        type: "financial"
+        metric: "min_liquidity"
+        operator: ">="
+        threshold: 5000000
+        frequency: "monthly"
+    expect:
+      status: 201
+      json_schema: "schemas/covenant.schema.json"
+      json_contains:
+        metric: "min_liquidity"
+        operator: ">="
+        threshold: 5000000
+      save:
+        cov_liquidity_id: "$.id"
+
+  - id: create_leverage_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Maximum Leverage"
+        type: "financial"
+        metric: "leverage"
+        operator: "<="
+        threshold: 3.0
+        frequency: "quarterly"
+    expect:
+      status: 201
+      json_schema: "schemas/covenant.schema.json"
+      json_contains:
+        metric: "leverage"
+        operator: "<="
+        threshold: 3.0
+      save:
+        cov_leverage_id: "$.id"
+
+# ─── Test 3: List covenants for a deal ────────────────────────────────────────
+---
+test: cov_list
+meta:
+  name: "List covenants returns all covenants for a deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Gamma Inc"
+        jurisdiction: "US"
+        requested_amount: 10000000
+        purpose: "Acquisition"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_cov_1
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+
+  - id: create_cov_2
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Maximum Leverage"
+        type: "financial"
+        metric: "leverage"
+        operator: "<="
+        threshold: 3.0
+        frequency: "quarterly"
+    expect:
+      status: 201
+
+  - id: list_covenants
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/covenants
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.covenants.length"
+          eq: 2
+
+# ─── 2. Covenant types ────────────────────────────────────────────────────────
+
+# ─── Test 4: Financial type covenant ──────────────────────────────────────────
+---
+test: cov_type_financial
+meta:
+  name: "Create a financial type covenant with current_ratio metric"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Delta LLC"
+        jurisdiction: "GB"
+        requested_amount: 15000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_financial_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum Current Ratio"
+        type: "financial"
+        metric: "current_ratio"
+        operator: ">="
+        threshold: 1.5
+        frequency: "quarterly"
+    expect:
+      status: 201
+      json_schema: "schemas/covenant.schema.json"
+      json_contains:
+        type: "financial"
+        metric: "current_ratio"
+        operator: ">="
+        threshold: 1.5
+
+# ─── Test 5: Reporting type covenant ──────────────────────────────────────────
+---
+test: cov_type_reporting
+meta:
+  name: "Create a reporting type covenant for quarterly financial statements"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Epsilon Partners"
+        jurisdiction: "GB"
+        requested_amount: 30000000
+        purpose: "Refinancing"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_reporting_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Quarterly Financial Statements"
+        type: "reporting"
+        metric: "financial_statements"
+        reporting_deadline_days: 90
+        frequency: "quarterly"
+    expect:
+      status: 201
+      json_schema: "schemas/covenant.schema.json"
+      json_contains:
+        type: "reporting"
+        name: "Quarterly Financial Statements"
+        reporting_deadline_days: 90
+        frequency: "quarterly"
+
+# ─── 3. Covenant test execution - pass ────────────────────────────────────────
+
+# ─── Test 6: DSCR test passes with good ratio ────────────────────────────────
+---
+test: cov_test_pass_dscr
+meta:
+  name: "DSCR covenant test passes when actual 2.5 >= threshold 1.2"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 10000000
+          ebitda: 5000000
+          net_income: 3000000
+          total_debt: 8000000
+          total_equity: 12000000
+          current_assets: 7000000
+          current_liabilities: 3500000
+          debt_service: 2000000
+          cash_and_equivalents: 6000000
+    expect:
+      status: 201
+      save:
+        spread_id: "$.id"
+
+  - id: create_dscr_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results.length"
+          eq: 1
+        - path: "$.results[0].covenant_id"
+          eq: "${covenant_id}"
+        - path: "$.results[0].status"
+          eq: "pass"
+        - path: "$.results[0].actual_value"
+          eq: 2.5
+        - path: "$.results[0].threshold"
+          eq: 1.2
+
+# ─── Test 7: Multiple covenants all pass ──────────────────────────────────────
+---
+test: cov_test_pass_multiple
+meta:
+  name: "Multiple covenants tested at once, all pass"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Foxtrot Holdings"
+        jurisdiction: "GB"
+        requested_amount: 40000000
+        purpose: "Expansion"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 20000000
+          ebitda: 8000000
+          net_income: 5000000
+          total_debt: 15000000
+          total_equity: 25000000
+          current_assets: 12000000
+          current_liabilities: 5000000
+          debt_service: 3000000
+          cash_and_equivalents: 9000000
+    expect:
+      status: 201
+
+  - id: create_dscr_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+
+  - id: create_leverage_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Maximum Leverage"
+        type: "financial"
+        metric: "leverage"
+        operator: "<="
+        threshold: 3.0
+        frequency: "quarterly"
+    expect:
+      status: 201
+
+  - id: create_liquidity_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum Liquidity"
+        type: "financial"
+        metric: "min_liquidity"
+        operator: ">="
+        threshold: 5000000
+        frequency: "monthly"
+    expect:
+      status: 201
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results.length"
+          eq: 3
+        - path: "$.results[?(@.metric=='dscr')].status"
+          eq: "pass"
+        - path: "$.results[?(@.metric=='leverage')].status"
+          eq: "pass"
+        - path: "$.results[?(@.metric=='min_liquidity')].status"
+          eq: "pass"
+
+# ─── Test 8: DSCR pass with exact threshold ──────────────────────────────────
+---
+test: cov_test_pass_exact_threshold
+meta:
+  name: "DSCR actual equals threshold with >= operator still passes"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Golf Systems"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 5000000
+          ebitda: 2400000
+          net_income: 1200000
+          total_debt: 4000000
+          total_equity: 6000000
+          current_assets: 3000000
+          current_liabilities: 2000000
+          debt_service: 2000000
+          cash_and_equivalents: 3000000
+    expect:
+      status: 201
+
+  - id: create_dscr_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results[0].status"
+          eq: "pass"
+        - path: "$.results[0].actual_value"
+          eq: 1.2
+        - path: "$.results[0].threshold"
+          eq: 1.2
+
+# ─── 4. Covenant test execution - fail ────────────────────────────────────────
+
+# ─── Test 9: DSCR test fails with low ratio ──────────────────────────────────
+---
+test: cov_test_fail_dscr
+meta:
+  name: "DSCR covenant test fails when actual 0.8 < threshold 1.2"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Hotel Group"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Refinancing"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 4000000
+          ebitda: 1600000
+          net_income: 400000
+          total_debt: 12000000
+          total_equity: 5000000
+          current_assets: 2000000
+          current_liabilities: 3000000
+          debt_service: 2000000
+          cash_and_equivalents: 1500000
+    expect:
+      status: 201
+
+  - id: create_dscr_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results[0].covenant_id"
+          eq: "${covenant_id}"
+        - path: "$.results[0].status"
+          eq: "fail"
+        - path: "$.results[0].actual_value"
+          eq: 0.8
+        - path: "$.results[0].threshold"
+          eq: 1.2
+
+# ─── Test 10: Leverage test fails with high ratio ────────────────────────────
+---
+test: cov_test_fail_leverage
+meta:
+  name: "Leverage covenant test fails when actual 4.0 > threshold 3.0"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "India Ventures"
+        jurisdiction: "GB"
+        requested_amount: 35000000
+        purpose: "Acquisition"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 12000000
+          ebitda: 5000000
+          net_income: 2000000
+          total_debt: 20000000
+          total_equity: 5000000
+          current_assets: 4000000
+          current_liabilities: 3000000
+          debt_service: 3000000
+          cash_and_equivalents: 2000000
+    expect:
+      status: 201
+
+  - id: create_leverage_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Maximum Leverage"
+        type: "financial"
+        metric: "leverage"
+        operator: "<="
+        threshold: 3.0
+        frequency: "quarterly"
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results[0].covenant_id"
+          eq: "${covenant_id}"
+        - path: "$.results[0].status"
+          eq: "fail"
+        - path: "$.results[0].actual_value"
+          eq: 4.0
+        - path: "$.results[0].threshold"
+          eq: 3.0
+
+# ─── Test 11: Mixed pass/fail results ────────────────────────────────────────
+---
+test: cov_test_mixed_results
+meta:
+  name: "Test returns all results including mixed pass and fail"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Juliet Corp"
+        jurisdiction: "GB"
+        requested_amount: 18000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 8000000
+          ebitda: 3000000
+          net_income: 1500000
+          total_debt: 9000000
+          total_equity: 5000000
+          current_assets: 4000000
+          current_liabilities: 2000000
+          debt_service: 2000000
+          cash_and_equivalents: 2500000
+    expect:
+      status: 201
+
+  - id: create_dscr_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+
+  - id: create_leverage_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Maximum Leverage"
+        type: "financial"
+        metric: "leverage"
+        operator: "<="
+        threshold: 2.0
+        frequency: "quarterly"
+    expect:
+      status: 201
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results.length"
+          eq: 2
+        - path: "$.results[?(@.metric=='dscr')].status"
+          eq: "pass"
+        - path: "$.results[?(@.metric=='leverage')].status"
+          eq: "fail"
+        - path: "$.results[?(@.metric=='dscr')].actual_value"
+          eq: 1.5
+        - path: "$.results[?(@.metric=='leverage')].actual_value"
+          eq: 3.0
+
+# ─── 5. Grace period ─────────────────────────────────────────────────────────
+
+# ─── Test 12: Failed covenant enters grace period ─────────────────────────────
+---
+test: cov_grace_period_active
+meta:
+  name: "Covenant with grace_period_days=30 returns grace_period status on failure"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Kilo Industries"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 4000000
+          ebitda: 1600000
+          net_income: 400000
+          total_debt: 12000000
+          total_equity: 5000000
+          current_assets: 2000000
+          current_liabilities: 3000000
+          debt_service: 2000000
+          cash_and_equivalents: 1500000
+    expect:
+      status: 201
+
+  - id: create_covenant_with_grace
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+        grace_period_days: 30
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results[0].covenant_id"
+          eq: "${covenant_id}"
+        - path: "$.results[0].status"
+          eq: "grace_period"
+        - path: "$.results[0].actual_value"
+          eq: 0.8
+        - path: "$.results[0].grace_period_expires"
+          eq: "2026-02-14T10:00:00Z"
+
+# ─── Test 13: Grace period expired, re-test fails ────────────────────────────
+# This test continues from cov_grace_period_active (Test 12) with reset_db: false
+# Test 12 ran at 2026-01-15 and created a grace period expiring 2026-02-14
+# This test runs at 2026-02-20 (after grace period expired)
+---
+test: cov_grace_period_expired
+meta:
+  name: "After grace period expires, re-test returns fail status"
+  now: "2026-02-20T10:00:00Z"
+
+arrange:
+  reset_db: false
+
+steps:
+  - id: retest_after_expiry
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results[0].covenant_id"
+          eq: "${covenant_id}"
+        - path: "$.results[0].status"
+          eq: "fail"
+        - path: "$.results[0].actual_value"
+          eq: 0.8
+
+# ─── Test 14: Zero grace period fails immediately ────────────────────────────
+---
+test: cov_grace_period_zero
+meta:
+  name: "Covenant with grace_period_days=0 fails immediately without grace period"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Mike Enterprises"
+        jurisdiction: "GB"
+        requested_amount: 15000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 4000000
+          ebitda: 1600000
+          net_income: 400000
+          total_debt: 12000000
+          total_equity: 5000000
+          current_assets: 2000000
+          current_liabilities: 3000000
+          debt_service: 2000000
+          cash_and_equivalents: 1500000
+    expect:
+      status: 201
+
+  - id: create_covenant_no_grace
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+        grace_period_days: 0
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results[0].covenant_id"
+          eq: "${covenant_id}"
+        - path: "$.results[0].status"
+          eq: "fail"
+        - path: "$.results[0].actual_value"
+          eq: 0.8
+
+# ─── 6. Waivers ──────────────────────────────────────────────────────────────
+
+# ─── Test 15: Record a waiver ────────────────────────────────────────────────
+---
+test: cov_waiver_create
+meta:
+  name: "POST waiver records reason and approved_by on a covenant"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_credit_lead", role: "credit_lead" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "November Corp"
+        jurisdiction: "GB"
+        requested_amount: 22000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: create_waiver
+    http:
+      actor: "u_credit_lead"
+      method: POST
+      path: /v1/covenants/${covenant_id}/waivers
+      json:
+        reason: "Borrower experienced one-time restructuring costs; underlying performance remains strong"
+        approved_by: "u_credit_lead"
+    expect:
+      status: 201
+      json_contains:
+        covenant_id: "${covenant_id}"
+        reason: "Borrower experienced one-time restructuring costs; underlying performance remains strong"
+        approved_by: "u_credit_lead"
+      save:
+        waiver_id: "$.id"
+
+# ─── Test 16: Waived covenant test returns waived status ──────────────────────
+---
+test: cov_waiver_test_status
+meta:
+  name: "After waiver, covenant test returns waived status"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_credit_lead", role: "credit_lead" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Oscar Holdings"
+        jurisdiction: "GB"
+        requested_amount: 30000000
+        purpose: "Refinancing"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 4000000
+          ebitda: 1600000
+          net_income: 400000
+          total_debt: 12000000
+          total_equity: 5000000
+          current_assets: 2000000
+          current_liabilities: 3000000
+          debt_service: 2000000
+          cash_and_equivalents: 1500000
+    expect:
+      status: 201
+
+  - id: create_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: create_waiver
+    http:
+      actor: "u_credit_lead"
+      method: POST
+      path: /v1/covenants/${covenant_id}/waivers
+      json:
+        reason: "One-time restructuring; waived for Q4 2025"
+        approved_by: "u_credit_lead"
+    expect:
+      status: 201
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results[0].covenant_id"
+          eq: "${covenant_id}"
+        - path: "$.results[0].status"
+          eq: "waived"
+
+# ─── Test 17: Waiver with valid_until expires and reverts to normal testing ──
+---
+test: cov_waiver_expiry
+meta:
+  name: "Waiver with valid_until date reverts to normal testing after expiry"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_credit_lead", role: "credit_lead" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Papa Finance"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 4000000
+          ebitda: 1600000
+          net_income: 400000
+          total_debt: 12000000
+          total_equity: 5000000
+          current_assets: 2000000
+          current_liabilities: 3000000
+          debt_service: 2000000
+          cash_and_equivalents: 1500000
+    expect:
+      status: 201
+
+  - id: create_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: create_waiver_with_expiry
+    http:
+      actor: "u_credit_lead"
+      method: POST
+      path: /v1/covenants/${covenant_id}/waivers
+      json:
+        reason: "Temporary waiver for Q4 restructuring period"
+        approved_by: "u_credit_lead"
+        valid_until: "2026-01-31T23:59:59Z"
+    expect:
+      status: 201
+      json_contains:
+        valid_until: "2026-01-31T23:59:59Z"
+
+  - id: test_while_waived
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.results[0].status"
+          eq: "waived"
+
+# Advance time past the waiver expiry
+---
+test: cov_waiver_expiry_retest
+meta:
+  name: "After waiver valid_until passes, covenant reverts to fail on re-test"
+  now: "2026-02-15T10:00:00Z"
+
+arrange:
+  reset_db: false
+
+steps:
+  - id: retest_after_waiver_expiry
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+      json_schema: "schemas/covenant-test.schema.json"
+      json_path_assertions:
+        - path: "$.results[0].covenant_id"
+          eq: "${covenant_id}"
+        - path: "$.results[0].status"
+          eq: "fail"
+        - path: "$.results[0].actual_value"
+          eq: 0.8
+
+# ─── 7. Validation ───────────────────────────────────────────────────────────
+
+# ─── Test 18: Invalid operator rejected ───────────────────────────────────────
+---
+test: cov_validation_invalid_operator
+meta:
+  name: "Covenant with invalid operator returns 400"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Quebec Systems"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_bad_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Bad Covenant"
+        type: "financial"
+        metric: "dscr"
+        operator: "!="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+# ─── Test 19: Missing required fields rejected ───────────────────────────────
+---
+test: cov_validation_missing_fields
+meta:
+  name: "Covenant without required fields (name, metric, threshold) returns 400"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Romeo Ltd"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_incomplete_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        type: "financial"
+        frequency: "quarterly"
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+# ─── 8. Audit ────────────────────────────────────────────────────────────────
+
+# ─── Test 20: Covenant creation and testing produce audit events ──────────────
+---
+test: cov_audit_events
+meta:
+  name: "Covenant creation and testing produce COVENANT_CREATED and COVENANT_TESTED audit events"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Sierra Group"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 10000000
+          ebitda: 5000000
+          net_income: 3000000
+          total_debt: 8000000
+          total_equity: 12000000
+          current_assets: 7000000
+          current_liabilities: 3500000
+          debt_service: 2000000
+          cash_and_equivalents: 6000000
+    expect:
+      status: 201
+
+  - id: create_covenant
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum DSCR"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+    expect:
+      status: 201
+      save:
+        covenant_id: "$.id"
+
+  - id: test_covenants
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants/test
+      json:
+        as_of_period: "2025-Q4"
+    expect:
+      status: 200
+
+  - id: check_audit
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events[?(@.type=='COVENANT_CREATED')]"
+          exists: true
+        - path: "$.events[?(@.type=='COVENANT_TESTED')]"
+          exists: true

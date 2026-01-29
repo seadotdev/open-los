@@ -1,0 +1,423 @@
+version: "0.1.0"
+suite: smoke
+description: >
+  End-to-end smoke slice: create deal, upload doc, stage transition, audit.
+  This suite must pass before any other suite is attempted.
+
+# ─── Test 1: Create a deal ───────────────────────────────────────────────────
+---
+test: smoke_create_deal
+meta:
+  name: "Create a deal with minimal fields"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      json_schema: "schemas/deal.schema.json"
+      json_contains:
+        borrower_name: "Acme Ltd"
+        stage: "broker"
+      save:
+        deal_id: "$.id"
+
+# ─── Test 2: Get deal by ID ─────────────────────────────────────────────────
+---
+test: smoke_get_deal
+meta:
+  name: "Retrieve a deal by ID"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_schema: "schemas/deal.schema.json"
+      json_contains:
+        id: "${deal_id}"
+        borrower_name: "Acme Ltd"
+
+# ─── Test 3: Update deal fields ─────────────────────────────────────────────
+---
+test: smoke_update_deal
+meta:
+  name: "PATCH deal updates fields and returns updated deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        borrower_registration_number: "12345678"
+        purpose: "Expansion"
+    expect:
+      status: 200
+      json_contains:
+        borrower_registration_number: "12345678"
+        purpose: "Expansion"
+
+# ─── Test 4: Upload a document ───────────────────────────────────────────────
+---
+test: smoke_upload_document
+meta:
+  name: "Upload a document to a deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+      json_schema: "schemas/document.schema.json"
+      json_contains:
+        deal_id: "${deal_id}"
+        doc_type: "accounts"
+
+# ─── Test 5: List documents ─────────────────────────────────────────────────
+---
+test: smoke_list_documents
+meta:
+  name: "List documents for a deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZQ=="
+    expect:
+      status: 202
+
+  - id: list
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/documents
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.documents.length"
+          gte: 1
+
+# ─── Test 6: Stage transition (broker → origination) ────────────────────────
+---
+test: smoke_stage_transition
+meta:
+  name: "Transition deal from broker to origination"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: transition
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_contains:
+        from_stage: "broker"
+        to_stage: "origination"
+
+  - id: verify_deal
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "origination"
+
+# ─── Test 7: Audit log exists after mutations ────────────────────────────────
+---
+test: smoke_audit_log
+meta:
+  name: "Audit log records deal creation and update"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+    expect:
+      status: 200
+
+  - id: check_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          gte: 2
+        - path: "$.events[0].type"
+          eq: "DEAL_CREATED"
+        - path: "$.events[1].type"
+          eq: "DEAL_UPDATED"
+
+# ─── Test 8: 404 for non-existent deal ──────────────────────────────────────
+---
+test: smoke_not_found
+meta:
+  name: "GET non-existent deal returns 404"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: get_missing
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/00000000-0000-0000-0000-000000000000
+    expect:
+      status: 404
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "NOT_FOUND"
+
+# ─── Test 9: Validation error on bad input ───────────────────────────────────
+---
+test: smoke_validation_error
+meta:
+  name: "POST deal with missing required field returns 400"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_bad
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json: {}
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+# ─── Test 10: List deals ────────────────────────────────────────────────────
+---
+test: smoke_list_deals
+meta:
+  name: "List deals returns paginated results"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_1
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+
+  - id: create_2
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Beta Corp"
+    expect:
+      status: 201
+
+  - id: list
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.deals.length"
+          eq: 2
+        - path: "$.total"
+          eq: 2

@@ -1,0 +1,2212 @@
+version: "0.1.0"
+suite: stages
+description: >
+  Full stage machine conformance: all 5 stages, valid/invalid transitions,
+  roles, outcomes, overrides, checklists.
+
+# =============================================================================
+# 1. VALID FORWARD TRANSITIONS
+# =============================================================================
+
+# ─── 1.1: broker → origination ──────────────────────────────────────────────
+---
+test: valid_broker_to_origination
+meta:
+  name: "Valid transition from broker to origination"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      json_schema: "schemas/deal.schema.json"
+      json_contains:
+        stage: "broker"
+      save:
+        deal_id: "$.id"
+
+  - id: transition_to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_contains:
+        from_stage: "broker"
+        to_stage: "origination"
+
+  - id: verify_stage
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "origination"
+
+# ─── 1.2: origination → underwriting ────────────────────────────────────────
+---
+test: valid_origination_to_underwriting
+meta:
+  name: "Valid transition from origination to underwriting with proceed outcome"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Beta Corp"
+        jurisdiction: "GB"
+        requested_amount: 50000000
+        purpose: "Acquisition finance"
+        borrower_registration_number: "87654321"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: transition_to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts_2025.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_outcome_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+      json_contains:
+        origination_outcome: "proceed"
+
+  - id: transition_to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_contains:
+        from_stage: "origination"
+        to_stage: "underwriting"
+
+  - id: verify_stage
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "underwriting"
+
+# ─── 1.3: underwriting → closing ────────────────────────────────────────────
+---
+test: valid_underwriting_to_closing
+meta:
+  name: "Valid transition from underwriting to closing"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Gamma Inc"
+        jurisdiction: "US"
+        requested_amount: 100000000
+        purpose: "Real estate"
+        borrower_registration_number: "US-99887766"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "financials.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: transition_to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_contains:
+        from_stage: "underwriting"
+        to_stage: "closing"
+
+  - id: verify_stage
+    http:
+      actor: "u_closer"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "closing"
+
+# ─── 1.4: closing → monitoring ──────────────────────────────────────────────
+---
+test: valid_closing_to_monitoring
+meta:
+  name: "Valid transition from closing to monitoring"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Delta Holdings"
+        jurisdiction: "GB"
+        requested_amount: 75000000
+        purpose: "Bridge loan"
+        borrower_registration_number: "DH-112233"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "annual_accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: transition_to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_contains:
+        from_stage: "closing"
+        to_stage: "monitoring"
+
+  - id: verify_stage
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "monitoring"
+
+# ─── 1.5: full pipeline broker → monitoring ─────────────────────────────────
+---
+test: valid_full_pipeline
+meta:
+  name: "Full pipeline: deal traverses all 5 stages in order"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Epsilon Ventures"
+        jurisdiction: "IE"
+        requested_amount: 200000000
+        purpose: "Growth capital"
+        borrower_registration_number: "IE-556677"
+    expect:
+      status: 201
+      json_contains:
+        stage: "broker"
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+      json_contains:
+        from_stage: "broker"
+        to_stage: "origination"
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "financials.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+      json_contains:
+        from_stage: "origination"
+        to_stage: "underwriting"
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+      json_contains:
+        from_stage: "underwriting"
+        to_stage: "closing"
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+      json_contains:
+        from_stage: "closing"
+        to_stage: "monitoring"
+
+  - id: verify_final_stage
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "monitoring"
+
+  - id: verify_transition_history
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/stage-transitions
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.transitions.length"
+          eq: 4
+
+# =============================================================================
+# 2. INVALID TRANSITIONS
+# =============================================================================
+
+# ─── 2.1: skip stage (broker → underwriting) ────────────────────────────────
+---
+test: invalid_skip_stage_broker_to_underwriting
+meta:
+  name: "Cannot skip stages: broker to underwriting is rejected"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "SkipCo"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Working capital"
+        borrower_registration_number: "SK-001"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: skip_to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "INVALID_TRANSITION"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "broker"
+
+# ─── 2.2: skip stage (broker → closing) ─────────────────────────────────────
+---
+test: invalid_skip_stage_broker_to_closing
+meta:
+  name: "Cannot skip stages: broker to closing is rejected"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_closer", role: "closer" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "JumpCo"
+        jurisdiction: "GB"
+        requested_amount: 15000000
+        purpose: "Expansion"
+        borrower_registration_number: "JC-002"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: skip_to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "INVALID_TRANSITION"
+
+# ─── 2.3: backward transition (origination → broker) ────────────────────────
+---
+test: invalid_backward_origination_to_broker
+meta:
+  name: "Cannot go backwards: origination to broker is rejected"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "BackCo"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Working capital"
+        borrower_registration_number: "BC-003"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: try_backward
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "broker"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "INVALID_TRANSITION"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "origination"
+
+# ─── 2.4: backward transition (underwriting → origination) ──────────────────
+---
+test: invalid_backward_underwriting_to_origination
+meta:
+  name: "Cannot go backwards: underwriting to origination is rejected"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "RewindCo"
+        jurisdiction: "GB"
+        requested_amount: 30000000
+        purpose: "Term loan"
+        borrower_registration_number: "RW-004"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: try_backward
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "INVALID_TRANSITION"
+
+# ─── 2.5: same-stage transition (broker → broker) ───────────────────────────
+---
+test: invalid_same_stage_transition
+meta:
+  name: "Cannot transition to the same stage the deal is already in"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "SameCo"
+        jurisdiction: "GB"
+        requested_amount: 5000000
+        purpose: "Working capital"
+        borrower_registration_number: "SC-005"
+    expect:
+      status: 201
+      json_contains:
+        stage: "broker"
+      save:
+        deal_id: "$.id"
+
+  - id: same_stage
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "broker"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "INVALID_TRANSITION"
+
+# =============================================================================
+# 3. ROLE-BASED PERMISSIONS
+# =============================================================================
+
+# ─── 3.1: originator can move to origination ────────────────────────────────
+---
+test: role_originator_can_transition_to_origination
+meta:
+  name: "Originator role is permitted to move deal to origination"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "RoleTest Alpha"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Working capital"
+        borrower_registration_number: "RT-001"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: originator_transitions
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+      json_contains:
+        to_stage: "origination"
+
+# ─── 3.2: credit_lead can also move to origination ──────────────────────────
+---
+test: role_credit_lead_can_transition_to_origination
+meta:
+  name: "Credit lead role is also permitted to move deal to origination"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_credit_lead", role: "credit_lead" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "RoleTest Beta"
+        jurisdiction: "GB"
+        requested_amount: 12000000
+        purpose: "Expansion"
+        borrower_registration_number: "RT-002"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: credit_lead_transitions
+    http:
+      actor: "u_credit_lead"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+      json_contains:
+        to_stage: "origination"
+
+# ─── 3.3: broker cannot move to origination ─────────────────────────────────
+---
+test: role_broker_cannot_transition_to_origination
+meta:
+  name: "Broker role is not permitted to move deal to origination"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "RoleTest Gamma"
+        jurisdiction: "GB"
+        requested_amount: 8000000
+        purpose: "Working capital"
+        borrower_registration_number: "RT-003"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: broker_tries_transition
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 403
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "FORBIDDEN"
+
+# ─── 3.4: broker cannot transition to closing ───────────────────────────────
+---
+test: role_broker_cannot_transition_to_closing
+meta:
+  name: "Broker role cannot transition a deal to closing"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "RoleTest Delta"
+        jurisdiction: "GB"
+        requested_amount: 40000000
+        purpose: "Acquisition"
+        borrower_registration_number: "RT-004"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: broker_tries_closing
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 403
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "FORBIDDEN"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_underwriter"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "underwriting"
+
+# ─── 3.5: only underwriter can move to underwriting ─────────────────────────
+---
+test: role_originator_cannot_transition_to_underwriting
+meta:
+  name: "Originator role cannot transition deal to underwriting"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "RoleTest Epsilon"
+        jurisdiction: "GB"
+        requested_amount: 18000000
+        purpose: "Working capital"
+        borrower_registration_number: "RT-005"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: originator_tries_underwriting
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 403
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "FORBIDDEN"
+
+# =============================================================================
+# 4. ORIGINATION OUTCOMES
+# =============================================================================
+
+# ─── 4.1: outcome reject blocks transition ──────────────────────────────────
+---
+test: outcome_reject_blocks_transition
+meta:
+  name: "Origination outcome 'reject' blocks transition to underwriting"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Rejected Corp"
+        jurisdiction: "GB"
+        requested_amount: 5000000
+        purpose: "Working capital"
+        borrower_registration_number: "RJ-001"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_reject
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "reject"
+    expect:
+      status: 200
+      json_contains:
+        origination_outcome: "reject"
+
+  - id: try_transition
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "STAGE_GUARD_FAILED"
+
+# ─── 4.2: outcome need_info blocks transition ───────────────────────────────
+---
+test: outcome_need_info_blocks_transition
+meta:
+  name: "Origination outcome 'need_info' blocks transition to underwriting"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "NeedInfo Ltd"
+        jurisdiction: "GB"
+        requested_amount: 7000000
+        purpose: "Term loan"
+        borrower_registration_number: "NI-002"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_need_info
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "need_info"
+    expect:
+      status: 200
+      json_contains:
+        origination_outcome: "need_info"
+
+  - id: try_transition
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "STAGE_GUARD_FAILED"
+
+# ─── 4.3: outcome refer blocks transition ───────────────────────────────────
+---
+test: outcome_refer_blocks_transition
+meta:
+  name: "Origination outcome 'refer' blocks transition to underwriting"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Refer Partners"
+        jurisdiction: "US"
+        requested_amount: 9000000
+        purpose: "Refinance"
+        borrower_registration_number: "RF-003"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_refer
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "refer"
+    expect:
+      status: 200
+      json_contains:
+        origination_outcome: "refer"
+
+  - id: try_transition
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "STAGE_GUARD_FAILED"
+
+# ─── 4.4: outcome proceed allows transition ─────────────────────────────────
+---
+test: outcome_proceed_allows_transition
+meta:
+  name: "Origination outcome 'proceed' allows transition to underwriting"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Proceed Inc"
+        jurisdiction: "GB"
+        requested_amount: 11000000
+        purpose: "Growth capital"
+        borrower_registration_number: "PR-004"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: transition_succeeds
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_contains:
+        from_stage: "origination"
+        to_stage: "underwriting"
+
+# ─── 4.5: no outcome set blocks transition ──────────────────────────────────
+---
+test: outcome_not_set_blocks_transition
+meta:
+  name: "Missing origination outcome blocks transition to underwriting"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "NoOutcome Ltd"
+        jurisdiction: "GB"
+        requested_amount: 6000000
+        purpose: "Working capital"
+        borrower_registration_number: "NO-005"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: try_transition_no_outcome
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "STAGE_GUARD_FAILED"
+
+# =============================================================================
+# 5. OVERRIDE MECHANISM
+# =============================================================================
+
+# ─── 5.1: credit_lead can override blocked transition ────────────────────────
+---
+test: override_credit_lead_succeeds
+meta:
+  name: "Credit lead can override a blocked transition with rationale"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_credit_lead", role: "credit_lead" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Override Corp"
+        jurisdiction: "GB"
+        requested_amount: 15000000
+        purpose: "Working capital"
+        borrower_registration_number: "OV-001"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_reject
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "reject"
+    expect:
+      status: 200
+
+  - id: credit_lead_overrides
+    http:
+      actor: "u_credit_lead"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+        override: true
+        override_rationale: "Strategic client relationship justifies proceeding despite initial rejection"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_contains:
+        from_stage: "origination"
+        to_stage: "underwriting"
+        override: true
+
+  - id: verify_stage
+    http:
+      actor: "u_credit_lead"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "underwriting"
+
+# ─── 5.2: override without rationale fails ──────────────────────────────────
+---
+test: override_without_rationale_fails
+meta:
+  name: "Override without rationale is rejected"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_credit_lead", role: "credit_lead" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "NoRationale Ltd"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Expansion"
+        borrower_registration_number: "NR-002"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_reject
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "reject"
+    expect:
+      status: 200
+
+  - id: override_no_rationale
+    http:
+      actor: "u_credit_lead"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+        override: true
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "OVERRIDE_REQUIRED"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_credit_lead"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "origination"
+
+# ─── 5.3: regular role cannot override ───────────────────────────────────────
+---
+test: override_regular_role_forbidden
+meta:
+  name: "Regular roles cannot use override mechanism"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "NoOverride Inc"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "NO-003"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_reject
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "reject"
+    expect:
+      status: 200
+
+  - id: underwriter_tries_override
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+        override: true
+        override_rationale: "I think we should proceed anyway"
+    expect:
+      status: 403
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "FORBIDDEN"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "origination"
+
+# =============================================================================
+# 6. CHECKLIST GENERATION
+# =============================================================================
+
+# ─── 6.1: transition to origination includes checklist ───────────────────────
+---
+test: checklist_origination_stage
+meta:
+  name: "Transition to origination includes checklist snapshot"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Checklist Alpha"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Working capital"
+        borrower_registration_number: "CL-001"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: transition
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_path_assertions:
+        - path: "$.checklist_snapshot"
+          exists: true
+        - path: "$.checklist_snapshot.length"
+          gte: 1
+        - path: "$.checklist_snapshot[0].item"
+          exists: true
+        - path: "$.checklist_snapshot[0].satisfied"
+          exists: true
+
+# ─── 6.2: transition to underwriting includes checklist ──────────────────────
+---
+test: checklist_underwriting_stage
+meta:
+  name: "Transition to underwriting includes checklist with underwriting items"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Checklist Beta"
+        jurisdiction: "GB"
+        requested_amount: 30000000
+        purpose: "Acquisition finance"
+        borrower_registration_number: "CL-002"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: transition
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_path_assertions:
+        - path: "$.checklist_snapshot"
+          exists: true
+        - path: "$.checklist_snapshot.length"
+          gte: 1
+
+# ─── 6.3: transition to closing includes checklist ──────────────────────────
+---
+test: checklist_closing_stage
+meta:
+  name: "Transition to closing includes checklist with closing items"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Checklist Gamma"
+        jurisdiction: "GB"
+        requested_amount: 50000000
+        purpose: "Term loan"
+        borrower_registration_number: "CL-003"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: transition_to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+      json_schema: "schemas/stage-transition.schema.json"
+      json_path_assertions:
+        - path: "$.checklist_snapshot"
+          exists: true
+        - path: "$.checklist_snapshot.length"
+          gte: 1
+
+# =============================================================================
+# 7. STAGE GUARD FAILURES
+# =============================================================================
+
+# ─── 7.1: missing borrower_name blocks origination ──────────────────────────
+---
+test: guard_missing_borrower_name
+meta:
+  name: "Transition to origination blocked when borrower_name is missing"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+    deals:
+      - id: "d_incomplete"
+        tenant_id: "t1"
+        borrower_name: ""
+        stage: "broker"
+
+steps:
+  - id: try_transition
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/d_incomplete/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "STAGE_GUARD_FAILED"
+
+# ─── 7.2: missing jurisdiction blocks origination ───────────────────────────
+---
+test: guard_missing_jurisdiction
+meta:
+  name: "Transition to origination blocked when jurisdiction is missing"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "NoJurisdiction Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: try_transition
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "STAGE_GUARD_FAILED"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "broker"
+
+# ─── 7.3: no documents blocks underwriting ──────────────────────────────────
+---
+test: guard_no_documents_blocks_underwriting
+meta:
+  name: "Transition to underwriting blocked when no documents uploaded"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "NoDocs Corp"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Working capital"
+        borrower_registration_number: "ND-001"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: try_underwriting_no_docs
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "STAGE_GUARD_FAILED"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "origination"
+
+# ─── 7.4: closing blocked if not in underwriting ────────────────────────────
+---
+test: guard_closing_requires_underwriting
+meta:
+  name: "Transition to closing blocked if deal is not in underwriting stage"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_closer", role: "closer" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "TooEarly Ltd"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Working capital"
+        borrower_registration_number: "TE-001"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: try_closing_from_origination
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "INVALID_TRANSITION"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "origination"

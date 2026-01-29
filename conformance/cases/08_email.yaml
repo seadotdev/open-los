@@ -1,0 +1,586 @@
+version: "0.1.0"
+suite: email
+description: >
+  Email (.eml) ingestion, deal linking, attachment extraction, threading,
+  communication listing, and audit trail.
+  Covers: explicit deal link, auto-linking by subject token, attachment
+  extraction as documents, email threading via In-Reply-To/References,
+  communication listing, and EMAIL_INGESTED audit event.
+
+# ─── Test 1: Ingest email with explicit deal link ─────────────────────────────
+---
+test: email_ingest_explicit_link
+meta:
+  name: "Ingest .eml file with explicit deal_id links to deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: ingest_email
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      multipart:
+        file: "conformance/fixtures/deals/deal_001_small_sme/docs/inbox_email_1.eml"
+        deal_id: "${deal_id}"
+    expect:
+      status: 201
+      json_contains:
+        deal_id: "${deal_id}"
+        type: "email"
+      json_path_assertions:
+        - path: "$.communication_id"
+          exists: true
+        - path: "$.subject"
+          exists: true
+        - path: "$.from"
+          exists: true
+        - path: "$.attachments"
+          is_array: true
+      save:
+        communication_id: "$.communication_id"
+
+# ─── Test 2: Ingested email appears in deal communications ────────────────────
+---
+test: email_ingest_explicit_link_appears_in_communications
+meta:
+  name: "Email ingested with deal_id appears in deal communications list"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: ingest_email
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      multipart:
+        file: "conformance/fixtures/deals/deal_001_small_sme/docs/inbox_email_1.eml"
+        deal_id: "${deal_id}"
+    expect:
+      status: 201
+      save:
+        communication_id: "$.communication_id"
+
+  - id: list_communications
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/communications
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.communications.length"
+          gte: 1
+        - path: "$.communications[0].id"
+          eq: "${communication_id}"
+        - path: "$.communications[0].type"
+          eq: "email"
+        - path: "$.communications[0].deal_id"
+          eq: "${deal_id}"
+
+# ─── Test 3: Auto-link email by subject token — match found ──────────────────
+---
+test: email_autolink_by_subject_match
+meta:
+  name: "Ingest email without deal_id auto-links when subject contains deal reference token"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: ingest_email_autolink
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      json:
+        raw_rfc822_base64: "RnJvbTogYnJva2VyQGV4YW1wbGUuY29tDQpUbzogdGVhbUBsZW5kZXIuY29tDQpTdWJqZWN0OiBSZTogQWNtZSBNYW51ZmFjdHVyaW5nIFtERUFMLVRFU1RdDQpEYXRlOiBXZWQsIDE1IEphbiAyMDI2IDEwOjAwOjAwICswMDAwDQpNSU1FLVZlcnNpb246IDEuMA0KQ29udGVudC1UeXBlOiB0ZXh0L3BsYWluOyBjaGFyc2V0PSJ1dGYtOCINCg0KUGxlYXNlIGZpbmQgdGhlIHVwZGF0ZWQgZmluYW5jaWFscyBhdHRhY2hlZC4="
+        subject_override: "Re: Acme Manufacturing [DEAL-${deal_id}]"
+    expect:
+      status: 201
+      json_contains:
+        deal_id: "${deal_id}"
+      json_path_assertions:
+        - path: "$.communication_id"
+          exists: true
+        - path: "$.subject"
+          contains: "DEAL-"
+
+# ─── Test 4: Auto-link email — no match, deal_id is null ─────────────────────
+---
+test: email_autolink_no_match
+meta:
+  name: "Ingest email without deal_id and no matching subject token sets deal_id null"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: ingest_unlinked_email
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      json:
+        raw_rfc822_base64: "RnJvbTogdW5rbm93bkBleGFtcGxlLmNvbQ0KVG86IHRlYW1AbGVuZGVyLmNvbQ0KU3ViamVjdDogR2VuZXJhbCBpbnF1aXJ5IGFib3V0IGxlbmRpbmcNCkRhdGU6IFdlZCwgMTUgSmFuIDIwMjYgMTA6MDA6MDAgKzAwMDANCk1JTUUtVmVyc2lvbjogMS4wDQpDb250ZW50LVR5cGU6IHRleHQvcGxhaW47IGNoYXJzZXQ9InV0Zi04Ig0KDQpIZWxsbywgSSBoYXZlIGEgZ2VuZXJhbCBxdWVzdGlvbiBhYm91dCB5b3VyIGxlbmRpbmcgcHJvZHVjdHMu"
+    expect:
+      status: 201
+      json_contains:
+        deal_id: null
+        subject: "General inquiry about lending"
+      json_path_assertions:
+        - path: "$.communication_id"
+          exists: true
+        - path: "$.from"
+          eq: "unknown@example.com"
+
+# ─── Test 5: Email attachment extracted as document ───────────────────────────
+---
+test: email_attachment_extracted
+meta:
+  name: "Email with attachment — attachment stored as document in response"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: ingest_email_with_attachment
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      json:
+        deal_id: "${deal_id}"
+        raw_rfc822_base64: "RnJvbTogYnJva2VyQGV4YW1wbGUuY29tDQpUbzogdGVhbUBsZW5kZXIuY29tDQpTdWJqZWN0OiBBY21lIGFjY291bnRzIGF0dGFjaGVkDQpEYXRlOiBXZWQsIDE1IEphbiAyMDI2IDEwOjAwOjAwICswMDAwDQpNSU1FLVZlcnNpb246IDEuMA0KQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvbWl4ZWQ7IGJvdW5kYXJ5PSItLS0tPWJvdW5kYXJ5MDAxIg0KDQotLS0tLS09Ym91bmRhcnkwMDENCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD0idXRmLTgiDQoNClBsZWFzZSBmaW5kIGF0dGFjaGVkIHRoZSBsYXRlc3QgYWNjb3VudHMuDQoNCi0tLS0tLT1ib3VuZGFyeTAwMQ0KQ29udGVudC1UeXBlOiB0ZXh0L2NzdjsgbmFtZT0iYWNjb3VudHMuY3N2Ig0KQ29udGVudC1EaXNwb3NpdGlvbjogYXR0YWNobWVudDsgZmlsZW5hbWU9ImFjY291bnRzLmNzdiINCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IGJhc2U2NA0KDQpjbVYyWlc1MVpTeGpiM04wWDI5bVgyZHZiMlJ6TEc1bGRGOXBibU52YldVS01UQXdNREF3TUN3Mk1EQXdNREFzTkRBd01EQXcNCg0KLS0tLS0tPWJvdW5kYXJ5MDAxLS0="
+    expect:
+      status: 201
+      json_contains:
+        deal_id: "${deal_id}"
+      json_path_assertions:
+        - path: "$.attachments.length"
+          gte: 1
+        - path: "$.attachments[0].filename"
+          eq: "accounts.csv"
+        - path: "$.attachments[0].document_id"
+          exists: true
+      save:
+        attachment_doc_id: "$.attachments[0].document_id"
+
+# ─── Test 6: Attachment document appears in deal document list ────────────────
+---
+test: email_attachment_in_deal_documents
+meta:
+  name: "Extracted email attachment appears in deal document list"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: ingest_email_with_attachment
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      json:
+        deal_id: "${deal_id}"
+        raw_rfc822_base64: "RnJvbTogYnJva2VyQGV4YW1wbGUuY29tDQpUbzogdGVhbUBsZW5kZXIuY29tDQpTdWJqZWN0OiBBY21lIGFjY291bnRzIGF0dGFjaGVkDQpEYXRlOiBXZWQsIDE1IEphbiAyMDI2IDEwOjAwOjAwICswMDAwDQpNSU1FLVZlcnNpb246IDEuMA0KQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvbWl4ZWQ7IGJvdW5kYXJ5PSItLS0tPWJvdW5kYXJ5MDAxIg0KDQotLS0tLS09Ym91bmRhcnkwMDENCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD0idXRmLTgiDQoNClBsZWFzZSBmaW5kIGF0dGFjaGVkIHRoZSBsYXRlc3QgYWNjb3VudHMuDQoNCi0tLS0tLT1ib3VuZGFyeTAwMQ0KQ29udGVudC1UeXBlOiB0ZXh0L2NzdjsgbmFtZT0iYWNjb3VudHMuY3N2Ig0KQ29udGVudC1EaXNwb3NpdGlvbjogYXR0YWNobWVudDsgZmlsZW5hbWU9ImFjY291bnRzLmNzdiINCkNvbnRlbnQtVHJhbnNmZXItRW5jb2Rpbmc6IGJhc2U2NA0KDQpjbVYyWlc1MVpTeGpiM04wWDI5bVgyZHZiMlJ6TEc1bGRGOXBibU52YldVS01UQXdNREF3TUN3Mk1EQXdNREFzTkRBd01EQXcNCg0KLS0tLS0tPWJvdW5kYXJ5MDAxLS0="
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.attachments[0].document_id"
+          exists: true
+      save:
+        attachment_doc_id: "$.attachments[0].document_id"
+
+  - id: list_deal_documents
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/documents
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.documents.length"
+          gte: 1
+        - path: "$.documents[?(@.id=='${attachment_doc_id}')]"
+          exists: true
+        - path: "$.documents[?(@.id=='${attachment_doc_id}')].source"
+          eq: "email_attachment"
+
+# ─── Test 7: Email threading — two emails with same thread ───────────────────
+---
+test: email_threading_grouped
+meta:
+  name: "Two emails with same In-Reply-To thread_id are grouped together"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: ingest_first_email
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      json:
+        deal_id: "${deal_id}"
+        raw_rfc822_base64: "RnJvbTogYnJva2VyQGV4YW1wbGUuY29tDQpUbzogdGVhbUBsZW5kZXIuY29tDQpTdWJqZWN0OiBBY21lIGRlYWwgZGlzY3Vzc2lvbg0KRGF0ZTogV2VkLCAxNSBKYW4gMjAyNiAwOTowMDowMCArMDAwMA0KTWVzc2FnZS1JRDogPHRocmVhZC0wMDFAZXhhbXBsZS5jb20+DQpNSU1FLVZlcnNpb246IDEuMA0KQ29udGVudC1UeXBlOiB0ZXh0L3BsYWluOyBjaGFyc2V0PSJ1dGYtOCINCg0KSGksIGxldCdzIGRpc2N1c3MgdGhlIEFjbWUgZGVhbC4="
+    expect:
+      status: 201
+      save:
+        comm_1_id: "$.communication_id"
+        thread_id: "$.thread_id"
+
+  - id: ingest_reply_email
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      json:
+        deal_id: "${deal_id}"
+        raw_rfc822_base64: "RnJvbTogdGVhbUBsZW5kZXIuY29tDQpUbzogYnJva2VyQGV4YW1wbGUuY29tDQpTdWJqZWN0OiBSZTogQWNtZSBkZWFsIGRpc2N1c3Npb24NCkRhdGU6IFdlZCwgMTUgSmFuIDIwMjYgMTA6MDA6MDAgKzAwMDANCk1lc3NhZ2UtSUQ6IDx0aHJlYWQtMDAyQGV4YW1wbGUuY29tPg0KSW4tUmVwbHktVG86IDx0aHJlYWQtMDAxQGV4YW1wbGUuY29tPg0KUmVmZXJlbmNlczogPHRocmVhZC0wMDFAZXhhbXBsZS5jb20+DQpNSU1FLVZlcnNpb246IDEuMA0KQ29udGVudC1UeXBlOiB0ZXh0L3BsYWluOyBjaGFyc2V0PSJ1dGYtOCINCg0KU3VyZSwgbGV0J3MgcHJvY2VlZCB3aXRoIHRoZSByZXZpZXcu"
+    expect:
+      status: 201
+      json_contains:
+        thread_id: "${thread_id}"
+      save:
+        comm_2_id: "$.communication_id"
+
+  - id: verify_thread
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/communications
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.communications.length"
+          eq: 2
+        - path: "$.communications[0].thread_id"
+          eq: "${thread_id}"
+        - path: "$.communications[1].thread_id"
+          eq: "${thread_id}"
+
+# ─── Test 8: Email threading — different threads are separate ─────────────────
+---
+test: email_threading_separate_threads
+meta:
+  name: "Emails with different Message-IDs and no In-Reply-To have distinct thread_ids"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: ingest_email_a
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      json:
+        deal_id: "${deal_id}"
+        raw_rfc822_base64: "RnJvbTogYnJva2VyQGV4YW1wbGUuY29tDQpUbzogdGVhbUBsZW5kZXIuY29tDQpTdWJqZWN0OiBBY21lIGZpbmFuY2lhbHMNCkRhdGU6IFdlZCwgMTUgSmFuIDIwMjYgMDk6MDA6MDAgKzAwMDANCk1lc3NhZ2UtSUQ6IDx1bmlxLWFAZXhhbXBsZS5jb20+DQpNSU1FLVZlcnNpb246IDEuMA0KQ29udGVudC1UeXBlOiB0ZXh0L3BsYWluOyBjaGFyc2V0PSJ1dGYtOCINCg0KSGVyZSBhcmUgdGhlIGZpbmFuY2lhbHMu"
+    expect:
+      status: 201
+      save:
+        thread_a: "$.thread_id"
+
+  - id: ingest_email_b
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      json:
+        deal_id: "${deal_id}"
+        raw_rfc822_base64: "RnJvbTogbGVnYWxAZXhhbXBsZS5jb20NClRvOiB0ZWFtQGxlbmRlci5jb20NCkRhdGU6IFdlZCwgMTUgSmFuIDIwMjYgMTE6MDA6MDAgKzAwMDANCk1lc3NhZ2UtSUQ6IDx1bmlxLWJAZXhhbXBsZS5jb20+DQpTdWJqZWN0OiBBY21lIGxlZ2FsIHJldmlldw0KTUlNRS1WZXJzaW9uOiAxLjANCkNvbnRlbnQtVHlwZTogdGV4dC9wbGFpbjsgY2hhcnNldD0idXRmLTgiDQoNCkxlZ2FsIHJldmlldyBjb21wbGV0ZS4="
+    expect:
+      status: 201
+      save:
+        thread_b: "$.thread_id"
+
+  - id: verify_distinct_threads
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/communications
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.communications.length"
+          eq: 2
+        - path: "$.communications[0].thread_id"
+          neq: "$.communications[1].thread_id"
+
+# ─── Test 9: Communication listing returns full email fields ──────────────────
+---
+test: email_communication_listing_fields
+meta:
+  name: "GET communications returns emails with all required fields"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: ingest_email
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      multipart:
+        file: "conformance/fixtures/deals/deal_001_small_sme/docs/inbox_email_1.eml"
+        deal_id: "${deal_id}"
+    expect:
+      status: 201
+
+  - id: list_communications
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/communications
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.communications.length"
+          gte: 1
+        - path: "$.communications[0].type"
+          eq: "email"
+        - path: "$.communications[0].subject"
+          exists: true
+        - path: "$.communications[0].from"
+          exists: true
+        - path: "$.communications[0].to"
+          exists: true
+        - path: "$.communications[0].body"
+          exists: true
+        - path: "$.communications[0].thread_id"
+          exists: true
+        - path: "$.communications[0].attachments"
+          is_array: true
+        - path: "$.communications[0].created_at"
+          exists: true
+
+# ─── Test 10: Audit trail — EMAIL_INGESTED event ─────────────────────────────
+---
+test: email_ingest_audit_event
+meta:
+  name: "Email ingestion produces EMAIL_INGESTED audit event"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Manufacturing Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: ingest_email
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/email/ingest
+      multipart:
+        file: "conformance/fixtures/deals/deal_001_small_sme/docs/inbox_email_1.eml"
+        deal_id: "${deal_id}"
+    expect:
+      status: 201
+      save:
+        communication_id: "$.communication_id"
+
+  - id: check_audit
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events[?(@.type=='EMAIL_INGESTED')]"
+          exists: true
+        - path: "$.events[?(@.type=='EMAIL_INGESTED')].metadata.communication_id"
+          eq: "${communication_id}"
+        - path: "$.events[?(@.type=='EMAIL_INGESTED')].actor"
+          eq: "u_originator"
