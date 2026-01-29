@@ -1,0 +1,1263 @@
+version: "0.1.0"
+suite: audit
+description: >
+  Audit event conformance tests: creation events, field-level diffs,
+  stage transitions, document uploads, immutability, pagination,
+  filtering, and chronological ordering.
+
+# =============================================================================
+# 1. Audit on deal creation
+# =============================================================================
+
+# ─── Test 1: Deal creation produces DEAL_CREATED event ────────────────────────
+---
+test: audit_deal_created_event
+meta:
+  name: "Creating a deal produces a DEAL_CREATED audit event"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 1
+        - path: "$.events[0].type"
+          eq: "DEAL_CREATED"
+        - path: "$.events[0].object_type"
+          eq: "deal"
+
+# ─── Test 2: DEAL_CREATED event has correct actor and timestamp ───────────────
+---
+test: audit_deal_created_actor_and_timestamp
+meta:
+  name: "DEAL_CREATED event records correct actor and ISO 8601 timestamp"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_schema: "schemas/audit-event.schema.json"
+      json_path_assertions:
+        - path: "$.events[0].actor_id"
+          eq: "u_broker"
+        - path: "$.events[0].object_type"
+          eq: "deal"
+        - path: "$.events[0].object_id"
+          eq: "${deal_id}"
+        - path: "$.events[0].timestamp"
+          regex: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+
+# =============================================================================
+# 2. Audit on deal update with field-level diffs
+# =============================================================================
+
+# ─── Test 3: PATCH deal produces DEAL_UPDATED with changes array ──────────────
+---
+test: audit_deal_updated_event
+meta:
+  name: "PATCH deal records DEAL_UPDATED event with field-level changes"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update_deal
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+    expect:
+      status: 200
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 2
+        - path: "$.events[1].type"
+          eq: "DEAL_UPDATED"
+        - path: "$.events[1].changes.length"
+          gte: 1
+        - path: "$.events[1].changes[0].field"
+          eq: "purpose"
+        - path: "$.events[1].changes[0].before"
+          eq: "Working capital"
+        - path: "$.events[1].changes[0].after"
+          eq: "Expansion"
+
+# ─── Test 4: Multiple field changes in one PATCH appear in same event ─────────
+---
+test: audit_deal_updated_multiple_fields
+meta:
+  name: "Multiple field changes in one PATCH appear in the same DEAL_UPDATED event"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        purpose: "Working capital"
+        jurisdiction: "GB"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update_deal
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+        jurisdiction: "US"
+    expect:
+      status: 200
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events[1].type"
+          eq: "DEAL_UPDATED"
+        - path: "$.events[1].changes.length"
+          eq: 2
+
+# ─── Test 5: DEAL_UPDATED changes show before/after for each field ────────────
+---
+test: audit_deal_updated_before_after_values
+meta:
+  name: "DEAL_UPDATED changes array contains correct before and after for each field"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        requested_amount: 25000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update_amount
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        requested_amount: 30000000
+    expect:
+      status: 200
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_schema: "schemas/audit-event.schema.json"
+      json_path_assertions:
+        - path: "$.events[1].type"
+          eq: "DEAL_UPDATED"
+        - path: "$.events[1].changes[0].field"
+          eq: "requested_amount"
+        - path: "$.events[1].changes[0].before"
+          eq: 25000000
+        - path: "$.events[1].changes[0].after"
+          eq: 30000000
+
+# =============================================================================
+# 3. Audit on stage transition
+# =============================================================================
+
+# ─── Test 6: Stage transition produces STAGE_TRANSITION event ─────────────────
+---
+test: audit_stage_transition_event
+meta:
+  name: "Stage transition produces STAGE_TRANSITION audit event with from/to stages"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: transition
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: get_audit
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_schema: "schemas/audit-event.schema.json"
+      json_path_assertions:
+        - path: "$.events[1].type"
+          eq: "STAGE_TRANSITION"
+        - path: "$.events[1].changes[0].field"
+          eq: "stage"
+        - path: "$.events[1].changes[0].before"
+          eq: "broker"
+        - path: "$.events[1].changes[0].after"
+          eq: "origination"
+
+# ─── Test 7: Stage transition event records correct actor ─────────────────────
+---
+test: audit_stage_transition_actor
+meta:
+  name: "STAGE_TRANSITION event records the actor who performed the transition"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: transition
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: get_audit
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events[0].actor_id"
+          eq: "u_broker"
+        - path: "$.events[1].actor_id"
+          eq: "u_originator"
+        - path: "$.events[1].type"
+          eq: "STAGE_TRANSITION"
+
+# =============================================================================
+# 4. Audit on document upload
+# =============================================================================
+
+# ─── Test 8: Document upload produces DOCUMENT_UPLOADED event ─────────────────
+---
+test: audit_document_uploaded_event
+meta:
+  name: "Uploading a document produces a DOCUMENT_UPLOADED audit event"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_doc
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+      save:
+        doc_id: "$.id"
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_schema: "schemas/audit-event.schema.json"
+      json_path_assertions:
+        - path: "$.events[1].type"
+          eq: "DOCUMENT_UPLOADED"
+        - path: "$.events[1].object_type"
+          eq: "document"
+
+# ─── Test 9: DOCUMENT_UPLOADED event includes document details ────────────────
+---
+test: audit_document_uploaded_details
+meta:
+  name: "DOCUMENT_UPLOADED event contains document type and filename"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: upload_doc
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "bank_statements"
+        filename: "statements_2025.pdf"
+        content_base64: "JVBERi0xLjQK"
+    expect:
+      status: 202
+      save:
+        doc_id: "$.id"
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events[1].type"
+          eq: "DOCUMENT_UPLOADED"
+        - path: "$.events[1].actor_id"
+          eq: "u_broker"
+        - path: "$.events[1].details.doc_type"
+          eq: "bank_statements"
+        - path: "$.events[1].details.filename"
+          eq: "statements_2025.pdf"
+        - path: "$.events[1].object_id"
+          eq: "${doc_id}"
+
+# =============================================================================
+# 5. Audit immutability
+# =============================================================================
+
+# ─── Test 10: Audit events cannot be modified via PATCH ───────────────────────
+---
+test: audit_immutable_no_patch
+meta:
+  name: "PATCH on audit endpoint returns 405 Method Not Allowed"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      save:
+        event_id: "$.events[0].id"
+
+  - id: try_patch
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}/audit/${event_id}
+      json:
+        type: "TAMPERED"
+    expect:
+      status: 405
+      json_schema: "schemas/error.schema.json"
+
+# ─── Test 11: Audit events cannot be deleted ──────────────────────────────────
+---
+test: audit_immutable_no_delete
+meta:
+  name: "DELETE on audit endpoint returns 405 Method Not Allowed"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      save:
+        event_id: "$.events[0].id"
+
+  - id: try_delete
+    http:
+      actor: "u_broker"
+      method: DELETE
+      path: /v1/deals/${deal_id}/audit/${event_id}
+    expect:
+      status: 405
+      json_schema: "schemas/error.schema.json"
+
+# ─── Test 12: Old audit events unchanged after new mutations ──────────────────
+---
+test: audit_immutable_old_events_unchanged
+meta:
+  name: "Old audit events remain unchanged after new mutations on the deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: snapshot_audit_before
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      save:
+        first_event_id: "$.events[0].id"
+        first_event_type: "$.events[0].type"
+        first_event_timestamp: "$.events[0].timestamp"
+
+  - id: update_deal
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+    expect:
+      status: 200
+
+  - id: snapshot_audit_after
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 2
+        - path: "$.events[0].id"
+          eq: "${first_event_id}"
+        - path: "$.events[0].type"
+          eq: "${first_event_type}"
+        - path: "$.events[0].timestamp"
+          eq: "${first_event_timestamp}"
+
+# =============================================================================
+# 6. Audit pagination
+# =============================================================================
+
+# ─── Test 13: Audit supports limit parameter ─────────────────────────────────
+---
+test: audit_pagination_limit
+meta:
+  name: "GET audit with limit parameter returns at most N events"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update_1
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+    expect:
+      status: 200
+
+  - id: update_2
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Acquisition"
+    expect:
+      status: 200
+
+  - id: get_limited
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit?limit=2
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 2
+
+# ─── Test 14: Audit returns total count ───────────────────────────────────────
+---
+test: audit_pagination_total_count
+meta:
+  name: "Audit response includes total count even when limit is applied"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update_1
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+    expect:
+      status: 200
+
+  - id: update_2
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Acquisition"
+    expect:
+      status: 200
+
+  - id: update_3
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Refinance"
+    expect:
+      status: 200
+
+  - id: get_with_limit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit?limit=2
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 2
+        - path: "$.total"
+          eq: 4
+
+# ─── Test 15: Cursor-based pagination through large event list ────────────────
+---
+test: audit_pagination_cursor
+meta:
+  name: "Cursor-based pagination walks through all audit events"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        purpose: "v0"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update_1
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "v1"
+    expect:
+      status: 200
+
+  - id: update_2
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "v2"
+    expect:
+      status: 200
+
+  - id: update_3
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "v3"
+    expect:
+      status: 200
+
+  - id: update_4
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "v4"
+    expect:
+      status: 200
+
+  - id: page_1
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit?limit=2
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 2
+        - path: "$.events[0].type"
+          eq: "DEAL_CREATED"
+        - path: "$.total"
+          eq: 5
+      save:
+        cursor_1: "$.next_cursor"
+
+  - id: page_2
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit?limit=2&cursor=${cursor_1}
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 2
+      save:
+        cursor_2: "$.next_cursor"
+
+  - id: page_3
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit?limit=2&cursor=${cursor_2}
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 1
+
+# =============================================================================
+# 7. Audit filtering
+# =============================================================================
+
+# ─── Test 16: Filter audit by event type ──────────────────────────────────────
+---
+test: audit_filter_by_type
+meta:
+  name: "Filter audit events by type returns only matching events"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update_deal
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+    expect:
+      status: 200
+
+  - id: upload_doc
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZQ=="
+    expect:
+      status: 202
+
+  - id: filter_by_type
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit?type=DEAL_UPDATED
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 1
+        - path: "$.events[0].type"
+          eq: "DEAL_UPDATED"
+
+# ─── Test 17: Filter audit by actor ──────────────────────────────────────────
+---
+test: audit_filter_by_actor
+meta:
+  name: "Filter audit events by actor returns only that actor's events"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: transition
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: filter_by_actor
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit?actor=u_originator
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 1
+        - path: "$.events[0].actor_id"
+          eq: "u_originator"
+        - path: "$.events[0].type"
+          eq: "STAGE_TRANSITION"
+
+# ─── Test 18: Combined filters (type + actor) ────────────────────────────────
+---
+test: audit_filter_combined
+meta:
+  name: "Combined type and actor filters return intersection of matching events"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: broker_update
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+    expect:
+      status: 200
+
+  - id: transition
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: filter_broker_created
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit?type=DEAL_CREATED&actor=u_broker
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 1
+        - path: "$.events[0].type"
+          eq: "DEAL_CREATED"
+        - path: "$.events[0].actor_id"
+          eq: "u_broker"
+
+  - id: filter_originator_created
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit?type=DEAL_CREATED&actor=u_originator
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 0
+
+# =============================================================================
+# 8. Audit chronological order
+# =============================================================================
+
+# ─── Test 19: Events returned in chronological order (oldest first) ───────────
+---
+test: audit_chronological_order
+meta:
+  name: "Audit events are returned in chronological order (oldest first)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update_1
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+    expect:
+      status: 200
+
+  - id: update_2
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Acquisition"
+    expect:
+      status: 200
+
+  - id: upload_doc
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "accounts.csv"
+        content_base64: "cmV2ZW51ZQ=="
+    expect:
+      status: 202
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          eq: 4
+        - path: "$.events[0].type"
+          eq: "DEAL_CREATED"
+        - path: "$.events[1].type"
+          eq: "DEAL_UPDATED"
+        - path: "$.events[2].type"
+          eq: "DEAL_UPDATED"
+        - path: "$.events[3].type"
+          eq: "DOCUMENT_UPLOADED"
+        - path: "$.events[0].timestamp"
+          lte: "$.events[1].timestamp"
+        - path: "$.events[1].timestamp"
+          lte: "$.events[2].timestamp"
+        - path: "$.events[2].timestamp"
+          lte: "$.events[3].timestamp"
+
+# ─── Test 20: Timestamps are valid ISO 8601 UTC ──────────────────────────────
+---
+test: audit_timestamps_iso8601_utc
+meta:
+  name: "All audit event timestamps are valid ISO 8601 UTC format"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: update_deal
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        purpose: "Expansion"
+    expect:
+      status: 200
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_schema: "schemas/audit-event.schema.json"
+      json_path_assertions:
+        - path: "$.events[0].timestamp"
+          regex: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+        - path: "$.events[1].timestamp"
+          regex: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"

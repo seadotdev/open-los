@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/deal.schema.json",
+  "title": "Deal",
+  "type": "object",
+  "required": ["id", "tenant_id", "borrower_name", "stage", "created_at", "updated_at"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string" },
+    "borrower_name": { "type": "string", "minLength": 1 },
+    "borrower_registration_number": { "type": "string" },
+    "jurisdiction": { "type": "string" },
+    "requested_amount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Minor units (cents/pence)"
+    },
+    "purpose": { "type": "string" },
+    "stage": {
+      "type": "string",
+      "enum": ["broker", "origination", "underwriting", "closing", "monitoring"]
+    },
+    "origination_outcome": {
+      "type": "string",
+      "enum": ["reject", "need_info", "proceed", "refer"]
+    },
+    "assigned_to": { "type": "string" },
+    "primary_entity_id": { "type": "string", "format": "uuid" },
+    "custom_fields": { "type": "object", "additionalProperties": true },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

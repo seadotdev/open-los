@@ -1,8 +1,16 @@
-need to update this
+# Agent Instructions
 
-1. use git clone https://github.com/pierceboggan/primer.git
+See [AGENTS.md](./AGENTS.md) for complete documentation.
+
+## Quick Start
+
+```bash
+# Setup UI prototype
+git clone https://github.com/pierceboggan/primer.git
 cd primer
 npm install
+```
 
+## Diagramming
 
-2. core flows documents with this (this exact app): https://agents.craft.do/mermaid
+Use https://agents.craft.do/mermaid to create flow diagrams for this application.
