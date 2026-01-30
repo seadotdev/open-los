@@ -16,6 +16,7 @@ import {
   MonitoringService,
   EmailService,
   LoanAccountService,
+  FacilityService,
 } from "@open-los/core";
 import { createApp } from "./server.js";
 import type { AppContext } from "./server.js";
@@ -48,6 +49,7 @@ async function main() {
   const monitoringService = new MonitoringService(db, auditService, clock);
   const emailService = new EmailService(db, auditService, clock);
   const loanAccountService = new LoanAccountService(db, auditService, clock);
+  const facilityService = new FacilityService(db, auditService, clock);
 
   const ctx: AppContext = {
     db,
@@ -64,6 +66,7 @@ async function main() {
     monitoringService,
     emailService,
     loanAccountService,
+    facilityService,
     getNow: clock,
     users: new Map(),
   };

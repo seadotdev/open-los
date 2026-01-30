@@ -1,0 +1,718 @@
+version: "0.1.0"
+suite: facilities
+description: >
+  Facility management specification tests. Facilities define the terms of credit
+  (term loan, revolver, letter of credit) and can be converted to loan accounts
+  upon approval.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 1: Facility Creation
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: facility_create_term_loan
+meta:
+  name: "Create a term loan facility"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Facility Corp"
+        jurisdiction: "GB"
+        requested_amount: 50000000
+        purpose: "Expansion"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "term_loan"
+        amount: 50000000
+        currency: "GBP"
+        interest_rate_type: "fixed"
+        interest_rate_value: 0.075
+        term_months: 60
+    expect:
+      status: 201
+      json_contains:
+        type: "term_loan"
+        amount: 50000000
+        currency: "GBP"
+        status: "proposed"
+      json_path_assertions:
+        - path: "$.id"
+          exists: true
+        - path: "$.interest_rate_value"
+          eq: 0.075
+      save:
+        facility_id: "$.id"
+
+---
+test: facility_create_revolver
+meta:
+  name: "Create a revolving credit facility"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Revolver Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "revolver"
+        amount: 25000000
+        interest_rate_type: "floating"
+        interest_rate_spread: 0.02
+    expect:
+      status: 201
+      json_contains:
+        type: "revolver"
+        amount: 25000000
+        status: "proposed"
+        interest_rate_type: "floating"
+        interest_rate_spread: 0.02
+
+---
+test: facility_create_letter_of_credit
+meta:
+  name: "Create a letter of credit facility"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "LC Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "letter_of_credit"
+        amount: 5000000
+    expect:
+      status: 201
+      json_contains:
+        type: "letter_of_credit"
+        amount: 5000000
+        status: "proposed"
+
+---
+test: facility_create_validates_type
+meta:
+  name: "Facility type must be valid"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Invalid Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_invalid_type
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "invalid_type"
+        amount: 10000000
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+
+---
+test: facility_create_validates_amount
+meta:
+  name: "Facility amount must be positive"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Zero Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_zero_amount
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "term_loan"
+        amount: 0
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 2: Facility Retrieval
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: facility_list_for_deal
+meta:
+  name: "List all facilities for a deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Multi Facility Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_facility_1
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "term_loan"
+        amount: 30000000
+    expect:
+      status: 201
+
+  - id: create_facility_2
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "revolver"
+        amount: 10000000
+    expect:
+      status: 201
+
+  - id: list_facilities
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/deals/${deal_id}/facilities
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.facilities.length"
+          eq: 2
+
+---
+test: facility_get_by_id
+meta:
+  name: "Get a specific facility by ID"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Specific Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "term_loan"
+        amount: 20000000
+    expect:
+      status: 201
+      save:
+        facility_id: "$.id"
+
+  - id: get_facility
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/deals/${deal_id}/facilities/${facility_id}
+    expect:
+      status: 200
+      json_contains:
+        id: "${facility_id}"
+        type: "term_loan"
+        amount: 20000000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3: Facility Updates
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: facility_update_amount
+meta:
+  name: "Update facility amount"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Update Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "term_loan"
+        amount: 20000000
+    expect:
+      status: 201
+      save:
+        facility_id: "$.id"
+
+  - id: update_facility
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/deals/${deal_id}/facilities/${facility_id}
+      json:
+        amount: 25000000
+    expect:
+      status: 200
+      json_contains:
+        amount: 25000000
+
+---
+test: facility_status_transitions
+meta:
+  name: "Facility status can be updated through lifecycle"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Status Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "term_loan"
+        amount: 20000000
+    expect:
+      status: 201
+      json_contains:
+        status: "proposed"
+      save:
+        facility_id: "$.id"
+
+  - id: approve_facility
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/deals/${deal_id}/facilities/${facility_id}
+      json:
+        status: "approved"
+    expect:
+      status: 200
+      json_contains:
+        status: "approved"
+
+  - id: activate_facility
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/deals/${deal_id}/facilities/${facility_id}
+      json:
+        status: "active"
+    expect:
+      status: 200
+      json_contains:
+        status: "active"
+
+  - id: close_facility
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/deals/${deal_id}/facilities/${facility_id}
+      json:
+        status: "closed"
+    expect:
+      status: 200
+      json_contains:
+        status: "closed"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 4: Facility Deletion
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: facility_delete
+meta:
+  name: "Delete a facility"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Delete Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "term_loan"
+        amount: 20000000
+    expect:
+      status: 201
+      save:
+        facility_id: "$.id"
+
+  - id: delete_facility
+    http:
+      actor: "u_analyst"
+      method: DELETE
+      path: /v1/deals/${deal_id}/facilities/${facility_id}
+    expect:
+      status: 200
+
+  - id: verify_deleted
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/deals/${deal_id}/facilities/${facility_id}
+    expect:
+      status: 404
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 5: Facility to Loan Conversion
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: facility_to_loan_conversion
+meta:
+  name: "Create loan account from approved facility"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Loan Conversion Corp"
+        jurisdiction: "GB"
+        requested_amount: 50000000
+        purpose: "Expansion"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Loan Conversion Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "term_loan"
+        amount: 50000000
+        interest_rate_type: "fixed"
+        interest_rate_value: 0.075
+        term_months: 60
+    expect:
+      status: 201
+      save:
+        facility_id: "$.id"
+
+  - id: approve_facility
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/deals/${deal_id}/facilities/${facility_id}
+      json:
+        status: "approved"
+    expect:
+      status: 200
+
+  - id: create_loan_from_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/facilities/${facility_id}/loans
+      json:
+        dealId: "${deal_id}"
+        accountHolderId: "${entity_id}"
+        firstRepaymentDate: "2026-03-01"
+        repaymentFrequency: "MONTHLY"
+    expect:
+      status: 201
+      json_contains:
+        facility_id: "${facility_id}"
+        deal_id: "${deal_id}"
+        loan_amount: 50000000
+        state: "PENDING_APPROVAL"
+      json_path_assertions:
+        - path: "$.interest_rate"
+          eq: 0.075
+        - path: "$.term_months"
+          eq: 60
+      save:
+        loan_id: "$.id"
+
+---
+test: facility_to_preapproved_loan
+meta:
+  name: "Create pre-approved loan from facility"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Pre-Approved Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Pre-Approved Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_facility
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/facilities
+      json:
+        type: "term_loan"
+        amount: 25000000
+        interest_rate_type: "fixed"
+        interest_rate_value: 0.06
+        term_months: 24
+    expect:
+      status: 201
+      save:
+        facility_id: "$.id"
+
+  - id: approve_facility
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/deals/${deal_id}/facilities/${facility_id}
+      json:
+        status: "approved"
+    expect:
+      status: 200
+
+  - id: create_preapproved_loan
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/facilities/${facility_id}/loans/approved
+      json:
+        dealId: "${deal_id}"
+        accountHolderId: "${entity_id}"
+        firstRepaymentDate: "2026-03-01"
+        approvalNotes: "Credit committee pre-approved"
+    expect:
+      status: 201
+      json_contains:
+        state: "APPROVED"
+        facility_id: "${facility_id}"
+      json_path_assertions:
+        - path: "$.approved_at"
+          exists: true

@@ -1,0 +1,598 @@
+version: "0.1.0"
+suite: idempotency
+description: >
+  Idempotency specification tests. Verifies that operations with idempotency keys
+  are properly deduplicated, ensuring the same operation can be safely retried
+  without causing duplicate effects.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 1: Loan Transaction Idempotency
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: idempotency_disbursement_deduplication
+meta:
+  name: "Disbursement with same idempotency key returns same transaction"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Idempotent Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse_first
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 5000000
+        valueDate: "2026-01-15"
+        idempotencyKey: "disbursement-key-001"
+    expect:
+      status: 201
+      save:
+        tx_id: "$.id"
+        tx_encoded_key: "$.encoded_key"
+
+  - id: disburse_retry
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 5000000
+        valueDate: "2026-01-15"
+        idempotencyKey: "disbursement-key-001"
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.id"
+          eq: "${tx_id}"
+        - path: "$.encoded_key"
+          eq: "${tx_encoded_key}"
+
+  - id: verify_single_disbursement
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        principal_disbursed: 5000000
+        principal_outstanding: 5000000
+
+---
+test: idempotency_repayment_deduplication
+meta:
+  name: "Repayment with same idempotency key returns same transaction"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Repay Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: repay_first
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-02-15"
+        idempotencyKey: "repayment-key-001"
+    expect:
+      status: 201
+      save:
+        tx_id: "$.id"
+
+  - id: repay_retry
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-02-15"
+        idempotencyKey: "repayment-key-001"
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.id"
+          eq: "${tx_id}"
+
+  - id: verify_single_repayment
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}/balance
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.total_paid"
+          eq: 1000000
+
+---
+test: idempotency_fee_deduplication
+meta:
+  name: "Fee with same idempotency key returns same transaction"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Fee Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: fee_first
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "FEE"
+        amount: 50000
+        valueDate: "2026-01-20"
+        idempotencyKey: "fee-key-001"
+    expect:
+      status: 201
+      save:
+        tx_id: "$.id"
+
+  - id: fee_retry
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "FEE"
+        amount: 50000
+        valueDate: "2026-01-20"
+        idempotencyKey: "fee-key-001"
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.id"
+          eq: "${tx_id}"
+
+  - id: verify_single_fee
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}/balance
+    expect:
+      status: 200
+      json_contains:
+        fees_outstanding: 50000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 2: Different Idempotency Keys Create Separate Transactions
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: idempotency_different_keys_create_separate
+meta:
+  name: "Different idempotency keys create separate transactions"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Multi-Payment Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: repay_1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-02-15"
+        idempotencyKey: "repay-feb"
+    expect:
+      status: 201
+      save:
+        tx1_id: "$.id"
+
+  - id: repay_2
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-03-15"
+        idempotencyKey: "repay-mar"
+    expect:
+      status: 201
+      save:
+        tx2_id: "$.id"
+
+  - id: verify_different_ids
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}/balance
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.total_paid"
+          eq: 2000000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3: No Idempotency Key Creates New Transactions
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: idempotency_no_key_creates_new
+meta:
+  name: "Without idempotency key, each request creates a new transaction"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "No Key Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: fee_1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "FEE"
+        amount: 10000
+        valueDate: "2026-01-20"
+    expect:
+      status: 201
+      save:
+        fee1_id: "$.id"
+
+  - id: fee_2
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "FEE"
+        amount: 10000
+        valueDate: "2026-01-20"
+    expect:
+      status: 201
+      save:
+        fee2_id: "$.id"
+
+  - id: verify_both_fees
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}/balance
+    expect:
+      status: 200
+      json_contains:
+        fees_outstanding: 20000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 4: Idempotency Key Uniqueness Scope
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: idempotency_key_scoped_to_tenant
+meta:
+  name: "Same idempotency key can be used in different tenants"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity_t1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Tenant 1 Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan_t1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve_t1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse_t1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+        idempotencyKey: "shared-key-123"
+    expect:
+      status: 201
+      save:
+        tx1_id: "$.id"
