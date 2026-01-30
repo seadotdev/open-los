@@ -300,6 +300,38 @@ Open LOS exposes tools via MCP for AI agents:
 - One logical change per commit
 - Tests must pass before committing
 
+## PR Workflow for Claude Code Sessions
+
+All Claude Code sessions automatically create and merge PRs via GitHub Actions:
+
+### How It Works
+
+1. **Branch naming**: Claude Code sessions use branches named `claude/*`
+2. **Auto-PR creation**: When you push to a `claude/*` branch, a PR is automatically created
+3. **CI validation**: The PR runs tests, linting, and type checking
+4. **Auto-merge**: If CI passes, the PR is automatically squash-merged to main
+
+### GitHub Actions Workflows
+
+| Workflow | File | Purpose |
+|----------|------|---------|
+| CI | `.github/workflows/ci.yml` | Runs tests on PRs and main |
+| Auto PR | `.github/workflows/auto-pr.yml` | Creates PRs from `claude/*` branches and enables auto-merge |
+
+### Requirements for Auto-Merge
+
+For auto-merge to work, you must enable it in your GitHub repository settings:
+
+1. Go to **Settings** → **General** → **Pull Requests**
+2. Check **Allow auto-merge**
+3. Optionally, set up **Branch protection rules** on `main` to require status checks
+
+### Manual Override
+
+If you want to review a PR before merging:
+- Disable auto-merge on the specific PR in GitHub
+- Or remove the `--auto` flag from the workflow for all PRs
+
 ## What's Implemented
 
 | Feature | Status |
