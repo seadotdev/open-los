@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Prepare-Commit-Msg Hook for Open LOS
+# Adds reminders about documentation requirements.
+#
+# Installation:
+#   cp docs/auto-docs/scripts/hooks/prepare-commit-msg .git/hooks/prepare-commit-msg
+#   chmod +x .git/hooks/prepare-commit-msg
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+SHA1=$3
+
+# Only add reminder for regular commits (not merges, amends, etc.)
+if [ -z "$COMMIT_SOURCE" ]; then
+    # Check if message already has content
+    if [ -s "$COMMIT_MSG_FILE" ]; then
+        exit 0
+    fi
+
+    # Add documentation reminder as comment
+    cat >> "$COMMIT_MSG_FILE" << 'EOF'
+
+# ============================================================
+# Open LOS Auto-Documentation Reminder
+# ============================================================
+#
+# Your commit will trigger automatic documentation generation:
+#
+# - Release logs are generated after each commit
+# - Feature commits (feat:) should have blog posts
+# - Breaking changes MUST have migration documentation
+#
+# Commit prefixes:
+#   feat:     New feature (triggers full doc generation)
+#   fix:      Bug fix
+#   docs:     Documentation only
+#   refactor: Code refactoring
+#   test:     Testing changes
+#
+# Skip documentation generation:
+#   Add [skip-docs] to your commit message
+#
+# Generate all docs manually:
+#   npm run docs:generate -- --all
+#
+# ============================================================
+EOF
+fi
+
+exit 0
