@@ -1,0 +1,185 @@
+# Example Simulation Scenario
+# This file shows how to define custom simulation scenarios in YAML format
+# for testing specific lending business workflows.
+
+id: custom-multi-currency-bank
+personaId: swiss-private-bank
+name: "Swiss Private Bank Multi-Currency Workflow"
+description: "Test multi-currency lending workflow for a Swiss private bank"
+
+objective: |
+  Validate that a Swiss private bank can:
+  1. Create deals in multiple currencies (CHF, EUR, USD, GBP)
+  2. Manage entities across multiple jurisdictions
+  3. Handle lombard lending against securities
+  4. Track complex covenant packages
+  5. Monitor portfolio across currencies
+
+workflow:
+  # Step 1: Create a CHF deal
+  - id: create-chf-deal
+    description: Create deal in Swiss Francs
+    action: create_deal
+    params:
+      borrower_name: "Geneva Wealth Holdings AG"
+      jurisdiction: "CH"
+      requested_amount: 50000000
+      currency: "CHF"
+      purpose: "Lombard lending facility"
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 2: Create borrower entity
+  - id: create-borrower
+    description: Create Swiss holding company entity
+    action: create_entity
+    params:
+      type: company
+      name: "Geneva Wealth Holdings AG"
+      legal_name: "Geneva Wealth Holdings Aktiengesellschaft"
+      jurisdiction: "CH"
+      registration_number: "CHE-123.456.789"
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 3: Create Luxembourg subsidiary (complex structure)
+  - id: create-lux-sub
+    description: Create Luxembourg subsidiary
+    action: create_entity
+    params:
+      type: company
+      name: "Geneva Wealth Luxembourg S.à r.l."
+      legal_name: "Geneva Wealth Luxembourg Société à responsabilité limitée"
+      jurisdiction: "LU"
+      registration_number: "B123456"
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 4: Link ownership relationship
+  - id: link-ownership
+    description: Link ownership from parent to subsidiary
+    action: create_relationship
+    params:
+      relationship_type: owns
+      ownership_pct: 100
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 5: Upload collateral documentation
+  - id: upload-collateral-docs
+    description: Upload securities pledge agreement
+    action: upload_document
+    params:
+      doc_type: collateral_agreement
+      filename: "securities_pledge_agreement.pdf"
+      content: "base64encodedcontent"
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 6: Transition to origination
+  - id: move-to-origination
+    description: Move deal to origination stage
+    action: transition_stage
+    params:
+      to_stage: origination
+      rationale: "All required documentation collected"
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 7: Create financial spread (EUR reporting)
+  - id: create-spread
+    description: Create financial spread from EUR statements
+    action: create_spread
+    params:
+      period: "FY2025"
+      currency: "EUR"
+      line_items:
+        revenue: 120000000
+        cogs: 0
+        operating_expense: 8000000
+        interest: 2500000
+        tax: 15000000
+        depreciation: 500000
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 8: Define LTV covenant
+  - id: define-ltv-covenant
+    description: Define loan-to-value covenant for lombard
+    action: define_covenant
+    params:
+      name: "Portfolio LTV"
+      type: financial
+      metric: "loan_to_value"
+      operator: "lte"
+      threshold: 0.65
+      frequency: "daily"
+      grace_period_days: 0
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 9: Create multi-currency facility
+  - id: create-facility
+    description: Create CHF facility with multi-currency draw
+    action: create_facility
+    params:
+      type: revolving
+      amount: 50000000
+      currency: "CHF"
+      available_currencies: ["CHF", "EUR", "USD", "GBP"]
+      interest_rate: 2.5
+      term_months: 12
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 10: Create loan account
+  - id: create-loan
+    description: Create loan account under facility
+    action: create_loan
+    params:
+      principal_amount: 25000000
+      currency: "CHF"
+      interest_rate: 2.75
+      repayment_frequency: "bullet"
+      term_months: 12
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+  # Step 11: Disburse in EUR (cross-currency draw)
+  - id: disburse-eur
+    description: Disburse funds in EUR
+    action: disburse_loan
+    params:
+      amount: 20000000
+      currency: "EUR"
+      fx_rate: 0.95
+    expectedOutcome:
+      success: true
+      statusCode: 201
+
+capabilitiesUnderTest:
+  - multi-currency-deals
+  - multi-currency-facility
+  - multi-jurisdiction-deal
+  - loan-revolving
+  - covenant-financial
+
+expectedOutcome: success
+
+# Test Challenges this scenario addresses
+testChallenges:
+  - multi_currency
+  - multi_jurisdiction
+  - complex_entities
+  - collateral_valuation
+  - lombard_lending
