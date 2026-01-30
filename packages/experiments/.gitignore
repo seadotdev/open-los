@@ -1,0 +1,11 @@
+# Results directory - don't commit experiment outputs
+results/
+
+# Config with API keys - use config.example.ts as template
+config.ts
+
+# Build output
+dist/
+
+# Node modules
+node_modules/
