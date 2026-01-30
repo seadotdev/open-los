@@ -1,0 +1,11 @@
+# This directory contains auto-generated documentation
+# Files here are created by the auto-documentation system
+
+# Subdirectories:
+# - releases/    Release logs for each commit/version
+# - blog/        Blog post drafts
+# - social/      Social media content
+# - videos/      Video scripts
+# - demos/       Feature demo specifications
+# - migrations/  Migration guides
+# - announcements/ Version announcements

@@ -1,0 +1,153 @@
+{
+  "version": "1.0.0",
+  "projectName": "Open LOS",
+  "projectDescription": "Open-source B2B Lending CRM",
+
+  "directories": {
+    "templates": "./templates",
+    "generated": "./generated",
+    "scripts": "./scripts"
+  },
+
+  "generation": {
+    "releaseLog": {
+      "enabled": true,
+      "onCommit": true,
+      "directory": "generated/releases"
+    },
+    "blogPost": {
+      "enabled": true,
+      "onPR": true,
+      "requireForFeatures": true,
+      "directory": "generated/blog"
+    },
+    "socialMedia": {
+      "enabled": true,
+      "platforms": ["twitter", "linkedin", "discord"],
+      "directory": "generated/social"
+    },
+    "videoScript": {
+      "enabled": true,
+      "formats": ["short-form", "long-form", "tutorial"],
+      "directory": "generated/videos"
+    },
+    "featureDemo": {
+      "enabled": true,
+      "types": ["cli", "ui", "hybrid"],
+      "directory": "generated/demos"
+    }
+  },
+
+  "hooks": {
+    "postCommit": {
+      "enabled": true,
+      "generate": ["releaseLog"]
+    },
+    "prePush": {
+      "enabled": true,
+      "requireDocs": true,
+      "blockOnBreaking": false
+    },
+    "prepareCommitMsg": {
+      "enabled": true,
+      "addReminders": true
+    }
+  },
+
+  "versionBump": {
+    "major": {
+      "requireMigrationGuide": true,
+      "requireChangelog": true,
+      "requireAnnouncement": true,
+      "generateAllDocs": true
+    },
+    "minor": {
+      "requireMigrationGuide": false,
+      "requireChangelog": true,
+      "requireAnnouncement": true
+    },
+    "patch": {
+      "requireMigrationGuide": false,
+      "requireChangelog": true,
+      "requireAnnouncement": false
+    }
+  },
+
+  "commitTypes": {
+    "feat": {
+      "label": "Features",
+      "emoji": "✨",
+      "requireBlogPost": true
+    },
+    "fix": {
+      "label": "Bug Fixes",
+      "emoji": "🔧",
+      "requireBlogPost": false
+    },
+    "docs": {
+      "label": "Documentation",
+      "emoji": "📚",
+      "requireBlogPost": false
+    },
+    "refactor": {
+      "label": "Improvements",
+      "emoji": "♻️",
+      "requireBlogPost": false
+    },
+    "test": {
+      "label": "Testing",
+      "emoji": "🧪",
+      "requireBlogPost": false
+    },
+    "breaking": {
+      "label": "Breaking Changes",
+      "emoji": "⚠️",
+      "requireBlogPost": true,
+      "requireMigration": true
+    }
+  },
+
+  "social": {
+    "twitter": {
+      "maxLength": 280,
+      "hashtags": ["#OpenLOS", "#LendingTech", "#FinTech", "#OpenSource"]
+    },
+    "linkedin": {
+      "maxLength": 3000,
+      "hashtags": ["#LendingIndustry", "#FinTech", "#OpenSource", "#B2BLending"]
+    },
+    "discord": {
+      "channel": "announcements"
+    }
+  },
+
+  "video": {
+    "shortForm": {
+      "duration": "60-90s",
+      "platforms": ["tiktok", "youtube-shorts", "instagram-reels"]
+    },
+    "longForm": {
+      "duration": "3-5min",
+      "platforms": ["youtube", "linkedin"]
+    }
+  },
+
+  "demo": {
+    "cli": {
+      "terminal": "xterm-256color",
+      "font": "JetBrains Mono",
+      "fontSize": 18,
+      "theme": "dark"
+    },
+    "recording": {
+      "format": "asciinema",
+      "idleTimeLimit": 2
+    }
+  },
+
+  "links": {
+    "github": "https://github.com/seadotdev/open-los",
+    "docs": "https://github.com/seadotdev/open-los/docs",
+    "issues": "https://github.com/seadotdev/open-los/issues"
+  }
+}

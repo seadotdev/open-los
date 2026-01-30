@@ -99,6 +99,90 @@ npm run dev --workspace=packages/api
 - [SPEC.md](./SPEC.md) — Product specification
 - [openapi/v1.yaml](./openapi/v1.yaml) — API contract
 - [docs/AI_NATIVE_ARCHITECTURE.md](./docs/AI_NATIVE_ARCHITECTURE.md) — AI integration architecture
+- [docs/auto-docs/](./docs/auto-docs/) — Auto-documentation system
+
+## Auto-Documentation System
+
+Open LOS includes a comprehensive self-documenting system that automatically generates customer-facing content for every change.
+
+### What Gets Generated
+
+| Content Type | Trigger | Purpose |
+|-------------|---------|---------|
+| **Release Logs** | Every commit | Technical changelog entries |
+| **Blog Posts** | Feature commits | Customer-facing impact articles |
+| **Social Media** | Every release | Twitter, LinkedIn, Discord content |
+| **Video Scripts** | Features/releases | Demo script prompts |
+| **Feature Demos** | New features | CLI/UI motion demo specs |
+| **Migration Guides** | Breaking changes | Upgrade documentation |
+
+### Quick Start
+
+```bash
+# Install documentation git hooks
+./docs/auto-docs/scripts/install-hooks.sh
+
+# Generate all documentation for current commit
+npm run docs:generate
+
+# Generate specific documentation type
+npm run docs:release-log
+npm run docs:blog
+npm run docs:social
+npm run docs:video
+npm run docs:demo
+
+# Generate version bump documentation
+npm run docs:version-bump -- --version 1.0.0
+```
+
+### How It Works
+
+1. **Post-Commit Hook**: Automatically generates release logs after each commit
+2. **Pre-Push Hook**: Validates documentation exists before pushing (warns for missing docs)
+3. **PR Requirements**: Feature commits should have blog post drafts
+4. **Version Bumps**: Major/minor versions trigger full documentation suite
+
+### Generated Content Location
+
+```
+docs/auto-docs/generated/
+├── releases/       # Release logs per commit
+├── blog/           # Blog post drafts
+├── social/         # Social media content
+├── videos/         # Video scripts
+├── demos/          # Feature demo specs
+├── migrations/     # Migration guides
+└── announcements/  # Version announcements
+```
+
+### Templates
+
+Customize documentation output by editing templates in `docs/auto-docs/templates/`:
+
+- `release-log.md` — Technical changelog format
+- `blog-post.md` — Customer blog article structure
+- `social-tweet.md` — Multi-platform social content
+- `video-script.md` — Short/long-form video scripts
+- `feature-demo.md` — CLI/UI demo specifications
+
+### Configuration
+
+Edit `docs/auto-docs/config.json` to customize:
+- Which documentation types to generate
+- Hook behavior and requirements
+- Social media platforms and hashtags
+- Video and demo specifications
+
+### Building in Public
+
+This auto-documentation system enables "building in public" by ensuring:
+
+- Every change is communicated to customers
+- Technical updates are translated to business value
+- Social presence is maintained automatically
+- Video content is always scripted and ready
+- Breaking changes are properly documented
 
 ## License
 
