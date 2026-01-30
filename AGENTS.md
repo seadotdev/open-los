@@ -361,9 +361,166 @@ For auto-merge to work, you must enable it in your GitHub repository settings:
 | MCP server | 🚧 Planned |
 | Analytics endpoints | 🚧 Planned |
 
+## Shadow Migration Validation
+
+Open LOS includes a **Shadow Migration** system that lets enterprises validate Open LOS as a system of record replacement by running it in parallel with their existing LOS (Mambu, nCino, etc.).
+
+### Purpose
+
+- **Zero-risk validation**: Prove data coverage before any production cutover
+- **Feature parity check**: Identify gaps between source and Open LOS
+- **Migration confidence**: Build trust with stakeholders through parallel validation
+- **Live data testing**: Use real production data to validate (read-only from source)
+
+### Quick Start (Claude Code)
+
+When a user asks to set up shadow migration, follow these steps:
+
+```
+User: Set up Open LOS to validate against our Mambu instance
+
+Claude: I'll help you set up Open LOS shadow migration. Let me:
+
+1. Check your infrastructure (Docker/K8s/bare metal)
+2. Initialize the shadow environment
+3. Configure the Mambu adapter
+4. Run initial sync and validation
+```
+
+### CLI Commands
+
+```bash
+# Initialize shadow environment
+npx open-los-shadow init --adapter=mambu
+
+# Connect to source system
+npx open-los-shadow connect --url=https://acme.mambu.com --api-key=$MAMBU_API_KEY
+
+# Run full sync
+npx open-los-shadow sync --mode=full
+
+# Run validation
+npx open-los-shadow validate
+
+# Check readiness score
+npx open-los-shadow status
+
+# Generate report
+npx open-los-shadow report --format=pdf --output=./migration-readiness.pdf
+```
+
+### Supported Source Systems
+
+| System | Adapter | Sync Mode | Notes |
+|--------|---------|-----------|-------|
+| **Mambu** | `mambu` | Incremental + CDC | Full loan account support |
+| **nCino** | `ncino` | Incremental | Salesforce API |
+| **CSV Export** | `csv` | Full | File-based import |
+| **Webhook** | `webhook` | Real-time | Push from source |
+| **Custom API** | `custom_api` | Configurable | Build your own |
+
+### Shadow API Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /v1/shadow/connections` | Create source connection |
+| `POST /v1/shadow/connections/{id}/test` | Test connection |
+| `GET /v1/shadow/connections/{id}/discover` | Discover source schema |
+| `POST /v1/shadow/mappings` | Configure field mappings |
+| `POST /v1/shadow/sync` | Trigger sync operation |
+| `POST /v1/shadow/validation` | Run validation comparison |
+| `GET /v1/shadow/readiness` | Get migration readiness score |
+| `GET /v1/shadow/report` | Generate detailed report |
+
+### Migration Readiness Score
+
+The system calculates a composite readiness score (0-100):
+
+```
+Readiness = (Coverage × 0.4) + (Accuracy × 0.4) + (Gap Score × 0.2)
+```
+
+| Score | Status |
+|-------|--------|
+| 90-100 | Ready for migration |
+| 70-89 | Minor issues to resolve |
+| 50-69 | Significant work needed |
+| <50 | Major gaps, not ready |
+
+### Setup Flow for Claude Code
+
+When helping a user set up shadow migration:
+
+1. **Detect Infrastructure**
+   ```bash
+   docker --version  # Check for Docker
+   kubectl version   # Check for Kubernetes
+   node --version    # Ensure Node.js 20+
+   ```
+
+2. **Initialize Environment**
+   ```bash
+   npx open-los-shadow init --adapter=mambu --directory=./shadow
+   ```
+
+3. **Configure Connection**
+   - Ask for source system URL
+   - Ask for API credentials (store in `.env.shadow`)
+   - Test connection before proceeding
+
+4. **Run Initial Sync**
+   ```bash
+   npx open-los-shadow sync --mode=full
+   ```
+
+5. **Validate and Report**
+   ```bash
+   npx open-los-shadow validate
+   npx open-los-shadow report --format=json
+   ```
+
+### Configuration Example
+
+```yaml
+# shadow-config.yaml
+version: "1.0"
+
+source:
+  adapter: mambu
+  mambu:
+    url: ${SOURCE_URL}
+    api_key: ${SOURCE_API_KEY}
+
+sync:
+  mode: incremental
+  interval: 15m
+  batch_size: 500
+
+validation:
+  schedule: "0 6 * * *"  # Daily at 6 AM
+  tolerance:
+    numeric: 0.01
+    date: 1s
+
+alerts:
+  enabled: true
+  channels:
+    - type: slack
+      webhook: ${SLACK_WEBHOOK}
+```
+
+### Documentation
+
+- [PRD: Parallel Migration Validation](./docs/PRD_PARALLEL_MIGRATION_VALIDATION.md)
+- [Technical Specification](./docs/SPEC_SHADOW_MIGRATION.md)
+
+---
+
 ## Documentation
 
 - [SPEC.md](./SPEC.md) — Full product specification
 - [openapi/v1.yaml](./openapi/v1.yaml) — API contract
 - [docs/AI_NATIVE_ARCHITECTURE.md](./docs/AI_NATIVE_ARCHITECTURE.md) — AI integration architecture
 - [docs/principles-and-ideas.md](./docs/principles-and-ideas.md) — Design principles
+- [docs/PRD_PARALLEL_MIGRATION_VALIDATION.md](./docs/PRD_PARALLEL_MIGRATION_VALIDATION.md) — Shadow migration PRD
+- [docs/SPEC_SHADOW_MIGRATION.md](./docs/SPEC_SHADOW_MIGRATION.md) — Shadow migration technical spec
