@@ -105,7 +105,9 @@ npm run dev --workspace=packages/api
 
 ## Documentation
 
-- [SPEC.md](./SPEC.md) — Product specification
+- [SPEC.md](./docs/SPEC.md) — Product specification
+- [AGENTS.md](./docs/AGENTS.md) — Agent instructions and coding standards
+- [MANIFESTO.md](./docs/MANIFESTO.md) — Project manifesto
 - [openapi/v1.yaml](./openapi/v1.yaml) — API contract
 - [docs/AI_NATIVE_ARCHITECTURE.md](./docs/AI_NATIVE_ARCHITECTURE.md) — AI integration architecture
 - [docs/auto-docs/](./docs/auto-docs/) — Auto-documentation system
