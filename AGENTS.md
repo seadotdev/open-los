@@ -300,6 +300,59 @@ Open LOS exposes tools via MCP for AI agents:
 - One logical change per commit
 - Tests must pass before committing
 
+## Pull Request Guidelines
+
+**MANDATORY: All PRs must include the prompt history that led to their creation.**
+
+No pull request will be accepted without documenting the prompts used to generate the changes. This ensures:
+
+1. **Reproducibility** — Others can understand and recreate the AI-assisted workflow
+2. **Auditability** — Clear record of what instructions produced which code
+3. **Learning** — Team can refine prompts based on successful patterns
+
+### Required PR Contents
+
+Every PR description must include:
+
+```markdown
+## Prompt History
+
+### Prompt 1
+> [The exact prompt given to the AI agent]
+
+**Result:** [Brief description of what was generated/changed]
+
+### Prompt 2 (if applicable)
+> [Follow-up prompt]
+
+**Result:** [Brief description]
+
+... (continue for all prompts used)
+```
+
+### Example
+
+```markdown
+## Prompt History
+
+### Prompt 1
+> Add a new endpoint to fetch deal documents with pagination support
+
+**Result:** Created GET /v1/deals/:id/documents with limit/offset params
+
+### Prompt 2
+> Add conformance tests for the new documents endpoint
+
+**Result:** Added 5 test cases covering pagination edge cases
+```
+
+### PR Checklist
+
+- [ ] Prompt history is included in PR description
+- [ ] Each prompt and its outcome is documented
+- [ ] Tests pass (`npm test`)
+- [ ] Types check (`npm run typecheck`)
+
 ## PR Workflow for Claude Code Sessions
 
 All Claude Code sessions automatically create PRs via GitHub Actions. The merge behavior depends on whether the changes are documentation or code.
