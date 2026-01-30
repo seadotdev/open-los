@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/skill-invocation.schema.json",
+  "title": "SkillInvocation",
+  "description": "A record of a skill being used",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier",
+      "pattern": "^inv_[a-z0-9]+$"
+    },
+    "skillId": {
+      "type": "string",
+      "description": "The skill that was invoked"
+    },
+    "skillVersion": {
+      "type": "string",
+      "description": "Version of the skill at invocation time"
+    },
+    "dealId": {
+      "type": "string",
+      "description": "Associated deal (if any)"
+    },
+    "entityId": {
+      "type": "string",
+      "description": "Associated entity (if any)"
+    },
+    "actor": {
+      "type": "string",
+      "description": "Who invoked the skill"
+    },
+    "actorType": {
+      "type": "string",
+      "enum": ["human", "ai"],
+      "description": "Whether actor is human or AI"
+    },
+    "aiProvider": {
+      "type": "string",
+      "description": "AI provider if actorType is ai (e.g., anthropic, openai)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["started", "completed", "failed"],
+      "description": "Current status of the invocation"
+    },
+    "completedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When invocation completed"
+    },
+    "outputSummary": {
+      "type": "string",
+      "description": "Summary of what was produced"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When invocation started"
+    }
+  },
+  "required": ["id", "skillId", "actor", "status", "createdAt"]
+}

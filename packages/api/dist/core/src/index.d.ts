@@ -34,4 +34,7 @@ export type { CreateLoanAccountInput, UpdateLoanAccountInput, DisburseInput, Rep
 export { createLoanAccountFromFacility, approveLoanAccount, createApprovedLoanFromFacility, getLoanBalanceForDeal, checkDealArrearsStatus, } from "./services/loan-integration.js";
 export type { CreateLoanFromFacilityInput } from "./services/loan-integration.js";
 export { AppError, NotFoundError, ValidationError, StageGuardError, InvalidTransitionError, ForbiddenError, OverrideRequiredError, ConflictError, } from "./services/errors.js";
+export { SkillService, parseSkillMd, extractReferences } from "./services/skill.js";
+export type { SkillMetadata, SkillContent, SkillContentWithRefs, SkillFrontmatter, RegisterSkillInput, UpdateSkillInput, InvocationContext, SyncResult, ListOptions as SkillListOptions, } from "./services/skill.js";
+export { skills, skillInvocations } from "./schema/tables.js";
 //# sourceMappingURL=index.d.ts.map

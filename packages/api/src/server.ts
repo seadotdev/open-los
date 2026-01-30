@@ -16,6 +16,7 @@ import {
   MonitoringService,
   EmailService,
   LoanAccountService,
+  SkillService,
   AppError,
 } from "@open-los/core";
 import type { Database } from "@open-los/core";
@@ -31,6 +32,7 @@ import { covenantRoutes } from "./routes/covenants.js";
 import { monitoringRoutes } from "./routes/monitoring.js";
 import { emailRoutes } from "./routes/email.js";
 import { loanRoutes } from "./routes/loans.js";
+import { skillRoutes } from "./routes/skills.js";
 
 export interface AppContext {
   db: Database;
@@ -47,6 +49,7 @@ export interface AppContext {
   monitoringService: MonitoringService;
   emailService: EmailService;
   loanAccountService: LoanAccountService;
+  skillService: SkillService;
   getNow: () => string;
   users?: Map<string, { id: string; role: string }>;
 }
@@ -70,6 +73,7 @@ export function createApp(ctx: AppContext) {
   app.route("/v1", monitoringRoutes(ctx));
   app.route("/v1", emailRoutes(ctx));
   app.route("/v1", loanRoutes(ctx));
+  app.route("/v1", skillRoutes(ctx));
 
   // Global error handler
   app.onError((err, c) => {
@@ -121,6 +125,7 @@ export async function createAppWithDb(getNow?: () => string) {
   const monitoringService = new MonitoringService(db, auditService, clock);
   const emailService = new EmailService(db, auditService, clock);
   const loanAccountService = new LoanAccountService(db, auditService, clock);
+  const skillService = new SkillService(db, clock, "./skills");
 
   const ctx: AppContext = {
     db,
@@ -137,6 +142,7 @@ export async function createAppWithDb(getNow?: () => string) {
     monitoringService,
     emailService,
     loanAccountService,
+    skillService,
     getNow: clock,
     users: new Map(),
   };

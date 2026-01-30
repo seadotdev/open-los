@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { DealService, DocumentService, AuditService, StageService, EntityService, RelationshipService, TemplateService, ArtifactService, SpreadService, CovenantService, MonitoringService, EmailService, LoanAccountService } from "@open-los/core";
+import { DealService, DocumentService, AuditService, StageService, EntityService, RelationshipService, TemplateService, ArtifactService, SpreadService, CovenantService, MonitoringService, EmailService, LoanAccountService, SkillService } from "@open-los/core";
 import type { Database } from "@open-los/core";
 export interface AppContext {
     db: Database;
@@ -16,6 +16,7 @@ export interface AppContext {
     monitoringService: MonitoringService;
     emailService: EmailService;
     loanAccountService: LoanAccountService;
+    skillService: SkillService;
     getNow: () => string;
     users?: Map<string, {
         id: string;

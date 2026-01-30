@@ -235,6 +235,43 @@ export async function migrateDatabase(db: Database) {
     payload TEXT
   )`);
 
+  // ─── Skills Tables ─────────────────────────────────────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS skills (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    trigger TEXT,
+    path TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'public',
+    owner_id TEXT,
+    version TEXT DEFAULT '1.0.0',
+    tags TEXT,
+    usage_count INTEGER DEFAULT 0,
+    last_used_at TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT,
+    UNIQUE(tenant_id, scope, name)
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS skill_invocations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    skill_id TEXT NOT NULL REFERENCES skills(id),
+    skill_version TEXT,
+    deal_id TEXT REFERENCES deals(id),
+    entity_id TEXT REFERENCES entities(id),
+    actor TEXT NOT NULL,
+    actor_type TEXT,
+    ai_provider TEXT,
+    status TEXT NOT NULL,
+    completed_at TEXT,
+    output_summary TEXT,
+    created_at TEXT NOT NULL
+  )`);
+
   // ─── Indexes for Performance ─────────────────────────────────────────────────────
 
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_deals_tenant_stage ON deals(tenant_id, stage)`);
@@ -248,6 +285,10 @@ export async function migrateDatabase(db: Database) {
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_covenants_deal ON covenants(deal_id)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_covenant_tests_covenant ON covenant_tests(covenant_id)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_spreads_deal ON spreads(deal_id)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_skills_tenant_scope ON skills(tenant_id, scope)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_skill_invocations_skill ON skill_invocations(skill_id)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_skill_invocations_deal ON skill_invocations(deal_id)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_skill_invocations_actor ON skill_invocations(actor)`);
 }
 
 export { schema };

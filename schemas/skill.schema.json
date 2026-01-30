@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/skill.schema.json",
+  "title": "Skill",
+  "description": "A skill that guides AI agents through domain workflows",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier",
+      "pattern": "^sk_[a-z0-9]+$"
+    },
+    "name": {
+      "type": "string",
+      "description": "Skill name (kebab-case)",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of what the skill does"
+    },
+    "trigger": {
+      "type": "string",
+      "description": "When to suggest this skill"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["public", "org", "user"],
+      "description": "Visibility scope"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Tags for categorization and discovery"
+    },
+    "version": {
+      "type": "string",
+      "description": "Skill version (semver)"
+    },
+    "usageCount": {
+      "type": "integer",
+      "description": "Number of times skill has been invoked"
+    },
+    "lastUsedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When skill was last used"
+    }
+  },
+  "required": ["id", "name", "description", "scope"]
+}

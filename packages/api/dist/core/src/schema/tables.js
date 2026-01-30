@@ -201,6 +201,43 @@ export const communications = sqliteTable("communications", {
     attachments: text("attachments", { mode: "json" }), // array of document IDs
     created_at: text("created_at").notNull(),
 });
+// ─── AI Conversation Tables ─────────────────────────────────────────────────────
+export const aiConversations = sqliteTable("ai_conversations", {
+    id: text("id").primaryKey(),
+    deal_id: text("deal_id")
+        .notNull()
+        .references(() => deals.id),
+    stage: text("stage").notNull(), // deal stage when conversation started
+    permission_mode: text("permission_mode").notNull().default("ask"), // "explore" | "ask" | "auto"
+    model: text("model").notNull(), // "claude-3-opus", "gpt-4", etc.
+    // Token tracking
+    input_tokens: integer("input_tokens").default(0),
+    output_tokens: integer("output_tokens").default(0),
+    cost_usd: real("cost_usd").default(0),
+    // Summary for list views
+    summary: text("summary"),
+    // Lifecycle
+    status: text("status").notNull().default("active"), // "active" | "archived"
+    created_by: text("created_by").notNull(),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+});
+export const aiMessages = sqliteTable("ai_messages", {
+    id: text("id").primaryKey(),
+    conversation_id: text("conversation_id")
+        .notNull()
+        .references(() => aiConversations.id),
+    role: text("role").notNull(), // "user" | "assistant" | "system"
+    content: text("content").notNull(),
+    // Tool use tracking
+    tool_calls: text("tool_calls", { mode: "json" }), // [{name, input, output}]
+    // Per-message token tracking
+    input_tokens: integer("input_tokens"),
+    output_tokens: integer("output_tokens"),
+    // Attachments (document IDs)
+    attachments: text("attachments", { mode: "json" }),
+    created_at: text("created_at").notNull(),
+});
 // ─── Facilities Tables ─────────────────────────────────────────────────────────
 export const facilities = sqliteTable("facilities", {
     id: text("id").primaryKey(),
@@ -362,5 +399,51 @@ export const repaymentSchedule = sqliteTable("repayment_schedule", {
     last_payment_date: text("last_payment_date"),
     created_at: text("created_at").notNull(),
     updated_at: text("updated_at"),
+});
+// ─── Skills Tables ─────────────────────────────────────────────────────────────
+export const skills = sqliteTable("skills", {
+    id: text("id").primaryKey(),
+    tenant_id: text("tenant_id").notNull().default("default"),
+    // Identity
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    trigger: text("trigger"),
+    // Location
+    path: text("path").notNull(), // e.g., "/public/underwriting-checklist"
+    scope: text("scope").notNull().default("public"), // "public" | "org" | "user"
+    // Ownership (for non-public skills)
+    owner_id: text("owner_id"),
+    // Metadata
+    version: text("version").default("1.0.0"),
+    tags: text("tags", { mode: "json" }), // array of strings
+    // Usage tracking
+    usage_count: integer("usage_count").default(0),
+    last_used_at: text("last_used_at"),
+    // State
+    is_active: integer("is_active", { mode: "boolean" }).default(true),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at"),
+});
+export const skillInvocations = sqliteTable("skill_invocations", {
+    id: text("id").primaryKey(),
+    tenant_id: text("tenant_id").notNull().default("default"),
+    // What was invoked
+    skill_id: text("skill_id")
+        .notNull()
+        .references(() => skills.id),
+    skill_version: text("skill_version"),
+    // Context
+    deal_id: text("deal_id").references(() => deals.id),
+    entity_id: text("entity_id").references(() => entities.id),
+    // Actor (from headers)
+    actor: text("actor").notNull(),
+    actor_type: text("actor_type"), // "human" | "ai"
+    ai_provider: text("ai_provider"), // "anthropic" | "openai"
+    // Outcome
+    status: text("status").notNull(), // "started" | "completed" | "failed"
+    completed_at: text("completed_at"),
+    // Optional summary of what was produced
+    output_summary: text("output_summary"),
+    created_at: text("created_at").notNull(),
 });
 //# sourceMappingURL=tables.js.map

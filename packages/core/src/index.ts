@@ -81,3 +81,16 @@ export {
   OverrideRequiredError,
   ConflictError,
 } from "./services/errors.js";
+export { SkillService, parseSkillMd, extractReferences } from "./services/skill.js";
+export type {
+  SkillMetadata,
+  SkillContent,
+  SkillContentWithRefs,
+  SkillFrontmatter,
+  RegisterSkillInput,
+  UpdateSkillInput,
+  InvocationContext,
+  SyncResult,
+  ListOptions as SkillListOptions,
+} from "./services/skill.js";
+export { skills, skillInvocations } from "./schema/tables.js";

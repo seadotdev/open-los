@@ -18,6 +18,7 @@ import {
   MonitoringService,
   EmailService,
   LoanAccountService,
+  SkillService,
   AppError,
 } from "@open-los/core";
 import { dealRoutes } from "./routes/deals.js";
@@ -32,6 +33,7 @@ import { covenantRoutes } from "./routes/covenants.js";
 import { monitoringRoutes } from "./routes/monitoring.js";
 import { emailRoutes } from "./routes/email.js";
 import { loanRoutes } from "./routes/loans.js";
+import { skillRoutes } from "./routes/skills.js";
 import type { AppContext } from "./server.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -62,6 +64,7 @@ async function main() {
   const monitoringService = new MonitoringService(db, auditService, clock);
   const emailService = new EmailService(db, auditService, clock);
   const loanAccountService = new LoanAccountService(db, auditService, clock);
+  const skillService = new SkillService(db, clock, "./skills");
 
   const ctx: AppContext = {
     db,
@@ -78,6 +81,7 @@ async function main() {
     monitoringService,
     emailService,
     loanAccountService,
+    skillService,
     getNow: clock,
     users: new Map(),
   };
@@ -102,6 +106,7 @@ async function main() {
   app.route("/v1", monitoringRoutes(ctx));
   app.route("/v1", emailRoutes(ctx));
   app.route("/v1", loanRoutes(ctx));
+  app.route("/v1", skillRoutes(ctx));
 
   // Error handler
   app.onError((err, c) => {

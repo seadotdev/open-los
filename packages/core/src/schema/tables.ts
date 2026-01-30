@@ -466,3 +466,65 @@ export const repaymentSchedule = sqliteTable("repayment_schedule", {
   created_at: text("created_at").notNull(),
   updated_at: text("updated_at"),
 });
+
+// ─── Skills Tables ─────────────────────────────────────────────────────────────
+
+export const skills = sqliteTable("skills", {
+  id: text("id").primaryKey(),
+  tenant_id: text("tenant_id").notNull().default("default"),
+
+  // Identity
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  trigger: text("trigger"),
+
+  // Location
+  path: text("path").notNull(), // e.g., "/public/underwriting-checklist"
+  scope: text("scope").notNull().default("public"), // "public" | "org" | "user"
+
+  // Ownership (for non-public skills)
+  owner_id: text("owner_id"),
+
+  // Metadata
+  version: text("version").default("1.0.0"),
+  tags: text("tags", { mode: "json" }), // array of strings
+
+  // Usage tracking
+  usage_count: integer("usage_count").default(0),
+  last_used_at: text("last_used_at"),
+
+  // State
+  is_active: integer("is_active", { mode: "boolean" }).default(true),
+
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at"),
+});
+
+export const skillInvocations = sqliteTable("skill_invocations", {
+  id: text("id").primaryKey(),
+  tenant_id: text("tenant_id").notNull().default("default"),
+
+  // What was invoked
+  skill_id: text("skill_id")
+    .notNull()
+    .references(() => skills.id),
+  skill_version: text("skill_version"),
+
+  // Context
+  deal_id: text("deal_id").references(() => deals.id),
+  entity_id: text("entity_id").references(() => entities.id),
+
+  // Actor (from headers)
+  actor: text("actor").notNull(),
+  actor_type: text("actor_type"), // "human" | "ai"
+  ai_provider: text("ai_provider"), // "anthropic" | "openai"
+
+  // Outcome
+  status: text("status").notNull(), // "started" | "completed" | "failed"
+  completed_at: text("completed_at"),
+
+  // Optional summary of what was produced
+  output_summary: text("output_summary"),
+
+  created_at: text("created_at").notNull(),
+});

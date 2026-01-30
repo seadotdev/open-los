@@ -1,1 +1,1 @@
-{"version":3,"file":"deals.d.ts","sourceRoot":"","sources":["../../../../src/routes/deals.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,IAAI,EAAE,MAAM,MAAM,CAAC;AAC5B,OAAO,KAAK,EAAE,UAAU,EAAE,MAAM,cAAc,CAAC;AAG/C,wBAAgB,UAAU,CAAC,GAAG,EAAE,UAAU,8EAyCzC"}
+{"version":3,"file":"deals.d.ts","sourceRoot":"","sources":["../../../../src/routes/deals.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,IAAI,EAAE,MAAM,MAAM,CAAC;AAC5B,OAAO,KAAK,EAAE,UAAU,EAAE,MAAM,cAAc,CAAC;AAY/C,wBAAgB,UAAU,CAAC,GAAG,EAAE,UAAU,8EAkEzC"}

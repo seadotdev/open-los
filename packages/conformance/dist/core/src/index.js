@@ -17,4 +17,6 @@ export { ApprovalService } from "./services/approval.js";
 export { LoanAccountService } from "./services/loan-account.js";
 export { createLoanAccountFromFacility, approveLoanAccount, createApprovedLoanFromFacility, getLoanBalanceForDeal, checkDealArrearsStatus, } from "./services/loan-integration.js";
 export { AppError, NotFoundError, ValidationError, StageGuardError, InvalidTransitionError, ForbiddenError, OverrideRequiredError, ConflictError, } from "./services/errors.js";
+export { SkillService, parseSkillMd, extractReferences } from "./services/skill.js";
+export { skills, skillInvocations } from "./schema/tables.js";
 //# sourceMappingURL=index.js.map

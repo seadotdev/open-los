@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { createDatabase, migrateDatabase, DealService, DocumentService, AuditService, StageService, EntityService, RelationshipService, TemplateService, ArtifactService, SpreadService, CovenantService, MonitoringService, EmailService, LoanAccountService, AppError, } from "@open-los/core";
+import { createDatabase, migrateDatabase, DealService, DocumentService, AuditService, StageService, EntityService, RelationshipService, TemplateService, ArtifactService, SpreadService, CovenantService, MonitoringService, EmailService, LoanAccountService, SkillService, AppError, } from "@open-los/core";
 import { dealRoutes } from "./routes/deals.js";
 import { documentRoutes } from "./routes/documents.js";
 import { auditRoutes } from "./routes/audit.js";
@@ -13,6 +13,7 @@ import { covenantRoutes } from "./routes/covenants.js";
 import { monitoringRoutes } from "./routes/monitoring.js";
 import { emailRoutes } from "./routes/email.js";
 import { loanRoutes } from "./routes/loans.js";
+import { skillRoutes } from "./routes/skills.js";
 export function createApp(ctx) {
     const app = new Hono();
     // CORS
@@ -30,6 +31,7 @@ export function createApp(ctx) {
     app.route("/v1", monitoringRoutes(ctx));
     app.route("/v1", emailRoutes(ctx));
     app.route("/v1", loanRoutes(ctx));
+    app.route("/v1", skillRoutes(ctx));
     // Global error handler
     app.onError((err, c) => {
         if (err instanceof AppError) {
@@ -70,6 +72,7 @@ export async function createAppWithDb(getNow) {
     const monitoringService = new MonitoringService(db, auditService, clock);
     const emailService = new EmailService(db, auditService, clock);
     const loanAccountService = new LoanAccountService(db, auditService, clock);
+    const skillService = new SkillService(db, clock, "./skills");
     const ctx = {
         db,
         dealService,
@@ -85,6 +88,7 @@ export async function createAppWithDb(getNow) {
         monitoringService,
         emailService,
         loanAccountService,
+        skillService,
         getNow: clock,
         users: new Map(),
     };
