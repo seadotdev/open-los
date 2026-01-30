@@ -1,0 +1,116 @@
+name: Auto PR and Merge
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if PR already exists
+        id: check-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_EXISTS=$(gh pr list --head "${{ github.ref_name }}" --json number --jq 'length')
+          echo "pr_exists=$PR_EXISTS" >> $GITHUB_OUTPUT
+
+      - name: Detect change type
+        id: change-type
+        run: |
+          # Get all changed files compared to main
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Check if any non-docs files changed
+          # Docs-only patterns: *.md, docs/*, IDEAS.md, prompts/*, etc.
+          DOCS_ONLY=true
+
+          while IFS= read -r file; do
+            # Skip empty lines
+            [ -z "$file" ] && continue
+
+            # Check if file is documentation/ideas
+            case "$file" in
+              *.md|docs/*|prompts/*|IDEAS.md|AGENTS.md|SPEC.md|README.md|*.txt)
+                echo "  [docs] $file"
+                ;;
+              *)
+                echo "  [code] $file"
+                DOCS_ONLY=false
+                ;;
+            esac
+          done <<< "$CHANGED_FILES"
+
+          echo "docs_only=$DOCS_ONLY" >> $GITHUB_OUTPUT
+          echo ""
+          echo "Result: docs_only=$DOCS_ONLY"
+
+      - name: Create Pull Request
+        if: steps.check-pr.outputs.pr_exists == '0'
+        id: create-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCS_ONLY: ${{ steps.change-type.outputs.docs_only }}
+        run: |
+          # Extract branch name for PR title
+          BRANCH_NAME="${{ github.ref_name }}"
+
+          # Get commit messages for PR body
+          COMMITS=$(git log origin/main..HEAD --pretty=format:"- %s" 2>/dev/null || echo "Initial changes")
+
+          # Set PR type indicator
+          if [ "$DOCS_ONLY" = "true" ]; then
+            PR_TYPE="📝 Docs"
+            MERGE_NOTE="This PR contains only documentation changes and will be **auto-merged** when CI passes."
+          else
+            PR_TYPE="💻 Code"
+            MERGE_NOTE="This PR contains code changes and **requires review** before merging."
+          fi
+
+          # Create the PR
+          PR_URL=$(gh pr create \
+            --title "$PR_TYPE: ${BRANCH_NAME#claude/}" \
+            --body "## Auto-generated PR from Claude Code session
+
+### Changes
+${COMMITS}
+
+---
+${MERGE_NOTE}
+
+*This PR was automatically created from a Claude Code session.*" \
+            --base main \
+            --head "${{ github.ref_name }}")
+
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+      - name: Enable auto-merge (docs only)
+        if: steps.check-pr.outputs.pr_exists == '0' && steps.change-type.outputs.docs_only == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Docs-only PR detected, enabling auto-merge..."
+          gh pr merge "${{ github.ref_name }}" --auto --squash
+
+      - name: Skip auto-merge (code changes)
+        if: steps.check-pr.outputs.pr_exists == '0' && steps.change-type.outputs.docs_only == 'false'
+        run: |
+          echo "Code changes detected, PR requires manual review."
+          echo "Auto-merge NOT enabled."
