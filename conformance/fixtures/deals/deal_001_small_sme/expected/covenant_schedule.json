@@ -1,0 +1,86 @@
+{
+  "description": "Expected covenant schedule for Acme Manufacturing Ltd deal",
+  "deal_reference": "deal_001_small_sme",
+  "covenants": [
+    {
+      "name": "Minimum DSCR",
+      "type": "financial",
+      "metric": "dscr",
+      "operator": ">=",
+      "threshold": 1.2,
+      "frequency": "quarterly",
+      "grace_period_days": 30,
+      "expected_test": {
+        "actual_value": 8.167,
+        "status": "pass",
+        "comment": "DSCR of 8.167 is well above 1.2 threshold"
+      }
+    },
+    {
+      "name": "Maximum Leverage",
+      "type": "financial",
+      "metric": "leverage",
+      "operator": "<=",
+      "threshold": 3.0,
+      "frequency": "quarterly",
+      "grace_period_days": 0,
+      "expected_test": {
+        "actual_value": 1.86,
+        "status": "pass",
+        "comment": "Leverage of 1.86x is below 3.0x threshold"
+      }
+    },
+    {
+      "name": "Minimum Liquidity",
+      "type": "financial",
+      "metric": "min_liquidity",
+      "operator": ">=",
+      "threshold": 5000000,
+      "frequency": "monthly",
+      "grace_period_days": 14,
+      "expected_test": {
+        "actual_value": 15000000,
+        "status": "pass",
+        "comment": "Cash of 15M is above 5M minimum liquidity"
+      }
+    },
+    {
+      "name": "Minimum Gross Margin",
+      "type": "financial",
+      "metric": "gross_margin",
+      "operator": ">=",
+      "threshold": 0.3,
+      "frequency": "quarterly",
+      "grace_period_days": 0,
+      "expected_test": {
+        "actual_value": 0.4,
+        "status": "pass",
+        "comment": "Gross margin of 40% exceeds 30% floor"
+      }
+    },
+    {
+      "name": "Minimum Current Ratio",
+      "type": "financial",
+      "metric": "current_ratio",
+      "operator": ">=",
+      "threshold": 1.25,
+      "frequency": "quarterly",
+      "grace_period_days": 30,
+      "expected_test": {
+        "actual_value": 2.0,
+        "status": "pass",
+        "comment": "Current ratio of 2.0 exceeds 1.25 threshold"
+      }
+    },
+    {
+      "name": "Quarterly Financial Reporting",
+      "type": "reporting",
+      "metric": "reporting_timeliness",
+      "operator": "<=",
+      "threshold": 90,
+      "frequency": "quarterly",
+      "grace_period_days": 14,
+      "notes": "Management accounts due within 90 days of quarter end"
+    }
+  ]
+}

@@ -1,0 +1,1540 @@
+openapi: "3.1.0"
+info:
+  title: Open LOS API
+  description: Open source B2B Lending CRM — headless API
+  version: "0.1.0"
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+paths:
+  # ── Deals ──────────────────────────────────────────────────────────────
+  /v1/deals:
+    post:
+      operationId: createDeal
+      summary: Create a new deal
+      tags: [deals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDealRequest"
+      responses:
+        "201":
+          description: Deal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      operationId: listDeals
+      summary: List deals with filters
+      tags: [deals]
+      parameters:
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+        - name: stage
+          in: query
+          schema:
+            $ref: "#/components/schemas/Stage"
+      responses:
+        "200":
+          description: Paginated deal list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealList"
+
+  /v1/deals/{dealId}:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    get:
+      operationId: getDeal
+      summary: Get deal by ID
+      tags: [deals]
+      responses:
+        "200":
+          description: Deal details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: updateDeal
+      summary: Update deal fields
+      tags: [deals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDealRequest"
+      responses:
+        "200":
+          description: Deal updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  # ── Stage Transitions ──────────────────────────────────────────────────
+  /v1/deals/{dealId}/stage-transitions:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    post:
+      operationId: transitionStage
+      summary: Transition deal to a new stage
+      tags: [stages]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StageTransitionRequest"
+      responses:
+        "200":
+          description: Transition succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StageTransition"
+        "409":
+          description: Transition blocked by guard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    get:
+      operationId: listStageTransitions
+      summary: List stage transition history
+      tags: [stages]
+      responses:
+        "200":
+          description: Stage transition history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transitions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StageTransition"
+
+  # ── Documents ──────────────────────────────────────────────────────────
+  /v1/deals/{dealId}/documents:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    post:
+      operationId: uploadDocument
+      summary: Upload a document to a deal
+      tags: [documents]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, meta]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                meta:
+                  type: string
+                  description: JSON string with doc_type, phase, label
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentRequest"
+      responses:
+        "202":
+          description: Document accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      operationId: listDocuments
+      summary: List documents for a deal
+      tags: [documents]
+      responses:
+        "200":
+          description: Document list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Document"
+
+  /v1/documents/{documentId}:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getDocument
+      summary: Get document metadata
+      tags: [documents]
+      responses:
+        "200":
+          description: Document details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /v1/documents/{documentId}/versions:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listDocumentVersions
+      summary: List document versions
+      tags: [documents]
+      responses:
+        "200":
+          description: Version history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version:
+                          type: integer
+                        created_at:
+                          type: string
+                          format: date-time
+                        created_by:
+                          type: string
+                        checksum:
+                          type: string
+
+  # ── Audit ──────────────────────────────────────────────────────────────
+  /v1/deals/{dealId}/audit:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    get:
+      operationId: listAuditEvents
+      summary: List audit events for a deal
+      tags: [audit]
+      parameters:
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: actor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit event list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, total]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditEvent"
+                  total:
+                    type: integer
+                  cursor:
+                    type: string
+
+  # ── Entities ───────────────────────────────────────────────────────────
+  /v1/entities:
+    post:
+      operationId: createEntity
+      summary: Create an entity (company or person)
+      tags: [entities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEntityRequest"
+      responses:
+        "201":
+          description: Entity created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+    get:
+      operationId: listEntities
+      summary: List entities
+      tags: [entities]
+      parameters:
+        - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/PageCursor"
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [company, person]
+      responses:
+        "200":
+          description: Entity list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Entity"
+
+  /v1/entities/{entityId}:
+    parameters:
+      - name: entityId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getEntity
+      summary: Get entity by ID
+      tags: [entities]
+      responses:
+        "200":
+          description: Entity details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+    patch:
+      operationId: updateEntity
+      summary: Update entity fields
+      tags: [entities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEntityRequest"
+      responses:
+        "200":
+          description: Entity updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+
+  # ── Relationships ──────────────────────────────────────────────────────
+  /v1/relationships:
+    post:
+      operationId: createRelationship
+      summary: Create a relationship between entities
+      tags: [entities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRelationshipRequest"
+      responses:
+        "201":
+          description: Relationship created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Relationship"
+
+  /v1/deals/{dealId}/borrower-group:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    get:
+      operationId: getBorrowerGroup
+      summary: Get the borrower group graph for a deal
+      tags: [entities]
+      responses:
+        "200":
+          description: Borrower group with entities and relationships
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entities, relationships]
+                properties:
+                  entities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Entity"
+                  relationships:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Relationship"
+
+  # ── Templates ──────────────────────────────────────────────────────────
+  /v1/templates:
+    get:
+      operationId: listTemplates
+      summary: List available templates
+      tags: [templates]
+      parameters:
+        - name: phase
+          in: query
+          schema:
+            $ref: "#/components/schemas/Stage"
+        - name: doc_type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Template list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Template"
+
+  /v1/templates/render:
+    post:
+      operationId: renderTemplate
+      summary: Render a template with deal context
+      tags: [templates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template_id, deal_id]
+              properties:
+                template_id:
+                  type: string
+                deal_id:
+                  type: string
+                  format: uuid
+                overrides:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Rendered template
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [markdown, template_version]
+                properties:
+                  markdown:
+                    type: string
+                  html:
+                    type: string
+                  template_version:
+                    type: string
+
+  /v1/deals/{dealId}/artifacts:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    get:
+      operationId: listArtifacts
+      summary: List frozen artifacts for a deal
+      tags: [templates]
+      responses:
+        "200":
+          description: Artifact list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artifacts:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, template_id, deal_id, frozen_at, markdown]
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        template_id:
+                          type: string
+                        deal_id:
+                          type: string
+                          format: uuid
+                        frozen_at:
+                          type: string
+                          format: date-time
+                        template_version:
+                          type: string
+                        markdown:
+                          type: string
+    post:
+      operationId: freezeArtifact
+      summary: Freeze a rendered template as an immutable artifact
+      tags: [templates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template_id]
+              properties:
+                template_id:
+                  type: string
+                overrides:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "201":
+          description: Artifact frozen
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, frozen_at]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  frozen_at:
+                    type: string
+                    format: date-time
+
+  # ── Underwriting / Spread ──────────────────────────────────────────────
+  /v1/deals/{dealId}/spread:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    post:
+      operationId: createSpread
+      summary: Ingest financial data and compute spread
+      tags: [underwriting]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                entity_id:
+                  type: string
+                  format: uuid
+                period:
+                  type: string
+                  description: "e.g. FY2024, H1-2025"
+          application/json:
+            schema:
+              type: object
+              required: [entity_id, period, line_items]
+              properties:
+                entity_id:
+                  type: string
+                  format: uuid
+                period:
+                  type: string
+                line_items:
+                  type: array
+                  items:
+                    type: object
+                    required: [category, label, amount]
+                    properties:
+                      category:
+                        type: string
+                      label:
+                        type: string
+                      amount:
+                        type: integer
+                        description: Minor units (cents/pence)
+      responses:
+        "200":
+          description: Spread computed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [spread_id, ratios]
+                properties:
+                  spread_id:
+                    type: string
+                    format: uuid
+                  entity_id:
+                    type: string
+                    format: uuid
+                  period:
+                    type: string
+                  line_items:
+                    type: array
+                    items:
+                      type: object
+                  ratios:
+                    type: object
+                    properties:
+                      current_ratio:
+                        type: number
+                      debt_to_equity:
+                        type: number
+                      dscr:
+                        type: number
+                      gross_margin:
+                        type: number
+                      net_margin:
+                        type: number
+                      leverage:
+                        type: number
+
+  /v1/deals/{dealId}/ratios:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    get:
+      operationId: getRatios
+      summary: Get computed financial ratios for a deal
+      tags: [underwriting]
+      responses:
+        "200":
+          description: Ratio summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ratios:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        entity_id:
+                          type: string
+                          format: uuid
+                        period:
+                          type: string
+                        current_ratio:
+                          type: number
+                        debt_to_equity:
+                          type: number
+                        dscr:
+                          type: number
+                        gross_margin:
+                          type: number
+
+  # ── Covenants ──────────────────────────────────────────────────────────
+  /v1/deals/{dealId}/covenants:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    post:
+      operationId: createCovenant
+      summary: Add a covenant to a deal
+      tags: [covenants]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCovenantRequest"
+      responses:
+        "201":
+          description: Covenant created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Covenant"
+    get:
+      operationId: listCovenants
+      summary: List covenants for a deal
+      tags: [covenants]
+      responses:
+        "200":
+          description: Covenant list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  covenants:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Covenant"
+
+  /v1/deals/{dealId}/covenants/test:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    post:
+      operationId: testCovenants
+      summary: Run covenant tests against current data
+      tags: [covenants]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                as_of:
+                  type: string
+                  format: date-time
+                covenant_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        "200":
+          description: Covenant test results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CovenantTestResult"
+
+  /v1/covenants/{covenantId}/waivers:
+    parameters:
+      - name: covenantId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: createWaiver
+      summary: Record a covenant waiver
+      tags: [covenants]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, approved_by]
+              properties:
+                reason:
+                  type: string
+                approved_by:
+                  type: string
+                valid_from:
+                  type: string
+                  format: date-time
+                valid_until:
+                  type: string
+                  format: date-time
+      responses:
+        "201":
+          description: Waiver recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, covenant_id, reason, approved_by, created_at]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  covenant_id:
+                    type: string
+                    format: uuid
+                  reason:
+                    type: string
+                  approved_by:
+                    type: string
+                  valid_from:
+                    type: string
+                    format: date-time
+                  valid_until:
+                    type: string
+                    format: date-time
+                  created_at:
+                    type: string
+                    format: date-time
+
+  # ── Monitoring ─────────────────────────────────────────────────────────
+  /v1/deals/{dealId}/monitoring/ingest:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    post:
+      operationId: ingestMonitoringData
+      summary: Ingest bank transactions or accounting data
+      tags: [monitoring]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, source_type]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                source_type:
+                  type: string
+                  enum: [bank_transactions, accounting]
+          application/json:
+            schema:
+              type: object
+              required: [source_type, transactions]
+              properties:
+                source_type:
+                  type: string
+                  enum: [bank_transactions, accounting]
+                transactions:
+                  type: array
+                  items:
+                    type: object
+                    required: [date, amount, description]
+                    properties:
+                      date:
+                        type: string
+                        format: date
+                      amount:
+                        type: integer
+                        description: Minor units, negative for debits
+                      description:
+                        type: string
+                      category:
+                        type: string
+      responses:
+        "202":
+          description: Data accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ingestion_id:
+                    type: string
+                    format: uuid
+                  records_accepted:
+                    type: integer
+
+  /v1/deals/{dealId}/monitoring/status:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    get:
+      operationId: getMonitoringStatus
+      summary: Get monitoring status including liquidity and alerts
+      tags: [monitoring]
+      responses:
+        "200":
+          description: Monitoring status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deal_id, liquidity, alerts, covenant_status]
+                properties:
+                  deal_id:
+                    type: string
+                    format: uuid
+                  liquidity:
+                    type: object
+                    properties:
+                      current_balance:
+                        type: integer
+                      avg_monthly_burn:
+                        type: integer
+                      runway_months:
+                        type: number
+                      as_of:
+                        type: string
+                        format: date-time
+                  alerts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        type:
+                          type: string
+                          enum: [covenant_breach, liquidity_warning, data_gap, payment_missed]
+                        severity:
+                          type: string
+                          enum: [info, warning, critical]
+                        message:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                  covenant_status:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CovenantTestResult"
+
+  # ── Email Ingest ───────────────────────────────────────────────────────
+  /v1/email/ingest:
+    post:
+      operationId: ingestEmail
+      summary: Ingest an email (.eml) and link to deal
+      tags: [email]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: ".eml file"
+                deal_id:
+                  type: string
+                  format: uuid
+                  description: "Optional — system will try to auto-link if omitted"
+      responses:
+        "202":
+          description: Email accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [communication_id]
+                properties:
+                  communication_id:
+                    type: string
+                    format: uuid
+                  deal_id:
+                    type: string
+                    format: uuid
+                    description: Linked deal (may be null if auto-link fails)
+                  subject:
+                    type: string
+                  from:
+                    type: string
+                  attachments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        document_id:
+                          type: string
+                          format: uuid
+                        filename:
+                          type: string
+
+  /v1/deals/{dealId}/communications:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    get:
+      operationId: listCommunications
+      summary: List communications (emails, notes) for a deal
+      tags: [email]
+      responses:
+        "200":
+          description: Communication list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  communications:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        type:
+                          type: string
+                          enum: [email, note, meeting]
+                        subject:
+                          type: string
+                        from:
+                          type: string
+                        to:
+                          type: array
+                          items:
+                            type: string
+                        body:
+                          type: string
+                        thread_id:
+                          type: string
+                        attachments:
+                          type: array
+                          items:
+                            type: string
+                            format: uuid
+                        created_at:
+                          type: string
+                          format: date-time
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Components
+# ═══════════════════════════════════════════════════════════════════════════
+components:
+  parameters:
+    DealId:
+      name: dealId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PageLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    PageCursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+  schemas:
+    # ── Stages ──
+    Stage:
+      type: string
+      enum: [broker, origination, underwriting, closing, monitoring]
+
+    OriginationOutcome:
+      type: string
+      enum: [reject, need_info, proceed, refer]
+
+    # ── Deal ──
+    Deal:
+      type: object
+      required: [id, tenant_id, borrower_name, stage, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+        borrower_name:
+          type: string
+        borrower_registration_number:
+          type: string
+        jurisdiction:
+          type: string
+        requested_amount:
+          type: integer
+          description: Minor units
+        purpose:
+          type: string
+        stage:
+          $ref: "#/components/schemas/Stage"
+        origination_outcome:
+          $ref: "#/components/schemas/OriginationOutcome"
+        assigned_to:
+          type: string
+        primary_entity_id:
+          type: string
+          format: uuid
+        custom_fields:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateDealRequest:
+      type: object
+      required: [borrower_name]
+      properties:
+        borrower_name:
+          type: string
+        jurisdiction:
+          type: string
+        requested_amount:
+          type: integer
+        purpose:
+          type: string
+        borrower_registration_number:
+          type: string
+        assigned_to:
+          type: string
+        custom_fields:
+          type: object
+          additionalProperties: true
+
+    UpdateDealRequest:
+      type: object
+      properties:
+        borrower_name:
+          type: string
+        jurisdiction:
+          type: string
+        requested_amount:
+          type: integer
+        purpose:
+          type: string
+        borrower_registration_number:
+          type: string
+        assigned_to:
+          type: string
+        origination_outcome:
+          $ref: "#/components/schemas/OriginationOutcome"
+        custom_fields:
+          type: object
+          additionalProperties: true
+
+    DealList:
+      type: object
+      required: [deals, total]
+      properties:
+        deals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Deal"
+        total:
+          type: integer
+        cursor:
+          type: string
+
+    # ── Stage Transition ──
+    StageTransitionRequest:
+      type: object
+      required: [to_stage]
+      properties:
+        to_stage:
+          $ref: "#/components/schemas/Stage"
+        rationale:
+          type: string
+        override:
+          type: boolean
+          default: false
+        override_rationale:
+          type: string
+
+    StageTransition:
+      type: object
+      required: [id, deal_id, from_stage, to_stage, actor, transitioned_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        deal_id:
+          type: string
+          format: uuid
+        from_stage:
+          $ref: "#/components/schemas/Stage"
+        to_stage:
+          $ref: "#/components/schemas/Stage"
+        actor:
+          type: string
+        rationale:
+          type: string
+        override:
+          type: boolean
+        override_rationale:
+          type: string
+        checklist_snapshot:
+          type: array
+          items:
+            type: object
+            properties:
+              item:
+                type: string
+              satisfied:
+                type: boolean
+        transitioned_at:
+          type: string
+          format: date-time
+
+    # ── Document ──
+    Document:
+      type: object
+      required: [id, deal_id, doc_type, filename, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        deal_id:
+          type: string
+          format: uuid
+        doc_type:
+          type: string
+        phase:
+          $ref: "#/components/schemas/Stage"
+        filename:
+          type: string
+        label:
+          type: string
+        mime_type:
+          type: string
+        size_bytes:
+          type: integer
+        checksum:
+          type: string
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+
+    CreateDocumentRequest:
+      type: object
+      required: [doc_type, filename, content_base64]
+      properties:
+        doc_type:
+          type: string
+        phase:
+          $ref: "#/components/schemas/Stage"
+        filename:
+          type: string
+        label:
+          type: string
+        content_base64:
+          type: string
+          format: byte
+
+    # ── Audit Event ──
+    AuditEvent:
+      type: object
+      required: [id, deal_id, type, actor, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        deal_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: "e.g. DEAL_CREATED, DEAL_UPDATED, STAGE_TRANSITION, DOCUMENT_UPLOADED"
+        actor:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        object_type:
+          type: string
+        object_id:
+          type: string
+          format: uuid
+        changes:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              before:
+                {}
+              after:
+                {}
+        metadata:
+          type: object
+          additionalProperties: true
+
+    # ── Entity ──
+    Entity:
+      type: object
+      required: [id, type, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [company, person]
+        name:
+          type: string
+        legal_name:
+          type: string
+        registration_number:
+          type: string
+        lei:
+          type: string
+        jurisdiction:
+          type: string
+        identifiers:
+          type: array
+          items:
+            type: object
+            properties:
+              scheme:
+                type: string
+              value:
+                type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateEntityRequest:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          enum: [company, person]
+        name:
+          type: string
+        legal_name:
+          type: string
+        registration_number:
+          type: string
+        lei:
+          type: string
+        jurisdiction:
+          type: string
+        identifiers:
+          type: array
+          items:
+            type: object
+            required: [scheme, value]
+            properties:
+              scheme:
+                type: string
+              value:
+                type: string
+
+    UpdateEntityRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        legal_name:
+          type: string
+        registration_number:
+          type: string
+        lei:
+          type: string
+        jurisdiction:
+          type: string
+
+    # ── Relationship ──
+    Relationship:
+      type: object
+      required: [id, from_entity_id, to_entity_id, type, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        from_entity_id:
+          type: string
+          format: uuid
+        to_entity_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [owns, guarantees, directs]
+        ownership_pct:
+          type: number
+          minimum: 0
+          maximum: 100
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateRelationshipRequest:
+      type: object
+      required: [from_entity_id, to_entity_id, type]
+      properties:
+        from_entity_id:
+          type: string
+          format: uuid
+        to_entity_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [owns, guarantees, directs]
+        ownership_pct:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: true
+
+    # ── Template ──
+    Template:
+      type: object
+      required: [id, name, phase, doc_type, version]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        phase:
+          $ref: "#/components/schemas/Stage"
+        doc_type:
+          type: string
+        version:
+          type: string
+        frontmatter:
+          type: object
+          additionalProperties: true
+        body:
+          type: string
+          description: Markdown template body with mustache variables
+
+    # ── Covenant ──
+    Covenant:
+      type: object
+      required: [id, deal_id, name, type, metric, operator, threshold]
+      properties:
+        id:
+          type: string
+          format: uuid
+        deal_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum: [financial, reporting, information]
+        metric:
+          type: string
+          description: "e.g. dscr, leverage, min_liquidity, gross_margin"
+        operator:
+          type: string
+          enum: [">=", "<=", ">", "<", "=="]
+        threshold:
+          type: number
+        frequency:
+          type: string
+          enum: [monthly, quarterly, annually]
+        grace_period_days:
+          type: integer
+          default: 0
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreateCovenantRequest:
+      type: object
+      required: [name, type, metric, operator, threshold]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [financial, reporting, information]
+        metric:
+          type: string
+        operator:
+          type: string
+          enum: [">=", "<=", ">", "<", "=="]
+        threshold:
+          type: number
+        frequency:
+          type: string
+          enum: [monthly, quarterly, annually]
+        grace_period_days:
+          type: integer
+        notes:
+          type: string
+
+    CovenantTestResult:
+      type: object
+      required: [covenant_id, status, actual_value, threshold, tested_at]
+      properties:
+        covenant_id:
+          type: string
+          format: uuid
+        covenant_name:
+          type: string
+        status:
+          type: string
+          enum: [pass, fail, warning, grace_period, waived]
+        actual_value:
+          type: number
+        threshold:
+          type: number
+        operator:
+          type: string
+        metric:
+          type: string
+        tested_at:
+          type: string
+          format: date-time
+        grace_period_expires:
+          type: string
+          format: date-time
+
+    # ── Error ──
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+            retryable:
+              type: boolean
+              default: false

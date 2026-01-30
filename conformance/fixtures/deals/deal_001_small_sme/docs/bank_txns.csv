@@ -1,0 +1,25 @@
+date,amount,description,category
+2025-07-15,-450000,Office rent payment,rent
+2025-07-18,1200000,Client invoice payment,revenue
+2025-07-22,-85000,Utility bills,utilities
+2025-07-25,-120000,Staff payroll,payroll
+2025-08-01,-450000,Office rent payment,rent
+2025-08-05,980000,Client invoice payment,revenue
+2025-08-12,-95000,Insurance premium,insurance
+2025-08-20,-130000,Staff payroll,payroll
+2025-09-01,-450000,Office rent payment,rent
+2025-09-10,1100000,Client invoice payment,revenue
+2025-09-15,-78000,Office supplies,supplies
+2025-09-25,-125000,Staff payroll,payroll
+2025-10-01,-450000,Office rent payment,rent
+2025-10-08,1050000,Client invoice payment,revenue
+2025-10-18,-92000,Utility bills,utilities
+2025-10-28,-135000,Staff payroll,payroll
+2025-11-01,-450000,Office rent payment,rent
+2025-11-12,1150000,Client invoice payment,revenue
+2025-11-20,-88000,Marketing expenses,marketing
+2025-11-27,-128000,Staff payroll,payroll
+2025-12-01,-450000,Office rent payment,rent
+2025-12-09,1020000,Client invoice payment,revenue
+2025-12-15,-105000,Equipment maintenance,maintenance
+2025-12-22,-132000,Staff payroll,payroll

@@ -1,0 +1,41 @@
+From: broker@example.com
+To: origination@lender.example.com
+Subject: [DEAL-ACME001] Acme Manufacturing Ltd - Working Capital Application
+Date: Wed, 15 Jan 2026 09:30:00 +0000
+Message-ID: <msg001@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="boundary001"
+
+--boundary001
+Content-Type: text/plain; charset="UTF-8"
+
+Hi Origination Team,
+
+Please find attached the latest management accounts for Acme Manufacturing Ltd.
+
+The borrower is requesting a GBP 250,000 working capital facility to support
+seasonal inventory build ahead of Q2 2026.
+
+Key highlights:
+- Revenue growth of 17.6% YoY (FY2023 to FY2024)
+- Gross margin stable at 40%
+- Current ratio of 2.0x
+- Existing debt of GBP 400,000 (term loan)
+
+Please let me know if you need any additional information.
+
+Best regards,
+Sarah Johnson
+ABC Brokers Ltd
+
+--boundary001
+Content-Type: text/csv; name="q3_management_accounts.csv"
+Content-Disposition: attachment; filename="q3_management_accounts.csv"
+Content-Transfer-Encoding: base64
+
+Y2F0ZWdvcnksbGFiZWwsYW1vdW50LHBlcmlvZApyZXZlbnVlLFRvdGFsIFJldmVudWUsNzUwMDAw
+MDAsSDF-MjAyNQpjb2dzLENvc3Qgb2YgR29vZHMgU29sZCw0NTAwMDAwMCxIMS0yMDI1Cm9wZXJh
+dGluZ19leHBlbnNlLE9wZXJhdGluZyBFeHBlbnNlcywxMTAwMDAwMCxIMS0yMDI1CmludGVyZXN0
+X2V4cGVuc2UsSW50ZXJlc3QgRXhwZW5zZSwxNTAwMDAwLEgxLTIwMjUK
+
+--boundary001--

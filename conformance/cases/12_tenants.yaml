@@ -1,0 +1,398 @@
+version: "0.1.0"
+suite: tenants
+description: >
+  Multi-tenant isolation specification tests. Ensures that data is properly
+  isolated between tenants and that cross-tenant access is prevented.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 1: Tenant Isolation - Deals
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: tenant_deal_isolation
+meta:
+  name: "Deals are isolated between tenants"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  # Create deal in tenant 1
+  - id: create_deal_t1
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Tenant 1 Corp"
+    expect:
+      status: 201
+      save:
+        deal_id_t1: "$.id"
+
+  # List deals in tenant 1 - should see the deal
+  - id: list_deals_t1
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.deals.length"
+          eq: 1
+        - path: "$.deals[0].borrower_name"
+          eq: "Tenant 1 Corp"
+
+---
+test: tenant_cross_tenant_deal_not_visible
+meta:
+  name: "Tenant cannot see another tenant's deals"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: false
+  seed:
+    tenant: { id: "t2" }
+    users:
+      - { id: "u_broker_t2", role: "broker" }
+
+steps:
+  # Create deal in tenant 2
+  - id: create_deal_t2
+    http:
+      actor: "u_broker_t2"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Tenant 2 Corp"
+    expect:
+      status: 201
+
+  # List deals in tenant 2 - should only see tenant 2's deal
+  - id: list_deals_t2
+    http:
+      actor: "u_broker_t2"
+      method: GET
+      path: /v1/deals
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.deals.length"
+          eq: 1
+        - path: "$.deals[0].borrower_name"
+          eq: "Tenant 2 Corp"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 2: Tenant Isolation - Entities
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: tenant_entity_isolation
+meta:
+  name: "Entities are isolated between tenants"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_entity_t1
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Tenant 1 Entity"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: list_entities_t1
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/entities
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.entities.length"
+          eq: 1
+
+---
+test: tenant_entity_cross_tenant_not_visible
+meta:
+  name: "Tenant cannot see another tenant's entities"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: false
+  seed:
+    tenant: { id: "t2" }
+    users:
+      - { id: "u_analyst_t2", role: "analyst" }
+
+steps:
+  - id: create_entity_t2
+    http:
+      actor: "u_analyst_t2"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Tenant 2 Entity"
+    expect:
+      status: 201
+
+  - id: list_entities_t2
+    http:
+      actor: "u_analyst_t2"
+      method: GET
+      path: /v1/entities
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.entities.length"
+          eq: 1
+        - path: "$.entities[0].name"
+          eq: "Tenant 2 Entity"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3: Tenant Isolation - Loans
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: tenant_loan_isolation
+meta:
+  name: "Loans are isolated between tenants"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity_t1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Tenant 1 Borrower"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan_t1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.account_id"
+          eq: "LN-00001"
+      save:
+        loan_id: "$.id"
+
+---
+test: tenant_loan_account_id_per_tenant
+meta:
+  name: "Loan account IDs are sequential per tenant"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: false
+  seed:
+    tenant: { id: "t2" }
+    users:
+      - { id: "u_lender_t2", role: "lender" }
+
+steps:
+  # Tenant 2 starts fresh with LN-00001
+  - id: create_entity_t2
+    http:
+      actor: "u_lender_t2"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Tenant 2 Borrower"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan_t2
+    http:
+      actor: "u_lender_t2"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 20000000
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.account_id"
+          eq: "LN-00001"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 4: Tenant Isolation - Cross-Tenant Access Prevention
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: tenant_cross_access_deal_not_found
+meta:
+  name: "Accessing another tenant's deal returns not found"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker_t1", role: "broker" }
+
+steps:
+  # Create deal in tenant 1
+  - id: create_deal_t1
+    http:
+      actor: "u_broker_t1"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Secret Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+---
+test: tenant_cross_access_deal_blocked
+meta:
+  name: "Tenant 2 cannot access Tenant 1's deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: false
+  seed:
+    tenant: { id: "t2" }
+    users:
+      - { id: "u_broker_t2", role: "broker" }
+
+steps:
+  # First create a deal in T1 to get the ID
+  - id: list_t2_deals
+    http:
+      actor: "u_broker_t2"
+      method: GET
+      path: /v1/deals
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.deals.length"
+          eq: 0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 5: Default Tenant Behavior
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: tenant_default_tenant
+meta:
+  name: "Default tenant is used when X-Tenant-Id header is absent"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "default" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal_default
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Default Tenant Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get_deal_default
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        borrower_name: "Default Tenant Corp"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 6: Tenant Isolation - Audit Trail
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: tenant_audit_isolation
+meta:
+  name: "Audit events are isolated between tenants"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker_t1", role: "broker" }
+
+steps:
+  - id: create_deal_t1
+    http:
+      actor: "u_broker_t1"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Audit Test Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get_audit_t1
+    http:
+      actor: "u_broker_t1"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events.length"
+          gte: 1

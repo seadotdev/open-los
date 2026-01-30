@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/document.schema.json",
+  "title": "Document",
+  "type": "object",
+  "required": ["id", "deal_id", "doc_type", "filename", "created_at"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "deal_id": { "type": "string", "format": "uuid" },
+    "doc_type": { "type": "string", "minLength": 1 },
+    "phase": {
+      "type": "string",
+      "enum": ["broker", "origination", "underwriting", "closing", "monitoring"]
+    },
+    "filename": { "type": "string", "minLength": 1 },
+    "label": { "type": "string" },
+    "mime_type": { "type": "string" },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "checksum": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "created_by": { "type": "string" }
+  },
+  "additionalProperties": false
+}

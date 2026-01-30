@@ -1,0 +1,35 @@
+{
+  "name": "open-los",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open source B2B Lending CRM — headless API with conformance test suite",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspace=packages/conformance && npm run typecheck",
+    "test:conformance": "npm run test --workspace=packages/conformance",
+    "test:smoke": "npm run test:smoke --workspace=packages/conformance",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "simulate": "npm run simulate --workspace=packages/simulation",
+    "simulate:quick": "npm run simulate --workspace=packages/simulation -- quick",
+    "simulate:all": "npm run simulate --workspace=packages/simulation -- run --all",
+    "docs:generate": "npx tsx docs/auto-docs/scripts/generate-docs.ts --all",
+    "docs:release-log": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type release",
+    "docs:blog": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type blog",
+    "docs:social": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type social",
+    "docs:video": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type video",
+    "docs:demo": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type demo",
+    "docs:version-bump": "npx tsx docs/auto-docs/scripts/version-bump.ts",
+    "docs:install-hooks": "bash docs/auto-docs/scripts/install-hooks.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6"
+  }
+}

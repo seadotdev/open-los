@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/covenant-test.schema.json",
+  "title": "CovenantTestResults",
+  "type": "object",
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["covenant_id", "status", "actual_value", "threshold", "tested_at"],
+        "properties": {
+          "covenant_id": { "type": "string", "format": "uuid" },
+          "covenant_name": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail", "warning", "grace_period", "waived"]
+          },
+          "actual_value": { "type": "number" },
+          "threshold": { "type": "number" },
+          "operator": {
+            "type": "string",
+            "enum": [">=", "<=", ">", "<", "=="]
+          },
+          "metric": { "type": "string" },
+          "tested_at": { "type": "string", "format": "date-time" },
+          "grace_period_expires": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,49 @@
+{
+  "description": "Expected ratios for Acme Manufacturing Ltd based on accounts.csv FY2024 data",
+  "period": "FY2024",
+  "source": "conformance/fixtures/deals/deal_001_small_sme/docs/accounts.csv",
+  "line_items_summary": {
+    "revenue": 100000000,
+    "cogs": 60000000,
+    "operating_expense": 15000000,
+    "interest_expense": 3000000,
+    "tax": 5500000,
+    "depreciation": 5000000,
+    "current_assets": 50000000,
+    "current_liabilities": 25000000,
+    "total_debt": 40000000,
+    "total_equity": 60000000,
+    "cash": 15000000
+  },
+  "derived": {
+    "net_income": 16500000,
+    "comment": "revenue(100M) - cogs(60M) - opex(15M) - interest(3M) - tax(5.5M) = 16.5M"
+  },
+  "ratios": {
+    "current_ratio": {
+      "formula": "current_assets / current_liabilities",
+      "value": 2.0
+    },
+    "debt_to_equity": {
+      "formula": "total_debt / total_equity",
+      "value": 0.667
+    },
+    "dscr": {
+      "formula": "(net_income + depreciation + interest_expense) / interest_expense",
+      "comment": "Simplified DSCR assuming no principal repayment in period",
+      "value": 8.167
+    },
+    "gross_margin": {
+      "formula": "(revenue - cogs) / revenue",
+      "value": 0.4
+    },
+    "net_margin": {
+      "formula": "net_income / revenue",
+      "value": 0.165
+    },
+    "leverage": {
+      "formula": "total_debt / (net_income + depreciation)",
+      "value": 1.86
+    }
+  }
+}

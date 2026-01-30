@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# Pre-Push Hook for Open LOS Auto-Documentation
+# This hook ensures all required documentation exists before pushing.
+#
+# Requirements:
+#   - Feature commits must have associated documentation
+#   - Breaking changes must have migration guides
+#   - PRs should have blog post drafts
+#
+# Installation:
+#   cp docs/auto-docs/scripts/hooks/pre-push .git/hooks/pre-push
+#   chmod +x .git/hooks/pre-push
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}[Auto-Docs]${NC} Pre-push hook triggered"
+
+# Get the repo root
+REPO_ROOT=$(git rev-parse --show-toplevel)
+GENERATED_DIR="$REPO_ROOT/docs/auto-docs/generated"
+
+# Read push info from stdin
+while read local_ref local_sha remote_ref remote_sha; do
+    # Skip if deleting a branch
+    if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+        continue
+    fi
+
+    # Get the range of commits being pushed
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+        # New branch - check all commits
+        COMMITS=$(git log --format="%H" "$local_sha" --not --remotes)
+    else
+        # Existing branch - check new commits only
+        COMMITS=$(git log --format="%H" "$remote_sha..$local_sha")
+    fi
+
+    if [ -z "$COMMITS" ]; then
+        echo -e "${BLUE}[Auto-Docs]${NC} No new commits to check"
+        continue
+    fi
+
+    echo -e "${BLUE}[Auto-Docs]${NC} Checking documentation for $(echo "$COMMITS" | wc -l) commit(s)..."
+
+    MISSING_DOCS=0
+    FEATURE_COMMITS=0
+    BREAKING_COMMITS=0
+
+    for COMMIT in $COMMITS; do
+        COMMIT_MSG=$(git log -1 --format="%s" "$COMMIT")
+        SHORT_SHA=$(git rev-parse --short "$COMMIT")
+        TIMESTAMP=$(git log -1 --format="%aI" "$COMMIT" | cut -d'T' -f1)
+
+        # Skip documentation and skip-docs commits
+        if [[ "$COMMIT_MSG" == *"[auto-docs]"* ]] || [[ "$COMMIT_MSG" == *"[skip-docs]"* ]]; then
+            continue
+        fi
+
+        # Check for feature commits
+        if [[ "$COMMIT_MSG" =~ ^feat ]] || [[ "$COMMIT_MSG" == *"add"* ]] || [[ "$COMMIT_MSG" == *"new"* ]]; then
+            FEATURE_COMMITS=$((FEATURE_COMMITS + 1))
+
+            # Check if release log exists
+            RELEASE_LOG="$GENERATED_DIR/releases/${TIMESTAMP}-${SHORT_SHA}.md"
+            if [ ! -f "$RELEASE_LOG" ]; then
+                echo -e "${YELLOW}[Auto-Docs]${NC} Missing release log for feature: $COMMIT_MSG"
+                MISSING_DOCS=$((MISSING_DOCS + 1))
+            fi
+        fi
+
+        # Check for breaking changes
+        if [[ "$COMMIT_MSG" == *"breaking"* ]] || [[ "$COMMIT_MSG" == *"BREAKING"* ]] || [[ "$COMMIT_MSG" == *"!:"* ]]; then
+            BREAKING_COMMITS=$((BREAKING_COMMITS + 1))
+            echo -e "${RED}[Auto-Docs]${NC} Breaking change detected: $COMMIT_MSG"
+
+            # Breaking changes MUST have documentation
+            RELEASE_LOG="$GENERATED_DIR/releases/${TIMESTAMP}-${SHORT_SHA}.md"
+            if [ ! -f "$RELEASE_LOG" ]; then
+                echo -e "${RED}[Auto-Docs]${NC} ERROR: Breaking change without documentation!"
+                MISSING_DOCS=$((MISSING_DOCS + 1))
+            fi
+        fi
+    done
+
+    # Report summary
+    echo ""
+    echo -e "${BLUE}[Auto-Docs]${NC} Documentation Check Summary:"
+    echo -e "  Feature commits: $FEATURE_COMMITS"
+    echo -e "  Breaking changes: $BREAKING_COMMITS"
+    echo -e "  Missing documentation: $MISSING_DOCS"
+
+    # Warn but don't block if documentation is missing
+    if [ $MISSING_DOCS -gt 0 ]; then
+        echo ""
+        echo -e "${YELLOW}[Auto-Docs]${NC} WARNING: Some commits are missing documentation."
+        echo -e "${YELLOW}[Auto-Docs]${NC} Run: npm run docs:generate -- --all"
+        echo ""
+
+        # For breaking changes, we could block the push
+        if [ $BREAKING_COMMITS -gt 0 ]; then
+            echo -e "${RED}[Auto-Docs]${NC} Breaking changes require documentation!"
+            echo -e "${RED}[Auto-Docs]${NC} Please generate documentation before pushing."
+            echo ""
+            echo -e "Run: ${BLUE}npm run docs:generate -- --all${NC}"
+            echo ""
+
+            # Uncomment the following to block pushes without documentation
+            # echo -e "${RED}[Auto-Docs]${NC} Push blocked. Generate documentation first."
+            # exit 1
+        fi
+    else
+        echo -e "${GREEN}[Auto-Docs]${NC} All commits have required documentation"
+    fi
+done
+
+echo -e "${GREEN}[Auto-Docs]${NC} Pre-push check complete"
+exit 0

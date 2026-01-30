@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/template.schema.json",
+  "title": "Template",
+  "type": "object",
+  "required": ["id", "name", "phase", "doc_type", "version"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "phase": {
+      "type": "string",
+      "enum": ["broker", "origination", "underwriting", "closing", "monitoring"]
+    },
+    "doc_type": { "type": "string", "minLength": 1 },
+    "version": { "type": "string" },
+    "frontmatter": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Parsed YAML frontmatter from the template file"
+    },
+    "body": {
+      "type": "string",
+      "description": "Markdown template body with mustache-style {{variables}}"
+    }
+  },
+  "additionalProperties": false
+}

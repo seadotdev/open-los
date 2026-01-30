@@ -1,0 +1,2114 @@
+version: "0.1.0"
+suite: monitoring
+description: >
+  Monitoring stage conformance: bank transaction ingestion (JSON + CSV),
+  liquidity computation, covenant monitoring, alert generation, audit trail,
+  and input validation. All monetary amounts are integers in minor units
+  (cents/pence). Negative = debit/outflow, positive = credit/inflow.
+
+# ─── Helper: reusable setup macro ─────────────────────────────────────────────
+# Many monitoring tests need a deal in the "monitoring" stage. The setup steps
+# create a deal, transition it through broker -> origination -> underwriting ->
+# closing -> monitoring, then optionally add covenants and spread data.
+# Each test repeats these steps explicitly for isolation (reset_db: true).
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  1. INGEST BANK TRANSACTIONS VIA JSON
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 1: Ingest bank transactions (JSON, happy path) ─────────────────────
+---
+test: monitoring_ingest_json
+meta:
+  name: "Ingest bank transactions via JSON payload"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  - id: ingest
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-12-01", amount: -450000, description: "Office rent payment", category: "rent" }
+          - { date: "2025-12-05", amount: 1200000, description: "Client invoice payment", category: "revenue" }
+          - { date: "2025-12-10", amount: -85000, description: "Utility bills", category: "utilities" }
+          - { date: "2025-12-15", amount: -120000, description: "Staff payroll", category: "payroll" }
+          - { date: "2025-12-20", amount: -50000, description: "Office supplies", category: "supplies" }
+    expect:
+      status: 201
+      json_contains:
+        records_accepted: 5
+      json_path_assertions:
+        - path: "$.ingestion_id"
+          exists: true
+      save:
+        ingestion_id: "$.ingestion_id"
+
+# ─── Test 2: Ingest multiple batches accumulates records ──────────────────────
+---
+test: monitoring_ingest_json_multiple_batches
+meta:
+  name: "Multiple JSON ingestions accumulate transaction records"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  - id: ingest_batch_1
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-11-01", amount: -450000, description: "Rent Nov", category: "rent" }
+          - { date: "2025-11-15", amount: 980000, description: "Revenue Nov", category: "revenue" }
+    expect:
+      status: 201
+      json_contains:
+        records_accepted: 2
+
+  - id: ingest_batch_2
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-12-01", amount: -450000, description: "Rent Dec", category: "rent" }
+          - { date: "2025-12-10", amount: 1020000, description: "Revenue Dec", category: "revenue" }
+          - { date: "2025-12-20", amount: -132000, description: "Payroll Dec", category: "payroll" }
+    expect:
+      status: 201
+      json_contains:
+        records_accepted: 3
+      json_path_assertions:
+        - path: "$.ingestion_id"
+          exists: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  2. INGEST BANK TRANSACTIONS VIA CSV FIXTURE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 3: Ingest bank transactions from CSV file ───────────────────────────
+---
+test: monitoring_ingest_csv
+meta:
+  name: "Ingest bank transactions via CSV file upload (multipart)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  - id: ingest_csv
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      multipart:
+        source_type: "bank_transactions"
+        file: "conformance/fixtures/deals/deal_001_small_sme/docs/bank_txns.csv"
+    expect:
+      status: 201
+      json_contains:
+        records_accepted: 24
+      json_path_assertions:
+        - path: "$.ingestion_id"
+          exists: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  3. LIQUIDITY COMPUTATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 4: Liquidity status after ingestion ─────────────────────────────────
+---
+test: monitoring_liquidity_basic
+meta:
+  name: "Liquidity computed after bank transaction ingestion"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+        purpose: "Working capital"
+        borrower_registration_number: "12345678"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  # Ingest 6 months of transactions with alternating positive/negative net months
+  # Total balance ends positive. Some months burn (negative net), some don't.
+  - id: ingest_txns
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          # Month 1 (Jul): in 500000, out -800000 = net -300000 (burn)
+          - { date: "2025-07-15", amount: -600000, description: "Rent Jul", category: "rent" }
+          - { date: "2025-07-18", amount: 500000, description: "Revenue Jul", category: "revenue" }
+          - { date: "2025-07-22", amount: -100000, description: "Utilities Jul", category: "utilities" }
+          - { date: "2025-07-25", amount: -100000, description: "Payroll Jul", category: "payroll" }
+          # Month 2 (Aug): in 2000000, out -500000 = net +1500000 (positive)
+          - { date: "2025-08-01", amount: -300000, description: "Rent Aug", category: "rent" }
+          - { date: "2025-08-05", amount: 2000000, description: "Revenue Aug", category: "revenue" }
+          - { date: "2025-08-12", amount: -100000, description: "Insurance Aug", category: "insurance" }
+          - { date: "2025-08-20", amount: -100000, description: "Payroll Aug", category: "payroll" }
+          # Month 3 (Sep): in 400000, out -700000 = net -300000 (burn)
+          - { date: "2025-09-01", amount: -500000, description: "Rent Sep", category: "rent" }
+          - { date: "2025-09-10", amount: 400000, description: "Revenue Sep", category: "revenue" }
+          - { date: "2025-09-15", amount: -100000, description: "Supplies Sep", category: "supplies" }
+          - { date: "2025-09-25", amount: -100000, description: "Payroll Sep", category: "payroll" }
+          # Month 4 (Oct): in 2500000, out -600000 = net +1900000 (positive)
+          - { date: "2025-10-01", amount: -400000, description: "Rent Oct", category: "rent" }
+          - { date: "2025-10-08", amount: 2500000, description: "Revenue Oct", category: "revenue" }
+          - { date: "2025-10-18", amount: -100000, description: "Utilities Oct", category: "utilities" }
+          - { date: "2025-10-28", amount: -100000, description: "Payroll Oct", category: "payroll" }
+          # Month 5 (Nov): in 300000, out -600000 = net -300000 (burn)
+          - { date: "2025-11-01", amount: -400000, description: "Rent Nov", category: "rent" }
+          - { date: "2025-11-12", amount: 300000, description: "Revenue Nov", category: "revenue" }
+          - { date: "2025-11-20", amount: -100000, description: "Marketing Nov", category: "marketing" }
+          - { date: "2025-11-27", amount: -100000, description: "Payroll Nov", category: "payroll" }
+          # Month 6 (Dec): in 2200000, out -500000 = net +1700000 (positive)
+          - { date: "2025-12-01", amount: -300000, description: "Rent Dec", category: "rent" }
+          - { date: "2025-12-09", amount: 2200000, description: "Revenue Dec", category: "revenue" }
+          - { date: "2025-12-15", amount: -100000, description: "Maintenance Dec", category: "maintenance" }
+          - { date: "2025-12-22", amount: -100000, description: "Payroll Dec", category: "payroll" }
+    expect:
+      status: 201
+      json_contains:
+        records_accepted: 24
+
+  - id: check_status
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.liquidity.current_balance"
+          exists: true
+        - path: "$.liquidity.avg_monthly_burn"
+          exists: true
+        - path: "$.liquidity.runway_months"
+          gte: 4.0
+          lte: 20.0
+
+# ─── Test 5: Liquidity with specific balance and burn rate ────────────────────
+---
+test: monitoring_liquidity_runway_calculation
+meta:
+  name: "Runway months calculated as current_balance / avg_monthly_burn"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Runway Corp"
+        jurisdiction: "GB"
+        requested_amount: 50000000
+        purpose: "Expansion"
+        borrower_registration_number: "55556666"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  # Ingest 6 months with consistent burn of exactly 500000/month (net outflow)
+  # and a current_balance of 3000000 => runway_months ~ 6.0
+  - id: ingest_txns
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          # Each month: debit -500000 only (pure burn, no revenue inflows)
+          - { date: "2025-07-01", amount: -500000, description: "Operating costs Jul", category: "operations" }
+          - { date: "2025-08-01", amount: -500000, description: "Operating costs Aug", category: "operations" }
+          - { date: "2025-09-01", amount: -500000, description: "Operating costs Sep", category: "operations" }
+          - { date: "2025-10-01", amount: -500000, description: "Operating costs Oct", category: "operations" }
+          - { date: "2025-11-01", amount: -500000, description: "Operating costs Nov", category: "operations" }
+          - { date: "2025-12-01", amount: -500000, description: "Operating costs Dec", category: "operations" }
+          # Initial deposit to set current_balance to 3000000
+          - { date: "2025-06-30", amount: 6000000, description: "Opening balance", category: "transfer" }
+    expect:
+      status: 201
+      json_contains:
+        records_accepted: 7
+
+  - id: check_runway
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.liquidity.current_balance"
+          eq: 3000000
+        - path: "$.liquidity.avg_monthly_burn"
+          eq: 500000
+        - path: "$.liquidity.runway_months"
+          gte: 5.5
+          lte: 6.5
+
+# ─── Test 6: Liquidity updates after additional ingestion ─────────────────────
+---
+test: monitoring_liquidity_updates_on_new_ingestion
+meta:
+  name: "Liquidity recalculates after new transactions are ingested"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Update Corp"
+        jurisdiction: "GB"
+        requested_amount: 30000000
+        purpose: "Working capital"
+        borrower_registration_number: "77778888"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  - id: ingest_initial
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-10-01", amount: 5000000, description: "Opening balance", category: "transfer" }
+          - { date: "2025-11-01", amount: -300000, description: "Costs Nov", category: "operations" }
+          - { date: "2025-12-01", amount: -300000, description: "Costs Dec", category: "operations" }
+    expect:
+      status: 201
+
+  - id: check_initial_balance
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.liquidity.current_balance"
+          eq: 4400000
+      save:
+        initial_runway: "$.liquidity.runway_months"
+
+  - id: ingest_new_debit
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2026-01-05", amount: -1000000, description: "Large equipment purchase", category: "capex" }
+    expect:
+      status: 201
+      json_contains:
+        records_accepted: 1
+
+  - id: check_updated_balance
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.liquidity.current_balance"
+          eq: 3400000
+        - path: "$.liquidity.runway_months"
+          exists: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  4. COVENANT MONITORING REFRESH
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 7: Covenant status returned in monitoring status ────────────────────
+---
+test: monitoring_covenant_status
+meta:
+  name: "Monitoring status includes covenant test results"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Covenant Corp"
+        jurisdiction: "GB"
+        requested_amount: 40000000
+        purpose: "Expansion"
+        borrower_registration_number: "11112222"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  # Add covenants before transitioning to monitoring
+  - id: add_min_liquidity_covenant
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum Liquidity"
+        type: "financial"
+        metric: "min_liquidity"
+        operator: ">="
+        threshold: 2000000
+        frequency: "monthly"
+        grace_period_days: 0
+    expect:
+      status: 201
+      save:
+        cov_liquidity_id: "$.id"
+
+  - id: add_dscr_covenant
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Debt Service Coverage Ratio"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 1.2
+        frequency: "quarterly"
+        grace_period_days: 15
+    expect:
+      status: 201
+      save:
+        cov_dscr_id: "$.id"
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  # Add spread data for covenant computation
+  - id: upload_spread
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/spreads
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 3500000
+          ebitda: 1200000
+          debt_service: 800000
+          net_income: 400000
+    expect:
+      status: 201
+
+  # Ingest transactions for liquidity computation
+  - id: ingest_txns
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-10-01", amount: 5000000, description: "Opening balance", category: "transfer" }
+          - { date: "2025-11-01", amount: -400000, description: "Costs Nov", category: "operations" }
+          - { date: "2025-12-01", amount: -400000, description: "Costs Dec", category: "operations" }
+    expect:
+      status: 201
+
+  - id: check_covenant_status
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.covenant_status"
+          exists: true
+        - path: "$.covenant_status.length"
+          gte: 1
+
+# ─── Test 8: Covenant breach triggers alert ───────────────────────────────────
+---
+test: monitoring_covenant_breach_alert
+meta:
+  name: "Covenant breach generates alert in monitoring status"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Breach Corp"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Working capital"
+        borrower_registration_number: "33334444"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  # Set a high minimum liquidity covenant that will be breached
+  - id: add_covenant
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum Liquidity"
+        type: "financial"
+        metric: "min_liquidity"
+        operator: ">="
+        threshold: 5000000
+        frequency: "monthly"
+        grace_period_days: 0
+    expect:
+      status: 201
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  # Ingest transactions leaving balance well below threshold
+  - id: ingest_txns
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-11-01", amount: 2000000, description: "Opening balance", category: "transfer" }
+          - { date: "2025-12-01", amount: -500000, description: "Costs Dec", category: "operations" }
+    expect:
+      status: 201
+
+  - id: check_breach
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.covenant_status.length"
+          gte: 1
+        # The min_liquidity covenant should fail because balance 1500000 < threshold 5000000
+        - path: "$.alerts.length"
+          gte: 1
+
+# ─── Test 9: Covenant test results include pass and fail details ──────────────
+---
+test: monitoring_covenant_test_details
+meta:
+  name: "Covenant status array contains test results with status, actual_value, and threshold"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Detail Corp"
+        jurisdiction: "GB"
+        requested_amount: 15000000
+        purpose: "Working capital"
+        borrower_registration_number: "99990000"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  # Covenant that will PASS: min liquidity >= 1000000 (balance will be 4000000)
+  - id: add_passing_covenant
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum Liquidity"
+        type: "financial"
+        metric: "min_liquidity"
+        operator: ">="
+        threshold: 1000000
+        frequency: "monthly"
+        grace_period_days: 0
+    expect:
+      status: 201
+
+  # Covenant that will FAIL: DSCR >= 2.0 (actual will be 1.5)
+  - id: add_failing_covenant
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Debt Service Coverage Ratio"
+        type: "financial"
+        metric: "dscr"
+        operator: ">="
+        threshold: 2.0
+        frequency: "quarterly"
+        grace_period_days: 0
+    expect:
+      status: 201
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  - id: upload_spread
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/spreads
+      json:
+        period: "2025-Q4"
+        metrics:
+          revenue: 3000000
+          ebitda: 900000
+          debt_service: 600000
+          net_income: 300000
+    expect:
+      status: 201
+
+  - id: ingest_txns
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-11-01", amount: 5000000, description: "Opening balance", category: "transfer" }
+          - { date: "2025-12-01", amount: -500000, description: "Costs Nov", category: "operations" }
+          - { date: "2025-12-15", amount: -500000, description: "Costs Dec", category: "operations" }
+    expect:
+      status: 201
+
+  - id: check_details
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.covenant_status.length"
+          eq: 2
+        # Each covenant test result should have structured fields
+        - path: "$.covenant_status[0].status"
+          exists: true
+        - path: "$.covenant_status[0].actual_value"
+          exists: true
+        - path: "$.covenant_status[0].threshold"
+          exists: true
+        # At least one alert for the DSCR breach (actual 1.5 < threshold 2.0)
+        - path: "$.alerts.length"
+          gte: 1
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  5. ALERT GENERATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 10: Low liquidity generates liquidity_warning alert ─────────────────
+---
+test: monitoring_alert_low_liquidity
+meta:
+  name: "Low runway (< 3 months) generates liquidity_warning alert"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "LowCash Corp"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Bridge financing"
+        borrower_registration_number: "44445555"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  # Ingest transactions showing high burn rate with low balance
+  # Balance: 1000000, burn ~500000/month => runway ~2 months (< 3)
+  - id: ingest_txns
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-09-01", amount: 4000000, description: "Opening balance", category: "transfer" }
+          - { date: "2025-10-01", amount: -500000, description: "Costs Oct", category: "operations" }
+          - { date: "2025-11-01", amount: -500000, description: "Costs Nov", category: "operations" }
+          - { date: "2025-12-01", amount: -500000, description: "Costs Dec", category: "operations" }
+          - { date: "2025-12-15", amount: -500000, description: "Emergency costs", category: "operations" }
+          - { date: "2025-12-20", amount: -500000, description: "Year-end costs", category: "operations" }
+          - { date: "2025-12-28", amount: -500000, description: "Final costs", category: "operations" }
+    expect:
+      status: 201
+
+  - id: check_alert
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.liquidity.runway_months"
+          lte: 3.0
+        - path: "$.alerts.length"
+          gte: 1
+        - path: "$.alerts[?(@.type=='liquidity_warning')]"
+          exists: true
+
+# ─── Test 11: Covenant breach generates critical alert ────────────────────────
+---
+test: monitoring_alert_covenant_breach_critical
+meta:
+  name: "Covenant breach generates covenant_breach alert with severity critical"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Breach Alert Corp"
+        jurisdiction: "GB"
+        requested_amount: 30000000
+        purpose: "Working capital"
+        borrower_registration_number: "66667777"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  # Set a covenant that will definitely breach
+  - id: add_covenant
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum Liquidity"
+        type: "financial"
+        metric: "min_liquidity"
+        operator: ">="
+        threshold: 10000000
+        frequency: "monthly"
+        grace_period_days: 0
+    expect:
+      status: 201
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  - id: ingest_txns
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-11-01", amount: 2000000, description: "Opening balance", category: "transfer" }
+          - { date: "2025-12-01", amount: -500000, description: "Costs Dec", category: "operations" }
+    expect:
+      status: 201
+
+  - id: check_breach_alert
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.alerts.length"
+          gte: 1
+        - path: "$.alerts[?(@.type=='covenant_breach')]"
+          exists: true
+        - path: "$.alerts[?(@.type=='covenant_breach')].severity"
+          eq: "critical"
+        - path: "$.alerts[?(@.type=='covenant_breach')].message"
+          exists: true
+
+# ─── Test 12: Data gap generates warning alert ───────────────────────────────
+---
+test: monitoring_alert_data_gap
+meta:
+  name: "No transactions for 30+ days generates data_gap alert with severity warning"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Gap Corp"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Working capital"
+        borrower_registration_number: "88889999"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  # Ingest transactions that are stale (last txn > 30 days before "now")
+  # now = 2026-01-15, last txn = 2025-11-30 => gap of 46 days
+  - id: ingest_stale_txns
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-10-01", amount: 3000000, description: "Opening balance", category: "transfer" }
+          - { date: "2025-11-01", amount: -400000, description: "Costs Nov", category: "operations" }
+          - { date: "2025-11-30", amount: -200000, description: "Final Nov payment", category: "operations" }
+    expect:
+      status: 201
+
+  - id: check_data_gap_alert
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.alerts[?(@.type=='data_gap')]"
+          exists: true
+        - path: "$.alerts[?(@.type=='data_gap')].severity"
+          eq: "warning"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  6. AUDIT TRAIL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 13: Ingestion and alert produce audit events ────────────────────────
+---
+test: monitoring_audit_trail
+meta:
+  name: "Ingestion produces MONITORING_INGESTED event; alert produces ALERT_CREATED event"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Audit Trail Corp"
+        jurisdiction: "GB"
+        requested_amount: 20000000
+        purpose: "Working capital"
+        borrower_registration_number: "10101010"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  # Add a covenant that will breach to trigger ALERT_CREATED
+  - id: add_covenant
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/covenants
+      json:
+        name: "Minimum Liquidity"
+        type: "financial"
+        metric: "min_liquidity"
+        operator: ">="
+        threshold: 10000000
+        frequency: "monthly"
+        grace_period_days: 0
+    expect:
+      status: 201
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  - id: ingest_txns
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions:
+          - { date: "2025-12-01", amount: 2000000, description: "Opening balance", category: "transfer" }
+          - { date: "2025-12-15", amount: -500000, description: "Costs", category: "operations" }
+    expect:
+      status: 201
+
+  # Force a status check so covenant test and alert are generated
+  - id: trigger_status
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/monitoring/status
+    expect:
+      status: 200
+
+  - id: check_audit
+    http:
+      actor: "u_monitor"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        # Should contain MONITORING_INGESTED event
+        - path: "$.events[?(@.type=='MONITORING_INGESTED')]"
+          exists: true
+        # Should contain ALERT_CREATED event (from covenant breach)
+        - path: "$.events[?(@.type=='ALERT_CREATED')]"
+          exists: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  7. VALIDATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 14: Ingest without source_type fails 400 ───────────────────────────
+---
+test: monitoring_validation_missing_source_type
+meta:
+  name: "Ingest without source_type returns 400 validation error"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Validation Corp"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Working capital"
+        borrower_registration_number: "20202020"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  - id: ingest_no_source_type
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        transactions:
+          - { date: "2025-12-01", amount: -100000, description: "Test", category: "test" }
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+# ─── Test 15: Ingest with empty transactions array fails 400 ─────────────────
+---
+test: monitoring_validation_empty_transactions
+meta:
+  name: "Ingest with empty transactions array returns 400 validation error"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+      - { id: "u_closer", role: "closer" }
+      - { id: "u_monitor", role: "monitor" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Empty Txn Corp"
+        jurisdiction: "GB"
+        requested_amount: 10000000
+        purpose: "Working capital"
+        borrower_registration_number: "30303030"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: set_origination_outcome
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "application_form"
+        filename: "application.pdf"
+    expect:
+      status: 202
+
+  - id: to_underwriting
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 200
+
+  - id: to_closing
+    http:
+      actor: "u_closer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 200
+
+  - id: to_monitoring
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "monitoring"
+    expect:
+      status: 200
+
+  - id: ingest_empty
+    http:
+      actor: "u_monitor"
+      method: POST
+      path: /v1/deals/${deal_id}/monitoring/ingest
+      json:
+        source_type: "bank_transactions"
+        transactions: []
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"

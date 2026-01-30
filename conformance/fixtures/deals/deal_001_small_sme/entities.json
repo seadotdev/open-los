@@ -1,0 +1,32 @@
+[
+  {
+    "type": "company",
+    "name": "Acme Manufacturing Ltd",
+    "legal_name": "Acme Manufacturing Limited",
+    "registration_number": "12345678",
+    "jurisdiction": "GB",
+    "lei": "549300EXAMPLE000ACME1",
+    "identifiers": [
+      { "scheme": "companies_house", "value": "12345678" },
+      { "scheme": "opencorporates", "value": "gb/12345678" }
+    ],
+    "role": "borrower"
+  },
+  {
+    "type": "company",
+    "name": "Acme Holdings Ltd",
+    "legal_name": "Acme Holdings Limited",
+    "registration_number": "87654321",
+    "jurisdiction": "GB",
+    "identifiers": [
+      { "scheme": "companies_house", "value": "87654321" }
+    ],
+    "role": "parent"
+  },
+  {
+    "type": "person",
+    "name": "Jane Smith",
+    "identifiers": [],
+    "role": "director_and_guarantor"
+  }
+]

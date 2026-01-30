@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/covenant.schema.json",
+  "title": "Covenant",
+  "type": "object",
+  "required": ["id", "deal_id", "name", "type", "metric"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "deal_id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1 },
+    "type": {
+      "type": "string",
+      "enum": ["financial", "reporting", "information"]
+    },
+    "metric": {
+      "type": "string",
+      "description": "e.g. dscr, leverage, min_liquidity, gross_margin, current_ratio"
+    },
+    "operator": {
+      "type": "string",
+      "enum": [">=", "<=", ">", "<", "=="]
+    },
+    "threshold": { "type": "number" },
+    "frequency": {
+      "type": "string",
+      "enum": ["monthly", "quarterly", "annually"]
+    },
+    "grace_period_days": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "notes": { "type": "string" },
+    "reporting_deadline_days": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}
