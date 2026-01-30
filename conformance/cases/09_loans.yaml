@@ -1,0 +1,2201 @@
+version: "0.1.0"
+suite: loans
+description: >
+  Loan ledger specification tests. Covers the complete loan account lifecycle:
+  state machine transitions, financial operations (disbursement, repayment, fees),
+  balance tracking, arrears management, and idempotency guarantees.
+
+  The loan state machine: PENDING_APPROVAL → APPROVED → ACTIVE → CLOSED
+  with branches for rejection, withdrawal, arrears, and locking.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 1: Loan Account Creation
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_create_basic
+meta:
+  name: "Create a loan account with minimal required fields"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  # First create an entity to be the account holder
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Borrower Corp"
+        jurisdiction: "GB"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      json_contains:
+        state: "PENDING_APPROVAL"
+        loan_amount: 10000000
+        currency: "USD"
+        principal_disbursed: 0
+        principal_outstanding: 0
+      json_path_assertions:
+        - path: "$.id"
+          exists: true
+        - path: "$.account_id"
+          regex: "^LN-\\d{5}$"
+        - path: "$.encoded_key"
+          exists: true
+      save:
+        loan_id: "$.id"
+        account_id: "$.account_id"
+        encoded_key: "$.encoded_key"
+
+---
+test: loan_create_with_all_fields
+meta:
+  name: "Create a loan account with all optional fields"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Full Details Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 50000000
+        currency: "GBP"
+        interest_rate: 0.085
+        interest_rate_type: "FIXED"
+        interest_calculation_method: "DECLINING_BALANCE"
+        repayment_method: "EQUAL_INSTALLMENTS"
+        repayment_frequency: "MONTHLY"
+        term_months: 36
+        grace_period_days: 7
+        first_repayment_date: "2026-03-01"
+        custom_fields:
+          product_code: "TERM_LOAN_001"
+    expect:
+      status: 201
+      json_contains:
+        state: "PENDING_APPROVAL"
+        loan_amount: 50000000
+        currency: "GBP"
+        interest_rate: 0.085
+        interest_rate_type: "FIXED"
+        interest_calculation_method: "DECLINING_BALANCE"
+        repayment_method: "EQUAL_INSTALLMENTS"
+        repayment_frequency: "MONTHLY"
+        term_months: 36
+        grace_period_days: 7
+        first_repayment_date: "2026-03-01"
+
+---
+test: loan_create_requires_valid_entity
+meta:
+  name: "Creating a loan requires a valid entity as account holder"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_loan_invalid_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "nonexistent-entity-id"
+        loan_amount: 10000000
+    expect:
+      status: 404
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "NOT_FOUND"
+
+---
+test: loan_create_validates_amount
+meta:
+  name: "Loan amount must be positive"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Test Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan_zero
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 0
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+
+  - id: create_loan_negative
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: -100
+    expect:
+      status: 400
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 2: Loan Retrieval
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_get_by_id
+meta:
+  name: "Retrieve loan by internal ID"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Test Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: get_loan
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        id: "${loan_id}"
+        loan_amount: 10000000
+
+---
+test: loan_get_by_account_id
+meta:
+  name: "Retrieve loan by human-readable account ID (LN-00001)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Test Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        account_id: "$.account_id"
+        loan_id: "$.id"
+
+  - id: get_by_account_id
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/by-account-id/${account_id}
+    expect:
+      status: 200
+      json_contains:
+        id: "${loan_id}"
+        account_id: "${account_id}"
+
+---
+test: loan_get_by_encoded_key
+meta:
+  name: "Retrieve loan by Mambu-compatible encoded key"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Test Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        encoded_key: "$.encoded_key"
+        loan_id: "$.id"
+
+  - id: get_by_encoded_key
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/by-encoded-key/${encoded_key}
+    expect:
+      status: 200
+      json_contains:
+        id: "${loan_id}"
+        encoded_key: "${encoded_key}"
+
+---
+test: loan_account_id_increments
+meta:
+  name: "Account IDs increment sequentially (LN-00001, LN-00002, etc.)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Test Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan_1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.account_id"
+          eq: "LN-00001"
+
+  - id: create_loan_2
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 20000000
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.account_id"
+          eq: "LN-00002"
+
+  - id: create_loan_3
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 30000000
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.account_id"
+          eq: "LN-00003"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3: State Machine - Happy Path (Approval → Disbursement → Active)
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_approve_happy_path
+meta:
+  name: "Approve a loan in PENDING_APPROVAL state"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Approved Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      json_contains:
+        state: "PENDING_APPROVAL"
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+        notes: "Credit committee approved"
+    expect:
+      status: 201
+      json_contains:
+        type: "APPROVAL"
+        loan_account_id: "${loan_id}"
+
+  - id: verify_approved
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        state: "APPROVED"
+      json_path_assertions:
+        - path: "$.approved_at"
+          exists: true
+        - path: "$.approved_by"
+          eq: "u_lender"
+
+---
+test: loan_disburse_activates_loan
+meta:
+  name: "Disbursing an approved loan activates it"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Active Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+        interest_rate: 0.05
+        term_months: 12
+        first_repayment_date: "2026-02-15"
+        repayment_method: "EQUAL_INSTALLMENTS"
+        repayment_frequency: "MONTHLY"
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+        notes: "Full disbursement"
+    expect:
+      status: 201
+      json_contains:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        principal_amount: 10000000
+      json_path_assertions:
+        - path: "$.balance_principal"
+          eq: 10000000
+      save:
+        disbursement_tx_id: "$.id"
+
+  - id: verify_active
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        state: "ACTIVE"
+        principal_disbursed: 10000000
+        principal_outstanding: 10000000
+      json_path_assertions:
+        - path: "$.disbursed_at"
+          exists: true
+        - path: "$.disbursed_by"
+          eq: "u_lender"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 4: State Machine - Rejection and Withdrawal
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_reject_from_pending_approval
+meta:
+  name: "Reject a loan in PENDING_APPROVAL state"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Rejected Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: reject
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REJECT"
+        notes: "Credit score too low"
+    expect:
+      status: 201
+      json_contains:
+        type: "REJECT"
+
+  - id: verify_closed_rejected
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        state: "CLOSED"
+        sub_state: "REJECTED"
+      json_path_assertions:
+        - path: "$.closed_at"
+          exists: true
+
+---
+test: loan_withdraw_from_pending_approval
+meta:
+  name: "Withdraw a loan application from PENDING_APPROVAL state"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Withdrawn Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: withdraw
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "WITHDRAW"
+        notes: "Client changed their mind"
+    expect:
+      status: 201
+      json_contains:
+        type: "WITHDRAW"
+
+  - id: verify_closed_withdrawn
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        state: "CLOSED"
+        sub_state: "WITHDRAWN"
+
+---
+test: loan_withdraw_from_approved
+meta:
+  name: "Withdraw an approved loan before disbursement"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Approved Then Withdrawn Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: withdraw
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "WITHDRAW"
+        notes: "Client found better rate elsewhere"
+    expect:
+      status: 201
+
+  - id: verify_closed_withdrawn
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        state: "CLOSED"
+        sub_state: "WITHDRAWN"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 5: Financial Operations - Repayments
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_repayment_reduces_balance
+meta:
+  name: "Repayment reduces outstanding balance"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Repaying Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+        interest_rate: 0.05
+        term_months: 12
+        first_repayment_date: "2026-02-15"
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: repay
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-02-15"
+        notes: "First monthly payment"
+    expect:
+      status: 201
+      json_contains:
+        type: "REPAYMENT"
+        amount: 1000000
+      json_path_assertions:
+        - path: "$.balance_principal"
+          lte: 10000000
+
+  - id: check_balance
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}/balance
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.principal_outstanding"
+          lte: 10000000
+        - path: "$.principal_paid"
+          gte: 0
+        - path: "$.total_paid"
+          eq: 1000000
+
+---
+test: loan_full_repayment_closes_loan
+meta:
+  name: "Full repayment closes the loan with PAID_OFF status"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Paid Off Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 1000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 1000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: full_repay
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-01-20"
+        notes: "Full early payoff"
+    expect:
+      status: 201
+
+  - id: verify_closed
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        state: "CLOSED"
+        sub_state: "PAID_OFF"
+        principal_outstanding: 0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 6: Fee Application
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_fee_application
+meta:
+  name: "Apply fee to an active loan"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Fee Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: apply_fee
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "FEE"
+        amount: 50000
+        valueDate: "2026-01-20"
+        notes: "Late payment fee"
+    expect:
+      status: 201
+      json_contains:
+        type: "FEE"
+        amount: 50000
+        fees_amount: 50000
+
+  - id: check_balance
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}/balance
+    expect:
+      status: 200
+      json_contains:
+        fees_outstanding: 50000
+      json_path_assertions:
+        - path: "$.total_outstanding"
+          gte: 10050000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 7: Lock and Unlock
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_lock_unlock
+meta:
+  name: "Lock and unlock an active loan"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Locked Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: lock
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "LOCK"
+        notes: "Under investigation"
+    expect:
+      status: 201
+      json_contains:
+        type: "LOCK"
+
+  - id: verify_locked
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        state: "LOCKED"
+      json_path_assertions:
+        - path: "$.locked_at"
+          exists: true
+
+  - id: unlock
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "UNLOCK"
+        notes: "Investigation complete"
+    expect:
+      status: 201
+      json_contains:
+        type: "UNLOCK"
+
+  - id: verify_active
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        state: "ACTIVE"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 8: Write-Off
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_write_off
+meta:
+  name: "Write off an active loan"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Write Off Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: write_off
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "WRITE_OFF"
+        notes: "Borrower bankrupt, unrecoverable"
+    expect:
+      status: 201
+      json_contains:
+        type: "WRITE_OFF"
+        amount: 10000000
+      json_path_assertions:
+        - path: "$.balance_total"
+          eq: 0
+
+  - id: verify_closed
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        state: "CLOSED"
+        sub_state: "WRITTEN_OFF"
+        principal_outstanding: 0
+        interest_accrued: 0
+        fees_outstanding: 0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 9: Idempotency
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_disbursement_idempotency
+meta:
+  name: "Disbursement with idempotency key is deduplicated"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Idempotent Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse_first
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+        idempotencyKey: "disburse-unique-key-123"
+    expect:
+      status: 201
+      save:
+        tx_id: "$.id"
+
+  - id: disburse_duplicate
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+        idempotencyKey: "disburse-unique-key-123"
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.id"
+          eq: "${tx_id}"
+
+  - id: verify_single_disbursement
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}
+    expect:
+      status: 200
+      json_contains:
+        principal_disbursed: 10000000
+
+---
+test: loan_repayment_idempotency
+meta:
+  name: "Repayment with idempotency key is deduplicated"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Idempotent Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: repay_first
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-02-15"
+        idempotencyKey: "repay-unique-key-456"
+    expect:
+      status: 201
+      save:
+        tx_id: "$.id"
+
+  - id: repay_duplicate
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-02-15"
+        idempotencyKey: "repay-unique-key-456"
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$.id"
+          eq: "${tx_id}"
+
+  - id: verify_single_payment
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}/balance
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.total_paid"
+          eq: 1000000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 10: Invalid State Transitions
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_cannot_disburse_before_approval
+meta:
+  name: "Cannot disburse a loan that hasn't been approved"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Premature Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: disburse_before_approval
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+
+---
+test: loan_cannot_repay_before_active
+meta:
+  name: "Cannot repay a loan that isn't active"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Inactive Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: repay_before_disbursement
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+
+---
+test: loan_cannot_transition_from_closed
+meta:
+  name: "Cannot transition from CLOSED state"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Terminal Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: reject
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REJECT"
+    expect:
+      status: 201
+
+  - id: try_approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "INVALID_TRANSITION"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 11: Transaction History
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_transaction_history
+meta:
+  name: "List all transactions for a loan account"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "History Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: repay
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 1000000
+        valueDate: "2026-02-15"
+    expect:
+      status: 201
+
+  - id: list_transactions
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}/transactions
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.transactions"
+          exists: true
+        - path: "$.total"
+          gte: 3
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 12: Search
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_search_by_state
+meta:
+  name: "Search loan accounts by state"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Search Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan_1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan1_id: "$.id"
+
+  - id: create_loan_2
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 20000000
+    expect:
+      status: 201
+      save:
+        loan2_id: "$.id"
+
+  - id: approve_loan_1
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan1_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: search_pending
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans:search
+      json:
+        filterCriteria:
+          - field: "state"
+            operator: "EQUALS"
+            value: "PENDING_APPROVAL"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.loan_accounts.length"
+          eq: 1
+
+  - id: search_approved
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans:search
+      json:
+        filterCriteria:
+          - field: "state"
+            operator: "EQUALS"
+            value: "APPROVED"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.loan_accounts.length"
+          eq: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 13: Update Restrictions
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_update_only_before_active
+meta:
+  name: "Loan can only be updated in PENDING_APPROVAL or APPROVED states"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Update Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+        interest_rate: 0.05
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: update_pending
+    http:
+      actor: "u_lender"
+      method: PATCH
+      path: /v1/loans/${loan_id}
+      json:
+        interest_rate: 0.06
+    expect:
+      status: 200
+      json_contains:
+        interest_rate: 0.06
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: update_approved
+    http:
+      actor: "u_lender"
+      method: PATCH
+      path: /v1/loans/${loan_id}
+      json:
+        interest_rate: 0.07
+    expect:
+      status: 200
+      json_contains:
+        interest_rate: 0.07
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: update_active_fails
+    http:
+      actor: "u_lender"
+      method: PATCH
+      path: /v1/loans/${loan_id}
+      json:
+        interest_rate: 0.08
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 14: Balance Endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_balance_calculation
+meta:
+  name: "Balance endpoint returns accurate outstanding amounts"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Balance Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 10000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 201
+
+  - id: apply_fee
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "FEE"
+        amount: 100000
+        valueDate: "2026-01-20"
+    expect:
+      status: 201
+
+  - id: repay
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REPAYMENT"
+        amount: 2000000
+        valueDate: "2026-02-15"
+    expect:
+      status: 201
+
+  - id: check_balance
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/${loan_id}/balance
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.principal_outstanding"
+          exists: true
+        - path: "$.fees_outstanding"
+          exists: true
+        - path: "$.total_outstanding"
+          exists: true
+        - path: "$.total_paid"
+          eq: 2000000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 15: Disbursement Validation
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: loan_disbursement_cannot_exceed_approved_amount
+meta:
+  name: "Disbursement amount cannot exceed approved loan amount"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Overdrawn Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: approve
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 201
+
+  - id: disburse_too_much
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "DISBURSEMENT"
+        amount: 15000000
+        valueDate: "2026-01-15"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"

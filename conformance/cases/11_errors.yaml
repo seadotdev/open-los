@@ -1,0 +1,583 @@
+version: "0.1.0"
+suite: errors
+description: >
+  Error handling specification tests. Defines the expected error response format
+  and behavior for validation errors, not found errors, permission errors, and
+  conflict errors. A conformant implementation must return these exact error
+  structures.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 1: Validation Errors (400)
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: error_validation_missing_required_field
+meta:
+  name: "Validation error for missing required field"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal_no_borrower
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        jurisdiction: "GB"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error"
+          exists: true
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+        - path: "$.error.message"
+          exists: true
+
+---
+test: error_validation_invalid_enum_value
+meta:
+  name: "Validation error for invalid enum value"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "invalid_type"
+        name: "Test"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+
+---
+test: error_validation_invalid_number
+meta:
+  name: "Validation error for invalid number"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Test Corp"
+        requested_amount: -1000
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+
+---
+test: error_validation_invalid_date_format
+meta:
+  name: "Validation error for invalid date format"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Date Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+        first_repayment_date: "not-a-date"
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 2: Not Found Errors (404)
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: error_not_found_deal
+meta:
+  name: "Not found error for nonexistent deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: get_nonexistent_deal
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/nonexistent-id-12345
+    expect:
+      status: 404
+      json_path_assertions:
+        - path: "$.error"
+          exists: true
+        - path: "$.error.code"
+          eq: "NOT_FOUND"
+
+---
+test: error_not_found_entity
+meta:
+  name: "Not found error for nonexistent entity"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: get_nonexistent_entity
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/entities/nonexistent-id-12345
+    expect:
+      status: 404
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "NOT_FOUND"
+
+---
+test: error_not_found_loan
+meta:
+  name: "Not found error for nonexistent loan"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: get_nonexistent_loan
+    http:
+      actor: "u_lender"
+      method: GET
+      path: /v1/loans/nonexistent-id-12345
+    expect:
+      status: 404
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "NOT_FOUND"
+
+---
+test: error_not_found_document
+meta:
+  name: "Not found error for nonexistent document"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Test Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get_nonexistent_document
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/documents/nonexistent-id-12345
+    expect:
+      status: 404
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "NOT_FOUND"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3: State/Transition Errors (400)
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: error_invalid_stage_transition
+meta:
+  name: "Invalid stage transition error"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Test Corp"
+        jurisdiction: "GB"
+        requested_amount: 100000
+        purpose: "Working capital"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: skip_stage
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "closing"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          exists: true
+
+---
+test: error_invalid_loan_state_transition
+meta:
+  name: "Invalid loan state transition error"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Test Corp"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+    expect:
+      status: 201
+      save:
+        loan_id: "$.id"
+
+  - id: reject_loan
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "REJECT"
+    expect:
+      status: 201
+
+  - id: approve_after_reject
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans/${loan_id}/transactions
+      json:
+        type: "APPROVAL"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "INVALID_TRANSITION"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 4: Permission Errors (403)
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: error_stage_guard_requires_override
+meta:
+  name: "Stage guard error when override is required"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Incomplete Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: transition_without_required_fields
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error"
+          exists: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 5: Immutability Errors (405)
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: error_audit_immutable_update
+meta:
+  name: "Audit events cannot be updated (405)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Audit Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      save:
+        event_id: "$.events[0].id"
+
+  - id: try_update_audit
+    http:
+      actor: "u_broker"
+      method: PATCH
+      path: /v1/deals/${deal_id}/audit/${event_id}
+      json:
+        actor: "hacker"
+    expect:
+      status: 405
+
+---
+test: error_audit_immutable_delete
+meta:
+  name: "Audit events cannot be deleted (405)"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Audit Corp"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: get_audit
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      save:
+        event_id: "$.events[0].id"
+
+  - id: try_delete_audit
+    http:
+      actor: "u_broker"
+      method: DELETE
+      path: /v1/deals/${deal_id}/audit/${event_id}
+    expect:
+      status: 405
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 6: Error Response Structure
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: error_response_structure
+meta:
+  name: "Error responses have consistent structure"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+
+steps:
+  - id: trigger_not_found
+    http:
+      actor: "u_broker"
+      method: GET
+      path: /v1/deals/does-not-exist
+    expect:
+      status: 404
+      json_path_assertions:
+        - path: "$.error"
+          exists: true
+        - path: "$.error.code"
+          exists: true
+        - path: "$.error.message"
+          exists: true
+
+---
+test: error_validation_provides_details
+meta:
+  name: "Validation errors provide helpful details"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_lender", role: "lender" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Test"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: create_loan_invalid_rate_type
+    http:
+      actor: "u_lender"
+      method: POST
+      path: /v1/loans
+      json:
+        account_holder_type: "CLIENT"
+        account_holder_id: "${entity_id}"
+        loan_amount: 10000000
+        interest_rate_type: "INVALID_TYPE"
+    expect:
+      status: 400
+      json_path_assertions:
+        - path: "$.error.code"
+          eq: "VALIDATION_ERROR"
+        - path: "$.error.message"
+          contains: "interest_rate_type"
