@@ -268,7 +268,7 @@ When adding new features:
 1. **Write tests first** — Define behavior in YAML before implementing
 2. **Add JSON schemas** — Define response structures in `schemas/`
 3. **Update OpenAPI spec** — Keep `openapi/v1.yaml` in sync
-4. **Document** — Update SPECIFICATION.md
+4. **Document** — Update docs/SPECIFICATION.md
 
 The test suite is the source of truth.
 

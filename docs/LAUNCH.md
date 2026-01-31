@@ -158,4 +158,4 @@ The incumbents are building walls. We're building an alternative.
 
 GitHub: [seadotdev/open-los](https://github.com/seadotdev/open-los)
 
-Read the [Manifesto](./MANIFESTO.md) | Read the [Spec](./SPEC.md) | Read the [AI Architecture](./docs/AI_NATIVE_ARCHITECTURE.md)
+Read the [Manifesto](./MANIFESTO.md) | Read the [Spec](./SPEC.md) | Read the [AI Architecture](./AI_NATIVE_ARCHITECTURE.md)
