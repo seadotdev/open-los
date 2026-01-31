@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open LOS - Loan Origination System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <span class="logo">Open LOS</span>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-view="dashboard">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-view="pipeline">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="8" y1="6" x2="21" y2="6"></line>
+                        <line x1="8" y1="12" x2="21" y2="12"></line>
+                        <line x1="8" y1="18" x2="21" y2="18"></line>
+                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                    </svg>
+                    <span>Pipeline</span>
+                </a>
+                <a href="#" class="nav-item" data-view="deals">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
+                    <span>Deals</span>
+                </a>
+                <a href="#" class="nav-item" data-view="borrowers">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    <span>Borrowers</span>
+                </a>
+                <a href="#" class="nav-item" data-view="documents">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <span>Documents</span>
+                </a>
+                <a href="#" class="nav-item" data-view="covenants">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                    <span>Covenants</span>
+                </a>
+                <a href="#" class="nav-item" data-view="reports">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="20" x2="18" y2="10"></line>
+                        <line x1="12" y1="20" x2="12" y2="4"></line>
+                        <line x1="6" y1="20" x2="6" y2="14"></line>
+                    </svg>
+                    <span>Reports</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <a href="#" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="main-wrapper">
+            <!-- Top Header -->
+            <header class="topbar">
+                <div class="topbar-left">
+                    <h1 class="page-title" id="page-title">Dashboard</h1>
+                </div>
+                <div class="topbar-right">
+                    <div class="search-box">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" placeholder="Search deals, borrowers...">
+                    </div>
+                    <button class="btn btn-primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        New Deal
+                    </button>
+                    <div class="notifications">
+                        <button class="icon-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                            </svg>
+                            <span class="notification-badge">3</span>
+                        </button>
+                    </div>
+                    <div class="user-menu">
+                        <div class="user-avatar">JD</div>
+                        <span class="user-name">John Doe</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <main class="content">
+                <!-- Dashboard View -->
+                <div id="view-dashboard" class="view active">
+                    <!-- Stats Cards -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Total Pipeline</span>
+                                <span class="stat-change positive">+12%</span>
+                            </div>
+                            <div class="stat-value">$47.2M</div>
+                            <div class="stat-footer">24 active deals</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Funded YTD</span>
+                                <span class="stat-change positive">+8%</span>
+                            </div>
+                            <div class="stat-value">$28.5M</div>
+                            <div class="stat-footer">15 deals closed</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Avg. Deal Size</span>
+                            </div>
+                            <div class="stat-value">$1.9M</div>
+                            <div class="stat-footer">Term loans primary</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Portfolio Health</span>
+                            </div>
+                            <div class="stat-value health-good">96%</div>
+                            <div class="stat-footer">2 covenant issues</div>
+                        </div>
+                    </div>
+
+                    <!-- Pipeline by Stage -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Pipeline by Stage</h2>
+                            <div class="card-actions">
+                                <select class="select-sm">
+                                    <option>Last 30 days</option>
+                                    <option>Last 90 days</option>
+                                    <option>This year</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="pipeline-stages">
+                            <div class="pipeline-stage">
+                                <div class="stage-bar" style="--stage-height: 60%;">
+                                    <span class="stage-value">$8.2M</span>
+                                </div>
+                                <span class="stage-label">Broker</span>
+                                <span class="stage-count">6 deals</span>
+                            </div>
+                            <div class="pipeline-stage">
+                                <div class="stage-bar" style="--stage-height: 80%;">
+                                    <span class="stage-value">$12.4M</span>
+                                </div>
+                                <span class="stage-label">Origination</span>
+                                <span class="stage-count">8 deals</span>
+                            </div>
+                            <div class="pipeline-stage">
+                                <div class="stage-bar" style="--stage-height: 70%;">
+                                    <span class="stage-value">$9.8M</span>
+                                </div>
+                                <span class="stage-label">Underwriting</span>
+                                <span class="stage-count">5 deals</span>
+                            </div>
+                            <div class="pipeline-stage">
+                                <div class="stage-bar" style="--stage-height: 45%;">
+                                    <span class="stage-value">$6.1M</span>
+                                </div>
+                                <span class="stage-label">Closing</span>
+                                <span class="stage-count">3 deals</span>
+                            </div>
+                            <div class="pipeline-stage">
+                                <div class="stage-bar funded" style="--stage-height: 90%;">
+                                    <span class="stage-value">$10.7M</span>
+                                </div>
+                                <span class="stage-label">Monitoring</span>
+                                <span class="stage-count">12 deals</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Two Column Layout -->
+                    <div class="dashboard-grid">
+                        <!-- Recent Activity -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>Recent Activity</h2>
+                                <a href="#" class="link">View all</a>
+                            </div>
+                            <div class="activity-list">
+                                <div class="activity-item">
+                                    <div class="activity-icon stage-change">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="9 18 15 12 9 6"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div class="activity-content">
+                                        <p><strong>TechStart Inc</strong> moved to Underwriting</p>
+                                        <span class="activity-time">2 hours ago - by Sarah Chen</span>
+                                    </div>
+                                </div>
+                                <div class="activity-item">
+                                    <div class="activity-icon document">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                            <polyline points="14 2 14 8 20 8"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div class="activity-content">
+                                        <p>Q4 Financials uploaded for <strong>BlueSky Corp</strong></p>
+                                        <span class="activity-time">3 hours ago</span>
+                                    </div>
+                                </div>
+                                <div class="activity-item">
+                                    <div class="activity-icon approval">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div class="activity-content">
+                                        <p>Facility approved for <strong>Global Logistics</strong></p>
+                                        <span class="activity-time">5 hours ago - by Michael Torres</span>
+                                    </div>
+                                </div>
+                                <div class="activity-item">
+                                    <div class="activity-icon alert">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                            <line x1="12" y1="9" x2="12" y2="13"></line>
+                                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                        </svg>
+                                    </div>
+                                    <div class="activity-content">
+                                        <p>DSCR covenant breach - <strong>Acme Corp</strong></p>
+                                        <span class="activity-time">Yesterday</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Alerts & Tasks -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>Alerts & Tasks</h2>
+                                <span class="badge badge-warning">5 pending</span>
+                            </div>
+                            <div class="alerts-list">
+                                <div class="alert-item critical">
+                                    <div class="alert-indicator"></div>
+                                    <div class="alert-content">
+                                        <p class="alert-title">Covenant Breach</p>
+                                        <p class="alert-desc">Acme Corp - DSCR below 1.25x threshold</p>
+                                    </div>
+                                    <button class="btn btn-sm">Review</button>
+                                </div>
+                                <div class="alert-item warning">
+                                    <div class="alert-indicator"></div>
+                                    <div class="alert-content">
+                                        <p class="alert-title">Approval Pending</p>
+                                        <p class="alert-desc">Global Logistics - Facility increase</p>
+                                    </div>
+                                    <button class="btn btn-sm">Approve</button>
+                                </div>
+                                <div class="alert-item warning">
+                                    <div class="alert-indicator"></div>
+                                    <div class="alert-content">
+                                        <p class="alert-title">Document Missing</p>
+                                        <p class="alert-desc">Summit Properties - Insurance certificate</p>
+                                    </div>
+                                    <button class="btn btn-sm">Request</button>
+                                </div>
+                                <div class="alert-item info">
+                                    <div class="alert-indicator"></div>
+                                    <div class="alert-content">
+                                        <p class="alert-title">Financials Due</p>
+                                        <p class="alert-desc">3 borrowers - Q4 reporting deadline</p>
+                                    </div>
+                                    <button class="btn btn-sm">Send Reminder</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pipeline View -->
+                <div id="view-pipeline" class="view">
+                    <div class="card full-height">
+                        <div class="card-header">
+                            <h2>Deal Pipeline</h2>
+                            <div class="card-actions">
+                                <select class="select-sm">
+                                    <option>All Deals</option>
+                                    <option>My Deals</option>
+                                    <option>Team Deals</option>
+                                </select>
+                                <button class="btn btn-sm">Export</button>
+                            </div>
+                        </div>
+                        <div class="kanban-board">
+                            <div class="kanban-column">
+                                <div class="kanban-header">
+                                    <span class="kanban-title">Broker</span>
+                                    <span class="kanban-count">6</span>
+                                </div>
+                                <div class="kanban-cards">
+                                    <div class="kanban-card">
+                                        <div class="kanban-card-header">
+                                            <span class="borrower-name">Premier Retail Inc</span>
+                                            <span class="deal-amount">$2.5M</span>
+                                        </div>
+                                        <p class="deal-purpose">Working capital facility</p>
+                                        <div class="kanban-card-footer">
+                                            <span class="deal-days">3 days</span>
+                                            <div class="assignee">SC</div>
+                                        </div>
+                                    </div>
+                                    <div class="kanban-card">
+                                        <div class="kanban-card-header">
+                                            <span class="borrower-name">DataFlow Systems</span>
+                                            <span class="deal-amount">$1.8M</span>
+                                        </div>
+                                        <p class="deal-purpose">Equipment financing</p>
+                                        <div class="kanban-card-footer">
+                                            <span class="deal-days">5 days</span>
+                                            <div class="assignee">MT</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="kanban-column">
+                                <div class="kanban-header">
+                                    <span class="kanban-title">Origination</span>
+                                    <span class="kanban-count">8</span>
+                                </div>
+                                <div class="kanban-cards">
+                                    <div class="kanban-card priority">
+                                        <div class="kanban-card-header">
+                                            <span class="borrower-name">TechStart Inc</span>
+                                            <span class="deal-amount">$3.2M</span>
+                                        </div>
+                                        <p class="deal-purpose">Growth capital term loan</p>
+                                        <div class="kanban-card-footer">
+                                            <span class="deal-days">12 days</span>
+                                            <div class="assignee">SC</div>
+                                        </div>
+                                    </div>
+                                    <div class="kanban-card">
+                                        <div class="kanban-card-header">
+                                            <span class="borrower-name">MedSupply Co</span>
+                                            <span class="deal-amount">$1.5M</span>
+                                        </div>
+                                        <p class="deal-purpose">Inventory financing</p>
+                                        <div class="kanban-card-footer">
+                                            <span class="deal-days">8 days</span>
+                                            <div class="assignee">JD</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="kanban-column">
+                                <div class="kanban-header">
+                                    <span class="kanban-title">Underwriting</span>
+                                    <span class="kanban-count">5</span>
+                                </div>
+                                <div class="kanban-cards">
+                                    <div class="kanban-card">
+                                        <div class="kanban-card-header">
+                                            <span class="borrower-name">CloudServe Ltd</span>
+                                            <span class="deal-amount">$4.0M</span>
+                                        </div>
+                                        <p class="deal-purpose">Acquisition financing</p>
+                                        <div class="kanban-card-footer">
+                                            <span class="deal-days">18 days</span>
+                                            <div class="assignee">MT</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="kanban-column">
+                                <div class="kanban-header">
+                                    <span class="kanban-title">Closing</span>
+                                    <span class="kanban-count">3</span>
+                                </div>
+                                <div class="kanban-cards">
+                                    <div class="kanban-card urgent">
+                                        <div class="kanban-card-header">
+                                            <span class="borrower-name">Summit Properties</span>
+                                            <span class="deal-amount">$5.0M</span>
+                                        </div>
+                                        <p class="deal-purpose">Commercial real estate</p>
+                                        <div class="kanban-card-footer">
+                                            <span class="deal-days">25 days</span>
+                                            <div class="assignee">SC</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="kanban-column funded">
+                                <div class="kanban-header">
+                                    <span class="kanban-title">Monitoring</span>
+                                    <span class="kanban-count">12</span>
+                                </div>
+                                <div class="kanban-cards">
+                                    <div class="kanban-card alert">
+                                        <div class="kanban-card-header">
+                                            <span class="borrower-name">Acme Corp</span>
+                                            <span class="deal-amount">$3.5M</span>
+                                        </div>
+                                        <p class="deal-purpose">Term loan - DSCR breach</p>
+                                        <div class="kanban-card-footer">
+                                            <span class="deal-days warning">Covenant issue</span>
+                                            <div class="assignee">JD</div>
+                                        </div>
+                                    </div>
+                                    <div class="kanban-card">
+                                        <div class="kanban-card-header">
+                                            <span class="borrower-name">Meridian Healthcare</span>
+                                            <span class="deal-amount">$5.0M</span>
+                                        </div>
+                                        <p class="deal-purpose">Term loan - Funded</p>
+                                        <div class="kanban-card-footer">
+                                            <span class="deal-days success">Performing</span>
+                                            <div class="assignee">MT</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Deals View -->
+                <div id="view-deals" class="view">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>All Deals</h2>
+                            <div class="card-actions">
+                                <div class="filter-group">
+                                    <select class="select-sm">
+                                        <option>All Stages</option>
+                                        <option>Broker</option>
+                                        <option>Origination</option>
+                                        <option>Underwriting</option>
+                                        <option>Closing</option>
+                                        <option>Monitoring</option>
+                                    </select>
+                                    <select class="select-sm">
+                                        <option>All Assignees</option>
+                                        <option>My Deals</option>
+                                        <option>Sarah Chen</option>
+                                        <option>Michael Torres</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-sm">Export CSV</button>
+                            </div>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Borrower</th>
+                                        <th>Amount</th>
+                                        <th>Type</th>
+                                        <th>Stage</th>
+                                        <th>Assigned To</th>
+                                        <th>Days in Stage</th>
+                                        <th>Status</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <div class="borrower-cell">
+                                                <span class="borrower-name">Acme Corp</span>
+                                                <span class="borrower-id">ACM-2024-001</span>
+                                            </div>
+                                        </td>
+                                        <td class="amount">$3,500,000</td>
+                                        <td>Term Loan</td>
+                                        <td><span class="stage-badge monitoring">Monitoring</span></td>
+                                        <td>
+                                            <div class="assignee-cell">
+                                                <div class="assignee">JD</div>
+                                                <span>John Doe</span>
+                                            </div>
+                                        </td>
+                                        <td>45</td>
+                                        <td><span class="status-badge alert">Covenant Issue</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="borrower-cell">
+                                                <span class="borrower-name">TechStart Inc</span>
+                                                <span class="borrower-id">TSI-2024-015</span>
+                                            </div>
+                                        </td>
+                                        <td class="amount">$3,200,000</td>
+                                        <td>Term Loan</td>
+                                        <td><span class="stage-badge origination">Origination</span></td>
+                                        <td>
+                                            <div class="assignee-cell">
+                                                <div class="assignee">SC</div>
+                                                <span>Sarah Chen</span>
+                                            </div>
+                                        </td>
+                                        <td>12</td>
+                                        <td><span class="status-badge active">Active</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="borrower-cell">
+                                                <span class="borrower-name">Summit Properties</span>
+                                                <span class="borrower-id">SPR-2024-008</span>
+                                            </div>
+                                        </td>
+                                        <td class="amount">$5,000,000</td>
+                                        <td>CRE Loan</td>
+                                        <td><span class="stage-badge closing">Closing</span></td>
+                                        <td>
+                                            <div class="assignee-cell">
+                                                <div class="assignee">SC</div>
+                                                <span>Sarah Chen</span>
+                                            </div>
+                                        </td>
+                                        <td>25</td>
+                                        <td><span class="status-badge pending">Docs Pending</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="borrower-cell">
+                                                <span class="borrower-name">Global Logistics Ltd</span>
+                                                <span class="borrower-id">GLL-2024-022</span>
+                                            </div>
+                                        </td>
+                                        <td class="amount">$2,000,000</td>
+                                        <td>Revolver</td>
+                                        <td><span class="stage-badge monitoring">Monitoring</span></td>
+                                        <td>
+                                            <div class="assignee-cell">
+                                                <div class="assignee">MT</div>
+                                                <span>Michael Torres</span>
+                                            </div>
+                                        </td>
+                                        <td>90</td>
+                                        <td><span class="status-badge active">Performing</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="borrower-cell">
+                                                <span class="borrower-name">CloudServe Ltd</span>
+                                                <span class="borrower-id">CSL-2024-019</span>
+                                            </div>
+                                        </td>
+                                        <td class="amount">$4,000,000</td>
+                                        <td>Term Loan</td>
+                                        <td><span class="stage-badge underwriting">Underwriting</span></td>
+                                        <td>
+                                            <div class="assignee-cell">
+                                                <div class="assignee">MT</div>
+                                                <span>Michael Torres</span>
+                                            </div>
+                                        </td>
+                                        <td>18</td>
+                                        <td><span class="status-badge active">In Review</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="borrower-cell">
+                                                <span class="borrower-name">Meridian Healthcare</span>
+                                                <span class="borrower-id">MHC-2024-011</span>
+                                            </div>
+                                        </td>
+                                        <td class="amount">$5,000,000</td>
+                                        <td>Term Loan</td>
+                                        <td><span class="stage-badge monitoring">Monitoring</span></td>
+                                        <td>
+                                            <div class="assignee-cell">
+                                                <div class="assignee">MT</div>
+                                                <span>Michael Torres</span>
+                                            </div>
+                                        </td>
+                                        <td>2</td>
+                                        <td><span class="status-badge active">Just Funded</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="table-footer">
+                            <span class="table-info">Showing 6 of 24 deals</span>
+                            <div class="pagination">
+                                <button class="btn btn-sm" disabled>Previous</button>
+                                <span class="page-info">Page 1 of 4</span>
+                                <button class="btn btn-sm">Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Borrowers View -->
+                <div id="view-borrowers" class="view">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Borrowers</h2>
+                            <div class="card-actions">
+                                <button class="btn btn-primary btn-sm">Add Borrower</button>
+                            </div>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Entity Name</th>
+                                        <th>Type</th>
+                                        <th>Jurisdiction</th>
+                                        <th>Total Exposure</th>
+                                        <th>Active Deals</th>
+                                        <th>Risk Rating</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <div class="borrower-cell">
+                                                <span class="borrower-name">Acme Corporation</span>
+                                                <span class="borrower-id">REG: 12345678</span>
+                                            </div>
+                                        </td>
+                                        <td>Company</td>
+                                        <td>Delaware, US</td>
+                                        <td class="amount">$3,500,000</td>
+                                        <td>1</td>
+                                        <td><span class="risk-badge high">High</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="borrower-cell">
+                                                <span class="borrower-name">TechStart Inc</span>
+                                                <span class="borrower-id">REG: 98765432</span>
+                                            </div>
+                                        </td>
+                                        <td>Company</td>
+                                        <td>California, US</td>
+                                        <td class="amount">$3,200,000</td>
+                                        <td>1</td>
+                                        <td><span class="risk-badge medium">Medium</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="borrower-cell">
+                                                <span class="borrower-name">Global Logistics Ltd</span>
+                                                <span class="borrower-id">REG: 55667788</span>
+                                            </div>
+                                        </td>
+                                        <td>Company</td>
+                                        <td>UK</td>
+                                        <td class="amount">$2,000,000</td>
+                                        <td>1</td>
+                                        <td><span class="risk-badge low">Low</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Documents View -->
+                <div id="view-documents" class="view">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Document Library</h2>
+                            <div class="card-actions">
+                                <select class="select-sm">
+                                    <option>All Types</option>
+                                    <option>Financial Statements</option>
+                                    <option>Legal Documents</option>
+                                    <option>Insurance</option>
+                                    <option>Tax Returns</option>
+                                </select>
+                                <button class="btn btn-primary btn-sm">Upload</button>
+                            </div>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Document</th>
+                                        <th>Deal</th>
+                                        <th>Type</th>
+                                        <th>Phase</th>
+                                        <th>Uploaded</th>
+                                        <th>Source</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <div class="doc-cell">
+                                                <span class="doc-icon pdf">PDF</span>
+                                                <div class="doc-info">
+                                                    <span class="doc-name">Q4_2025_Financials.pdf</span>
+                                                    <span class="doc-size">2.4 MB</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>BlueSky Corp</td>
+                                        <td>Financial Statement</td>
+                                        <td>Monitoring</td>
+                                        <td>Jan 28, 2026</td>
+                                        <td><span class="source-badge">Email</span></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-ghost">View</button>
+                                            <button class="btn btn-sm btn-ghost">Download</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="doc-cell">
+                                                <span class="doc-icon pdf">PDF</span>
+                                                <div class="doc-info">
+                                                    <span class="doc-name">Loan_Agreement_v3.pdf</span>
+                                                    <span class="doc-size">1.8 MB</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>Summit Properties</td>
+                                        <td>Legal Document</td>
+                                        <td>Closing</td>
+                                        <td>Jan 27, 2026</td>
+                                        <td><span class="source-badge">Upload</span></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-ghost">View</button>
+                                            <button class="btn btn-sm btn-ghost">Download</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="doc-cell">
+                                                <span class="doc-icon xls">XLS</span>
+                                                <div class="doc-info">
+                                                    <span class="doc-name">Financial_Model_2026.xlsx</span>
+                                                    <span class="doc-size">856 KB</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>TechStart Inc</td>
+                                        <td>Financial Model</td>
+                                        <td>Origination</td>
+                                        <td>Jan 25, 2026</td>
+                                        <td><span class="source-badge">Upload</span></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-ghost">View</button>
+                                            <button class="btn btn-sm btn-ghost">Download</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Covenants View -->
+                <div id="view-covenants" class="view">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Covenant Monitoring</h2>
+                            <div class="card-actions">
+                                <select class="select-sm">
+                                    <option>All Status</option>
+                                    <option>Pass</option>
+                                    <option>Fail</option>
+                                    <option>Warning</option>
+                                    <option>Waived</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Borrower</th>
+                                        <th>Covenant</th>
+                                        <th>Type</th>
+                                        <th>Threshold</th>
+                                        <th>Actual</th>
+                                        <th>Last Tested</th>
+                                        <th>Status</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="row-alert">
+                                        <td>Acme Corp</td>
+                                        <td>Debt Service Coverage Ratio</td>
+                                        <td>Financial</td>
+                                        <td>&gt;= 1.25x</td>
+                                        <td class="value-fail">1.05x</td>
+                                        <td>Jan 15, 2026</td>
+                                        <td><span class="covenant-status fail">Fail</span></td>
+                                        <td><button class="btn btn-sm">Request Waiver</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Global Logistics</td>
+                                        <td>Leverage Ratio</td>
+                                        <td>Financial</td>
+                                        <td>&lt;= 3.5x</td>
+                                        <td class="value-pass">2.8x</td>
+                                        <td>Jan 10, 2026</td>
+                                        <td><span class="covenant-status pass">Pass</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Meridian Healthcare</td>
+                                        <td>Minimum Liquidity</td>
+                                        <td>Financial</td>
+                                        <td>&gt;= $500K</td>
+                                        <td class="value-pass">$1.2M</td>
+                                        <td>Jan 28, 2026</td>
+                                        <td><span class="covenant-status pass">Pass</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr class="row-warning">
+                                        <td>BlueSky Corp</td>
+                                        <td>Interest Coverage</td>
+                                        <td>Financial</td>
+                                        <td>&gt;= 2.0x</td>
+                                        <td class="value-warning">2.1x</td>
+                                        <td>Jan 20, 2026</td>
+                                        <td><span class="covenant-status warning">Warning</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Acme Corp</td>
+                                        <td>Quarterly Financial Reporting</td>
+                                        <td>Reporting</td>
+                                        <td>45 days after quarter end</td>
+                                        <td>Received</td>
+                                        <td>Jan 15, 2026</td>
+                                        <td><span class="covenant-status pass">Pass</span></td>
+                                        <td><button class="btn btn-sm btn-ghost">View</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reports View -->
+                <div id="view-reports" class="view">
+                    <div class="reports-grid">
+                        <div class="card report-card">
+                            <h3>Pipeline Report</h3>
+                            <p>Current pipeline by stage, volume, and conversion rates</p>
+                            <button class="btn btn-sm">Generate</button>
+                        </div>
+                        <div class="card report-card">
+                            <h3>Portfolio Summary</h3>
+                            <p>Active loans, exposure by sector, geographic distribution</p>
+                            <button class="btn btn-sm">Generate</button>
+                        </div>
+                        <div class="card report-card">
+                            <h3>Covenant Compliance</h3>
+                            <p>Covenant test results, breach history, waivers</p>
+                            <button class="btn btn-sm">Generate</button>
+                        </div>
+                        <div class="card report-card">
+                            <h3>Aging Report</h3>
+                            <p>Deals by time in stage, velocity metrics</p>
+                            <button class="btn btn-sm">Generate</button>
+                        </div>
+                        <div class="card report-card">
+                            <h3>Team Performance</h3>
+                            <p>Deals by assignee, conversion rates, cycle times</p>
+                            <button class="btn btn-sm">Generate</button>
+                        </div>
+                        <div class="card report-card">
+                            <h3>Risk Summary</h3>
+                            <p>Risk ratings, concentration analysis, watch list</p>
+                            <button class="btn btn-sm">Generate</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

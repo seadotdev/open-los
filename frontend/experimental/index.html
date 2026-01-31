@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open LOS - Activity Hub</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Minimal Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">&#9679;</span>
+                <span class="logo-text">Open LOS</span>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" id="ai-toggle" title="Ask AI">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                </button>
+                <div class="user-avatar">JD</div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main">
+            <!-- AI Assistant Panel (Hidden by default) -->
+            <aside class="ai-panel" id="ai-panel">
+                <div class="ai-header">
+                    <span>AI Assistant</span>
+                    <button class="close-btn" id="ai-close">&times;</button>
+                </div>
+                <div class="ai-messages" id="ai-messages">
+                    <div class="ai-message system">
+                        <p>I'm your lending assistant. Ask me anything about your deals, covenants, or portfolio.</p>
+                    </div>
+                </div>
+                <div class="ai-input-area">
+                    <input type="text" id="ai-input" placeholder="Ask about deals, covenants, documents...">
+                    <button id="ai-send">Send</button>
+                </div>
+            </aside>
+
+            <!-- Activity Feed -->
+            <div class="feed-container">
+                <!-- Smart Summary Card -->
+                <section class="summary-card">
+                    <h2>Today's Focus</h2>
+                    <div class="focus-items">
+                        <div class="focus-item critical">
+                            <span class="focus-count">2</span>
+                            <span class="focus-label">Covenant breaches</span>
+                        </div>
+                        <div class="focus-item warning">
+                            <span class="focus-count">5</span>
+                            <span class="focus-label">Pending approvals</span>
+                        </div>
+                        <div class="focus-item info">
+                            <span class="focus-count">8</span>
+                            <span class="focus-label">Documents to review</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Filter Tabs -->
+                <div class="feed-filters">
+                    <button class="filter-btn active" data-filter="all">All Activity</button>
+                    <button class="filter-btn" data-filter="attention">Needs Attention</button>
+                    <button class="filter-btn" data-filter="updates">Updates</button>
+                    <button class="filter-btn" data-filter="approvals">Approvals</button>
+                </div>
+
+                <!-- Activity Feed Items -->
+                <div class="feed" id="activity-feed">
+                    <!-- Critical Alert -->
+                    <article class="feed-item critical" data-type="attention">
+                        <div class="feed-item-indicator"></div>
+                        <div class="feed-item-content">
+                            <div class="feed-item-header">
+                                <span class="feed-item-type">Covenant Breach</span>
+                                <time class="feed-item-time">2 hours ago</time>
+                            </div>
+                            <h3 class="feed-item-title">DSCR below threshold for Acme Corp</h3>
+                            <p class="feed-item-body">
+                                Debt Service Coverage Ratio dropped to <strong>1.05x</strong> (threshold: 1.25x).
+                                Q4 financials show declining EBITDA.
+                            </p>
+                            <div class="feed-item-context">
+                                <span class="context-tag">Deal: Acme Corp Term Loan</span>
+                                <span class="context-tag">Stage: Monitoring</span>
+                            </div>
+                            <div class="feed-item-actions">
+                                <button class="action-btn primary">Request Waiver</button>
+                                <button class="action-btn">View Financials</button>
+                                <button class="action-btn">Discuss</button>
+                            </div>
+                        </div>
+                    </article>
+
+                    <!-- Stage Transition -->
+                    <article class="feed-item update" data-type="updates">
+                        <div class="feed-item-indicator"></div>
+                        <div class="feed-item-content">
+                            <div class="feed-item-header">
+                                <span class="feed-item-type">Stage Change</span>
+                                <time class="feed-item-time">3 hours ago</time>
+                            </div>
+                            <h3 class="feed-item-title">TechStart Inc moved to Underwriting</h3>
+                            <p class="feed-item-body">
+                                Sarah Chen advanced this deal from Origination. All required documents collected.
+                            </p>
+                            <div class="stage-progress">
+                                <div class="stage completed">Broker</div>
+                                <div class="stage completed">Origination</div>
+                                <div class="stage current">Underwriting</div>
+                                <div class="stage">Closing</div>
+                                <div class="stage">Monitoring</div>
+                            </div>
+                            <div class="feed-item-actions">
+                                <button class="action-btn primary">Start Review</button>
+                                <button class="action-btn">View Deal</button>
+                            </div>
+                        </div>
+                    </article>
+
+                    <!-- Approval Request -->
+                    <article class="feed-item approval" data-type="approvals">
+                        <div class="feed-item-indicator"></div>
+                        <div class="feed-item-content">
+                            <div class="feed-item-header">
+                                <span class="feed-item-type">Approval Needed</span>
+                                <time class="feed-item-time">4 hours ago</time>
+                            </div>
+                            <h3 class="feed-item-title">Facility amendment for Global Logistics Ltd</h3>
+                            <p class="feed-item-body">
+                                Request to increase revolving credit facility from $2M to $3.5M.
+                                Borrower showing strong cash flows and seeking expansion capital.
+                            </p>
+                            <div class="approval-details">
+                                <div class="approval-row">
+                                    <span class="label">Requested by:</span>
+                                    <span class="value">Michael Torres</span>
+                                </div>
+                                <div class="approval-row">
+                                    <span class="label">Current exposure:</span>
+                                    <span class="value">$2,000,000</span>
+                                </div>
+                                <div class="approval-row">
+                                    <span class="label">Proposed:</span>
+                                    <span class="value">$3,500,000</span>
+                                </div>
+                            </div>
+                            <div class="feed-item-actions">
+                                <button class="action-btn approve">Approve</button>
+                                <button class="action-btn reject">Decline</button>
+                                <button class="action-btn">Request Info</button>
+                            </div>
+                        </div>
+                    </article>
+
+                    <!-- Document Upload -->
+                    <article class="feed-item document" data-type="updates">
+                        <div class="feed-item-indicator"></div>
+                        <div class="feed-item-content">
+                            <div class="feed-item-header">
+                                <span class="feed-item-type">New Document</span>
+                                <time class="feed-item-time">5 hours ago</time>
+                            </div>
+                            <h3 class="feed-item-title">Q4 2025 Financials uploaded</h3>
+                            <p class="feed-item-body">
+                                Borrower submitted quarterly financial statements via email.
+                                AI extracted key metrics - ready for spread analysis.
+                            </p>
+                            <div class="document-preview">
+                                <div class="doc-icon">PDF</div>
+                                <div class="doc-info">
+                                    <span class="doc-name">BlueSky_Q4_2025_Financials.pdf</span>
+                                    <span class="doc-meta">2.4 MB - Uploaded by borrower</span>
+                                </div>
+                            </div>
+                            <div class="ai-insight">
+                                <span class="ai-badge">AI Insight</span>
+                                <p>Revenue up 12% YoY. EBITDA margin improved to 18.5%. Recommend updating spread.</p>
+                            </div>
+                            <div class="feed-item-actions">
+                                <button class="action-btn primary">Create Spread</button>
+                                <button class="action-btn">View Document</button>
+                            </div>
+                        </div>
+                    </article>
+
+                    <!-- Warning Alert -->
+                    <article class="feed-item warning" data-type="attention">
+                        <div class="feed-item-indicator"></div>
+                        <div class="feed-item-content">
+                            <div class="feed-item-header">
+                                <span class="feed-item-type">Liquidity Warning</span>
+                                <time class="feed-item-time">Yesterday</time>
+                            </div>
+                            <h3 class="feed-item-title">Declining cash runway for Rapid Retail Co</h3>
+                            <p class="feed-item-body">
+                                Based on transaction monitoring, estimated runway dropped to 2.8 months
+                                (threshold: 3 months). Irregular payment patterns detected.
+                            </p>
+                            <div class="metric-highlight">
+                                <div class="metric">
+                                    <span class="metric-label">Cash Runway</span>
+                                    <span class="metric-value warning">2.8 months</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Monthly Burn</span>
+                                    <span class="metric-value">$145,000</span>
+                                </div>
+                            </div>
+                            <div class="feed-item-actions">
+                                <button class="action-btn primary">Review Transactions</button>
+                                <button class="action-btn">Contact Borrower</button>
+                            </div>
+                        </div>
+                    </article>
+
+                    <!-- Communication -->
+                    <article class="feed-item communication" data-type="updates">
+                        <div class="feed-item-indicator"></div>
+                        <div class="feed-item-content">
+                            <div class="feed-item-header">
+                                <span class="feed-item-type">Email Thread</span>
+                                <time class="feed-item-time">Yesterday</time>
+                            </div>
+                            <h3 class="feed-item-title">RE: Closing documents for Summit Properties</h3>
+                            <p class="feed-item-body">
+                                Legal counsel responded with revised loan agreement.
+                                3 comments require review before execution.
+                            </p>
+                            <div class="thread-preview">
+                                <div class="thread-participant">
+                                    <span class="avatar">LC</span>
+                                    <span class="name">Legal Counsel (external)</span>
+                                </div>
+                                <p class="thread-snippet">"Please review the amended interest rate provisions in Section 4.2..."</p>
+                            </div>
+                            <div class="feed-item-actions">
+                                <button class="action-btn primary">View Thread</button>
+                                <button class="action-btn">Reply</button>
+                            </div>
+                        </div>
+                    </article>
+
+                    <!-- Completed Action -->
+                    <article class="feed-item success" data-type="updates">
+                        <div class="feed-item-indicator"></div>
+                        <div class="feed-item-content">
+                            <div class="feed-item-header">
+                                <span class="feed-item-type">Deal Closed</span>
+                                <time class="feed-item-time">2 days ago</time>
+                            </div>
+                            <h3 class="feed-item-title">Meridian Healthcare - $5M Term Loan funded</h3>
+                            <p class="feed-item-body">
+                                Disbursement complete. Deal moved to Monitoring stage.
+                                First covenant test due in 90 days.
+                            </p>
+                            <div class="completion-summary">
+                                <div class="summary-item">
+                                    <span class="label">Facility</span>
+                                    <span class="value">$5,000,000 Term Loan</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">Rate</span>
+                                    <span class="value">SOFR + 350bps</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">Term</span>
+                                    <span class="value">60 months</span>
+                                </div>
+                            </div>
+                            <div class="feed-item-actions">
+                                <button class="action-btn">View Deal</button>
+                                <button class="action-btn">Set Reminders</button>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Load More -->
+                <div class="load-more">
+                    <button class="load-more-btn">Load more activity</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
