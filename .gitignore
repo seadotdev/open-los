@@ -6,6 +6,13 @@ dist/
 build/
 *.tsbuildinfo
 
+# TypeScript compiled output in source directories
+packages/**/*.js
+packages/**/*.js.map
+packages/**/*.d.ts
+packages/**/*.d.ts.map
+!packages/**/vitest.config.js
+
 # Logs
 *.log
 npm-debug.log*
