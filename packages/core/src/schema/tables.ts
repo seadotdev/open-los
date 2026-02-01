@@ -466,3 +466,111 @@ export const repaymentSchedule = sqliteTable("repayment_schedule", {
   created_at: text("created_at").notNull(),
   updated_at: text("updated_at"),
 });
+
+// ─── Sandbox Version Control Tables ─────────────────────────────────────────────
+// Sandboxes are isolated workspaces for experimental/exploratory work.
+// Each sandbox has its own git branch for version control.
+// Checkpoints are named snapshots that can be restored at any point.
+
+export const sandboxes = sqliteTable("sandboxes", {
+  id: text("id").primaryKey(),
+  tenant_id: text("tenant_id").notNull().default("default"),
+
+  // Identity
+  name: text("name").notNull(), // Human-readable name (e.g., "What-if: Higher leverage scenario")
+  description: text("description"),
+
+  // What this sandbox is for
+  parent_type: text("parent_type").notNull(), // "deal" | "portfolio" | "analysis"
+  parent_id: text("parent_id"), // Optional reference to parent entity (deal_id, etc.)
+
+  // Git integration
+  git_branch: text("git_branch").notNull(), // Branch name (e.g., "sandbox/sbx_abc123")
+  base_commit: text("base_commit"), // Commit SHA this sandbox was forked from
+
+  // Forking - sandboxes can be forked from other sandboxes or checkpoints
+  forked_from_sandbox_id: text("forked_from_sandbox_id"),
+  forked_from_checkpoint_id: text("forked_from_checkpoint_id"),
+
+  // State
+  status: text("status").notNull().default("active"),
+  // "active" - in use
+  // "archived" - no longer needed but preserved
+  // "merged" - changes have been merged to parent
+  // "discarded" - abandoned without merging
+
+  // Ownership
+  created_by: text("created_by").notNull(),
+  assigned_to: text("assigned_to"),
+
+  // Lifecycle
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at").notNull(),
+  archived_at: text("archived_at"),
+});
+
+export const checkpoints = sqliteTable("checkpoints", {
+  id: text("id").primaryKey(),
+
+  sandbox_id: text("sandbox_id")
+    .notNull()
+    .references(() => sandboxes.id),
+
+  // Identity
+  name: text("name").notNull(), // Human-readable (e.g., "Before sensitivity analysis")
+  description: text("description"),
+
+  // Git reference
+  git_commit: text("git_commit").notNull(), // Commit SHA
+  git_tag: text("git_tag"), // Optional tag name for important checkpoints
+
+  // Sequence within sandbox (for ordering)
+  sequence: integer("sequence").notNull(),
+
+  // What was captured - serialized state snapshot
+  // This allows quick restore without replaying git history
+  snapshot: text("snapshot", { mode: "json" }), // { deals: {...}, spreads: [...], artifacts: [...] }
+
+  // Metadata about what changed
+  changes_summary: text("changes_summary"), // Brief description of changes since last checkpoint
+  changed_entities: text("changed_entities", { mode: "json" }), // ["spread:sp_123", "deal:deal_456"]
+
+  // Metrics at this point (for comparison)
+  metrics: text("metrics", { mode: "json" }), // { ratios: {...}, covenant_status: [...] }
+
+  // Provenance
+  created_by: text("created_by").notNull(),
+  created_at: text("created_at").notNull(),
+
+  // Whether this checkpoint can be restored
+  restorable: integer("restorable", { mode: "boolean" }).notNull().default(true),
+});
+
+// Track which entities belong to which sandbox
+// This enables isolation - changes in a sandbox don't affect the main workspace
+export const sandboxEntities = sqliteTable("sandbox_entities", {
+  id: text("id").primaryKey(),
+
+  sandbox_id: text("sandbox_id")
+    .notNull()
+    .references(() => sandboxes.id),
+
+  // What entity this is
+  entity_type: text("entity_type").notNull(), // "deal" | "spread" | "artifact" | "covenant" | etc.
+  entity_id: text("entity_id").notNull(), // The ID of the entity
+
+  // Whether this was created in the sandbox or imported from main
+  origin: text("origin").notNull(), // "created" | "imported" | "cloned"
+
+  // The original entity ID if this was cloned
+  original_entity_id: text("original_entity_id"),
+
+  // Current state - JSON serialization of the entity
+  // This allows sandbox modifications without touching the main tables
+  state: text("state", { mode: "json" }),
+
+  // Lifecycle
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at").notNull(),
+  deleted_at: text("deleted_at"),
+});

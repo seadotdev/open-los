@@ -1,0 +1,859 @@
+version: "0.1.0"
+suite: sandboxes
+description: >
+  Sandbox version control: isolated workspaces for exploratory analysis.
+  Sandboxes provide git-powered version control for experimental work,
+  with checkpoints that can be restored at any point.
+
+# ─── Test 1: Create a sandbox ────────────────────────────────────────────────
+---
+test: sandbox_create
+meta:
+  name: "Create a sandbox for a deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+        jurisdiction: "GB"
+        requested_amount: 25000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "What-if: Higher leverage scenario"
+        description: "Exploring impact of 80% LTV instead of 65%"
+        parent_type: "deal"
+        parent_id: "${deal_id}"
+    expect:
+      status: 201
+      json_contains:
+        name: "What-if: Higher leverage scenario"
+        parent_type: "deal"
+        parent_id: "${deal_id}"
+        status: "active"
+      save:
+        sandbox_id: "$.id"
+
+# ─── Test 2: List sandboxes for a deal ───────────────────────────────────────
+---
+test: sandbox_list_by_deal
+meta:
+  name: "List sandboxes filtered by deal"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_sandbox_1
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Scenario A"
+        parent_type: "deal"
+        parent_id: "${deal_id}"
+    expect:
+      status: 201
+
+  - id: create_sandbox_2
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Scenario B"
+        parent_type: "deal"
+        parent_id: "${deal_id}"
+    expect:
+      status: 201
+
+  - id: list
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/sandboxes?parent_type=deal&parent_id=${deal_id}
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.items.length"
+          eq: 2
+        - path: "$.total"
+          eq: 2
+
+# ─── Test 3: Create checkpoint ───────────────────────────────────────────────
+---
+test: sandbox_create_checkpoint
+meta:
+  name: "Create a checkpoint to save sandbox state"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Analysis workspace"
+        parent_type: "deal"
+        parent_id: "${deal_id}"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: create_checkpoint
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints
+      json:
+        name: "After initial spread"
+        description: "Captured state after first pass at financials"
+        changes_summary: "Added basic spread data"
+    expect:
+      status: 201
+      json_contains:
+        name: "After initial spread"
+        restorable: true
+      save:
+        checkpoint_id: "$.id"
+
+# ─── Test 4: Clone entity into sandbox ───────────────────────────────────────
+---
+test: sandbox_clone_entity
+meta:
+  name: "Clone a spread into sandbox for modification"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Acme Ltd"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_spread
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/spreads
+      json:
+        entity_id: "acme-ltd"
+        period: "FY2025"
+        line_items:
+          - category: "revenue"
+            label: "Total Revenue"
+            amount: 1000000
+          - category: "cogs"
+            label: "Cost of Goods Sold"
+            amount: 600000
+    expect:
+      status: 201
+      save:
+        spread_id: "$.id"
+
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Revenue adjustment scenario"
+        parent_type: "deal"
+        parent_id: "${deal_id}"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: clone_spread
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/entities/clone
+      json:
+        entity_type: "spread"
+        entity_id: "${spread_id}"
+    expect:
+      status: 201
+      json_contains:
+        entity_type: "spread"
+        origin: "cloned"
+        original_entity_id: "${spread_id}"
+
+# ─── Test 5: Create entity in sandbox ────────────────────────────────────────
+---
+test: sandbox_create_entity
+meta:
+  name: "Create a new entity directly in sandbox"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Analysis workspace"
+        parent_type: "analysis"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/entities
+      json:
+        entity_type: "spread"
+        entity_id: "sandbox_spread_001"
+        state:
+          period: "FY2025"
+          line_items:
+            - category: "revenue"
+              label: "Projected Revenue"
+              amount: 1500000
+    expect:
+      status: 201
+      json_contains:
+        entity_type: "spread"
+        entity_id: "sandbox_spread_001"
+        origin: "created"
+
+# ─── Test 6: Update entity in sandbox ────────────────────────────────────────
+---
+test: sandbox_update_entity
+meta:
+  name: "Update an entity's state in sandbox"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Analysis workspace"
+        parent_type: "analysis"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/entities
+      json:
+        entity_type: "spread"
+        entity_id: "sbx_spread_001"
+        state:
+          period: "FY2025"
+          revenue: 1000000
+    expect:
+      status: 201
+
+  - id: update_entity
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/sandboxes/${sandbox_id}/entities/spread/sbx_spread_001
+      json:
+        state:
+          period: "FY2025"
+          revenue: 1200000
+          notes: "Adjusted for 20% growth"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.state.revenue"
+          eq: 1200000
+        - path: "$.state.notes"
+          eq: "Adjusted for 20% growth"
+
+# ─── Test 7: List entities in sandbox ────────────────────────────────────────
+---
+test: sandbox_list_entities
+meta:
+  name: "List all entities in a sandbox"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Analysis workspace"
+        parent_type: "analysis"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: create_entity_1
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/entities
+      json:
+        entity_type: "spread"
+        entity_id: "spread_001"
+        state: { period: "FY2025" }
+    expect:
+      status: 201
+
+  - id: create_entity_2
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/entities
+      json:
+        entity_type: "covenant"
+        entity_id: "covenant_001"
+        state: { name: "DSCR Covenant" }
+    expect:
+      status: 201
+
+  - id: list_all
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/sandboxes/${sandbox_id}/entities
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.items.length"
+          eq: 2
+
+  - id: list_filtered
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/sandboxes/${sandbox_id}/entities?entity_type=spread
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.items.length"
+          eq: 1
+
+# ─── Test 8: Restore checkpoint ──────────────────────────────────────────────
+---
+test: sandbox_restore_checkpoint
+meta:
+  name: "Restore sandbox to a previous checkpoint"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Analysis workspace"
+        parent_type: "analysis"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/entities
+      json:
+        entity_type: "spread"
+        entity_id: "spread_001"
+        state: { revenue: 1000000 }
+    expect:
+      status: 201
+
+  - id: create_checkpoint_1
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints
+      json:
+        name: "Before changes"
+    expect:
+      status: 201
+      save:
+        checkpoint_1_id: "$.id"
+
+  - id: update_entity
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/sandboxes/${sandbox_id}/entities/spread/spread_001
+      json:
+        state: { revenue: 2000000 }
+    expect:
+      status: 200
+
+  - id: create_checkpoint_2
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints
+      json:
+        name: "After doubling revenue"
+    expect:
+      status: 201
+
+  - id: restore
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints/${checkpoint_1_id}/restore
+    expect:
+      status: 200
+
+  - id: verify_restored
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/sandboxes/${sandbox_id}/entities
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.items[0].state.revenue"
+          eq: 1000000
+
+# ─── Test 9: Compare checkpoints ─────────────────────────────────────────────
+---
+test: sandbox_compare_checkpoints
+meta:
+  name: "Compare two checkpoints to see what changed"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Analysis workspace"
+        parent_type: "analysis"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/entities
+      json:
+        entity_type: "spread"
+        entity_id: "spread_001"
+        state: { revenue: 1000000 }
+    expect:
+      status: 201
+
+  - id: checkpoint_1
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints
+      json:
+        name: "Initial state"
+    expect:
+      status: 201
+      save:
+        checkpoint_1_id: "$.id"
+
+  - id: update_entity
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/sandboxes/${sandbox_id}/entities/spread/spread_001
+      json:
+        state: { revenue: 1500000, margin: 0.4 }
+    expect:
+      status: 200
+
+  - id: add_entity
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/entities
+      json:
+        entity_type: "covenant"
+        entity_id: "cov_001"
+        state: { name: "DSCR", threshold: 1.25 }
+    expect:
+      status: 201
+
+  - id: checkpoint_2
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints
+      json:
+        name: "After adjustments"
+    expect:
+      status: 201
+      save:
+        checkpoint_2_id: "$.id"
+
+  - id: compare
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints/compare
+      json:
+        from_checkpoint_id: "${checkpoint_1_id}"
+        to_checkpoint_id: "${checkpoint_2_id}"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.changes.added.length"
+          eq: 1
+        - path: "$.changes.modified.length"
+          eq: 1
+
+# ─── Test 10: Archive sandbox ────────────────────────────────────────────────
+---
+test: sandbox_archive
+meta:
+  name: "Archive a sandbox after work is complete"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Completed analysis"
+        parent_type: "analysis"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: archive
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/sandboxes/${sandbox_id}/status
+      json:
+        status: "archived"
+    expect:
+      status: 200
+      json_contains:
+        status: "archived"
+
+  - id: list_active
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/sandboxes?status=active
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.items.length"
+          eq: 0
+
+# ─── Test 11: Fork sandbox from checkpoint ───────────────────────────────────
+---
+test: sandbox_fork_from_checkpoint
+meta:
+  name: "Fork a new sandbox from an existing checkpoint"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_sandbox_1
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Original analysis"
+        parent_type: "analysis"
+    expect:
+      status: 201
+      save:
+        sandbox_1_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_1_id}/entities
+      json:
+        entity_type: "spread"
+        entity_id: "spread_001"
+        state: { revenue: 1000000 }
+    expect:
+      status: 201
+
+  - id: create_checkpoint
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_1_id}/checkpoints
+      json:
+        name: "Baseline"
+    expect:
+      status: 201
+      save:
+        checkpoint_id: "$.id"
+
+  - id: fork_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Alternative scenario"
+        parent_type: "analysis"
+        fork_from_checkpoint_id: "${checkpoint_id}"
+    expect:
+      status: 201
+      json_contains:
+        name: "Alternative scenario"
+        forked_from_checkpoint_id: "${checkpoint_id}"
+      save:
+        sandbox_2_id: "$.id"
+
+# ─── Test 12: Git history ────────────────────────────────────────────────────
+---
+test: sandbox_git_history
+meta:
+  name: "View git commit history for a sandbox"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Analysis workspace"
+        parent_type: "analysis"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: checkpoint_1
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints
+      json:
+        name: "First checkpoint"
+    expect:
+      status: 201
+
+  - id: checkpoint_2
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints
+      json:
+        name: "Second checkpoint"
+    expect:
+      status: 201
+
+  - id: history
+    http:
+      actor: "u_analyst"
+      method: GET
+      path: /v1/sandboxes/${sandbox_id}/history
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.items.length"
+          gte: 2
+
+# ─── Test 13: Cannot create checkpoint in archived sandbox ──────────────────
+---
+test: sandbox_archived_no_checkpoint
+meta:
+  name: "Cannot create checkpoint in archived sandbox"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_sandbox
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes
+      json:
+        name: "Analysis workspace"
+        parent_type: "analysis"
+    expect:
+      status: 201
+      save:
+        sandbox_id: "$.id"
+
+  - id: archive
+    http:
+      actor: "u_analyst"
+      method: PATCH
+      path: /v1/sandboxes/${sandbox_id}/status
+      json:
+        status: "archived"
+    expect:
+      status: 200
+
+  - id: try_checkpoint
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/sandboxes/${sandbox_id}/checkpoints
+      json:
+        name: "Should fail"
+    expect:
+      status: 400
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
