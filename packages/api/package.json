@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "ci:fmt": "node -e \"\"",
     "typecheck": "tsc --noEmit",
     "dev": "tsx watch src/cli.ts",
     "start": "tsx src/cli.ts"
