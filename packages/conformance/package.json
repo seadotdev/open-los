@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "ci:fmt": "node -e \"\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:smoke": "vitest run --testPathPattern smoke",

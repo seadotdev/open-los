@@ -6,6 +6,7 @@
   "main": "src/index.ts",
   "scripts": {
     "build": "tsc",
+    "ci:fmt": "node -e \"\"",
     "typecheck": "tsc --noEmit",
     "run-experiment": "tsx src/run.ts",
     "analyze": "tsx src/analyze.ts"
