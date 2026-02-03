@@ -1,4 +1,4 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, asc, gt, or, sql } from "drizzle-orm";
 import type { Database } from "../schema/db.js";
 import { deals } from "../schema/tables.js";
 import type { AuditService } from "./audit.js";
@@ -118,32 +118,45 @@ export class DealService {
   }
 
   async list(tenantId = "default", filters?: { stage?: string; limit?: number; cursor?: string }) {
-    let rows = await this.db
-      .select()
-      .from(deals)
-      .where(eq(deals.tenant_id, tenantId));
+    const conditions = [eq(deals.tenant_id, tenantId)];
 
     if (filters?.stage) {
-      rows = rows.filter((r) => r.stage === filters.stage);
+      conditions.push(eq(deals.stage, filters.stage));
     }
 
-    const total = rows.length;
+    const [{ total }] = await this.db
+      .select({ total: sql<number>`count(*)` })
+      .from(deals)
+      .where(and(...conditions));
 
-    // Cursor-based pagination
     if (filters?.cursor) {
-      const idx = rows.findIndex((r) => r.id === filters.cursor);
-      if (idx >= 0) {
-        rows = rows.slice(idx + 1);
+      const [cursorRow] = await this.db
+        .select({ id: deals.id, created_at: deals.created_at })
+        .from(deals)
+        .where(and(eq(deals.id, filters.cursor), ...conditions))
+        .limit(1);
+      if (cursorRow) {
+        conditions.push(
+          or(
+            gt(deals.created_at, cursorRow.created_at),
+            and(eq(deals.created_at, cursorRow.created_at), gt(deals.id, cursorRow.id))
+          )
+        );
       }
     }
 
     const limit = filters?.limit ?? 50;
-    let cursor: string | undefined;
-    if (rows.length > limit) {
-      rows = rows.slice(0, limit);
-      cursor = rows[rows.length - 1]?.id;
-    }
+    const rows = await this.db
+      .select()
+      .from(deals)
+      .where(and(...conditions))
+      .orderBy(asc(deals.created_at), asc(deals.id))
+      .limit(limit + 1);
 
-    return { deals: rows, total, cursor };
+    const hasMore = rows.length > limit;
+    const dealsPage = hasMore ? rows.slice(0, limit) : rows;
+    const cursor = hasMore ? dealsPage[dealsPage.length - 1]?.id : undefined;
+
+    return { deals: dealsPage, total, cursor };
   }
 }

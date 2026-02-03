@@ -1,4 +1,4 @@
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, desc, sql } from "drizzle-orm";
 import type { Database } from "../schema/db.js";
 import { auditEvents } from "../schema/tables.js";
 
@@ -13,26 +13,43 @@ export interface AuditEventInput {
   metadata?: Record<string, unknown>;
 }
 
-let globalSeq = 0;
+type AuditExecutor = Pick<Database, "select" | "insert">;
+type AuditDb = AuditExecutor & Partial<Pick<Database, "transaction">>;
 
 export class AuditService {
   constructor(private db: Database) {}
 
-  async record(input: AuditEventInput): Promise<void> {
-    const id = crypto.randomUUID();
-    const seq = ++globalSeq;
-    await this.db.insert(auditEvents).values({
-      id,
-      seq,
-      deal_id: input.deal_id,
-      type: input.type,
-      actor: input.actor,
-      timestamp: input.timestamp,
-      object_type: input.object_type ?? null,
-      object_id: input.object_id ?? null,
-      changes: input.changes ?? null,
-      metadata: input.metadata ?? null,
-    });
+  async record(input: AuditEventInput, db: AuditDb = this.db): Promise<void> {
+    const runInsert = async (executor: AuditExecutor) => {
+      const [latest] = await executor
+        .select({ seq: auditEvents.seq })
+        .from(auditEvents)
+        .orderBy(desc(auditEvents.seq))
+        .limit(1);
+      const nextSeq = (latest?.seq ?? 0) + 1;
+      const id = crypto.randomUUID();
+      await executor.insert(auditEvents).values({
+        id,
+        seq: nextSeq,
+        deal_id: input.deal_id,
+        type: input.type,
+        actor: input.actor,
+        timestamp: input.timestamp,
+        object_type: input.object_type ?? null,
+        object_id: input.object_id ?? null,
+        changes: input.changes ?? null,
+        metadata: input.metadata ?? null,
+      });
+    };
+
+    if (db.transaction) {
+      await db.transaction(async (tx) => {
+        await runInsert(tx);
+      });
+      return;
+    }
+
+    await runInsert(db);
   }
 
   async listByDeal(
@@ -53,36 +70,33 @@ export class AuditService {
       conditions.push(eq(auditEvents.actor, filters.actor));
     }
 
-    // Get all matching, ordered by sequence
-    const allMatching = await this.db
-      .select()
+    const [{ total }] = await this.db
+      .select({ total: sql<number>`count(*)` })
       .from(auditEvents)
-      .where(and(...conditions))
-      .orderBy(asc(auditEvents.seq));
+      .where(and(...conditions));
 
-    const total = allMatching.length;
-
-    // Apply cursor-based pagination
-    let events = allMatching;
     if (filters?.cursor) {
-      const cursorIndex = events.findIndex((e) => e.id === filters.cursor);
-      if (cursorIndex >= 0) {
-        events = events.slice(cursorIndex + 1);
+      const [cursorRow] = await this.db
+        .select({ seq: auditEvents.seq })
+        .from(auditEvents)
+        .where(and(eq(auditEvents.id, filters.cursor), ...conditions))
+        .limit(1);
+      if (cursorRow) {
+        conditions.push(sql`${auditEvents.seq} > ${cursorRow.seq}`);
       }
     }
 
-    // Apply limit
-    let nextCursor: string | undefined;
-    if (filters?.limit && events.length > filters.limit) {
-      events = events.slice(0, filters.limit);
-      nextCursor = events[events.length - 1]?.id;
-    } else if (
-      filters?.limit &&
-      events.length === filters.limit &&
-      events.length < total
-    ) {
-      nextCursor = events[events.length - 1]?.id;
-    }
+    const limit = filters?.limit ?? 50;
+    const rows = await this.db
+      .select()
+      .from(auditEvents)
+      .where(and(...conditions))
+      .orderBy(asc(auditEvents.seq))
+      .limit(limit + 1);
+
+    const hasMore = rows.length > limit;
+    const events = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? events[events.length - 1]?.id : undefined;
 
     return {
       events: events.map((e) => ({

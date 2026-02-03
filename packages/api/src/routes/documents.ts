@@ -9,15 +9,17 @@ export function documentRoutes(ctx: AppContext) {
   app.post("/deals/:dealId/documents", async (c) => {
     const dealId = c.req.param("dealId");
     const actor = c.req.header("X-Actor") ?? "system";
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
     const body = await c.req.json();
-    const doc = await ctx.documentService.upload(dealId, body, actor);
+    const doc = await ctx.documentService.upload(dealId, body, actor, tenantId);
     return c.json(stripNulls(doc), 202);
   });
 
   // GET /v1/deals/:dealId/documents
   app.get("/deals/:dealId/documents", async (c) => {
     const dealId = c.req.param("dealId");
-    const docs = await ctx.documentService.listByDeal(dealId);
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
+    const docs = await ctx.documentService.listByDeal(dealId, tenantId);
     return c.json(stripNulls({ documents: docs }), 200);
   });
 
