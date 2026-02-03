@@ -84,135 +84,137 @@ export class StageService {
     actor: string,
     user?: UserContext
   ) {
-    const rows = await this.db
-      .select()
-      .from(deals)
-      .where(eq(deals.id, dealId));
-    if (rows.length === 0) {
-      throw new InvalidTransitionError(`Deal ${dealId} not found`);
-    }
-    const deal = rows[0];
-    const fromStage = deal.stage;
-    const toStage = input.to_stage;
+    return this.db.transaction(async (tx) => {
+      const rows = await tx.select().from(deals).where(eq(deals.id, dealId));
+      if (rows.length === 0) {
+        throw new InvalidTransitionError(`Deal ${dealId} not found`);
+      }
+      const deal = rows[0];
+      const fromStage = deal.stage;
+      const toStage = input.to_stage;
 
-    // 1. Validate transition is a valid forward step
-    const allowed = VALID_TRANSITIONS[fromStage];
-    if (allowed !== toStage) {
-      throw new InvalidTransitionError(
-        `Cannot transition from ${fromStage} to ${toStage}`,
-        { from_stage: fromStage, to_stage: toStage }
-      );
-    }
+      const effectiveUser =
+        user ?? (actor === "system" ? { id: "system", role: "credit_lead" } : undefined);
+      if (!effectiveUser) {
+        throw new ForbiddenError(`Actor '${actor}' is not authorized to transition stages`, {
+          actor,
+        });
+      }
 
-    // 2. Check role-based permissions
-    const transitionKey = `${fromStage}→${toStage}`;
-    const allowedRoles = TRANSITION_ROLES[transitionKey];
-    if (user && allowedRoles) {
-      if (input.override) {
-        if (user.role !== "credit_lead") {
-          throw new ForbiddenError(
-            `Only credit_lead can override transitions`,
-            { required_roles: ["credit_lead"], actor_role: user.role }
-          );
-        }
-      } else if (!allowedRoles.includes(user.role)) {
-        throw new ForbiddenError(
-          `Role '${user.role}' is not permitted to transition from ${fromStage} to ${toStage}`,
-          { required_roles: allowedRoles, actor_role: user.role }
+      // 1. Validate transition is a valid forward step
+      const allowed = VALID_TRANSITIONS[fromStage];
+      if (allowed !== toStage) {
+        throw new InvalidTransitionError(
+          `Cannot transition from ${fromStage} to ${toStage}`,
+          { from_stage: fromStage, to_stage: toStage }
         );
       }
-    }
 
-    // 3. Check stage guards
-    const docRows = await this.db
-      .select()
-      .from(documents)
-      .where(eq(documents.deal_id, dealId));
-
-    const checklist = this.getChecklist(deal, toStage, docRows.length);
-    const unsatisfied = checklist.filter((c) => !c.satisfied);
-
-    if (unsatisfied.length > 0) {
-      if (input.override) {
-        // Verify override is valid
-        if (!user || user.role !== "credit_lead") {
+      // 2. Check role-based permissions
+      const transitionKey = `${fromStage}→${toStage}`;
+      const allowedRoles = TRANSITION_ROLES[transitionKey];
+      if (allowedRoles) {
+        if (input.override) {
+          if (effectiveUser.role !== "credit_lead") {
+            throw new ForbiddenError(`Only credit_lead can override transitions`, {
+              required_roles: ["credit_lead"],
+              actor_role: effectiveUser.role,
+            });
+          }
+        } else if (!allowedRoles.includes(effectiveUser.role)) {
           throw new ForbiddenError(
-            `Only credit_lead can override transitions`,
-            { required_roles: ["credit_lead"] }
+            `Role '${effectiveUser.role}' is not permitted to transition from ${fromStage} to ${toStage}`,
+            { required_roles: allowedRoles, actor_role: effectiveUser.role }
           );
         }
-        if (
-          !input.override_rationale ||
-          input.override_rationale.trim() === ""
-        ) {
+      }
+
+      // 3. Check stage guards
+      const docRows = await tx
+        .select()
+        .from(documents)
+        .where(eq(documents.deal_id, dealId));
+
+      const checklist = this.getChecklist(deal, toStage, docRows.length);
+      const unsatisfied = checklist.filter((c) => !c.satisfied);
+
+      if (unsatisfied.length > 0) {
+        if (input.override) {
+          // Verify override is valid
+          if (effectiveUser.role !== "credit_lead") {
+            throw new ForbiddenError(`Only credit_lead can override transitions`, {
+              required_roles: ["credit_lead"],
+            });
+          }
+          if (!input.override_rationale || input.override_rationale.trim() === "") {
+            throw new OverrideRequiredError("Override requires a rationale", {
+              missing: "override_rationale",
+            });
+          }
+          // Override accepted — proceed despite unsatisfied guards
+        } else {
+          throw new StageGuardError(
+            `Stage guard failed: ${unsatisfied.map((c) => c.item).join(", ")}`,
+            { unsatisfied: unsatisfied.map((c) => c.item), checklist }
+          );
+        }
+      }
+
+      // 4. Validate override request format even when guards pass
+      if (input.override) {
+        if (effectiveUser.role !== "credit_lead") {
+          throw new ForbiddenError(`Only credit_lead can override transitions`, {
+            required_roles: ["credit_lead"],
+          });
+        }
+        if (!input.override_rationale || input.override_rationale.trim() === "") {
           throw new OverrideRequiredError("Override requires a rationale", {
             missing: "override_rationale",
           });
         }
-        // Override accepted — proceed despite unsatisfied guards
-      } else {
-        throw new StageGuardError(
-          `Stage guard failed: ${unsatisfied.map((c) => c.item).join(", ")}`,
-          { unsatisfied: unsatisfied.map((c) => c.item), checklist }
-        );
       }
-    }
 
-    // 4. Validate override request format even when guards pass
-    if (input.override) {
-      if (!user || user.role !== "credit_lead") {
-        throw new ForbiddenError(
-          `Only credit_lead can override transitions`,
-          { required_roles: ["credit_lead"] }
-        );
-      }
-      if (
-        !input.override_rationale ||
-        input.override_rationale.trim() === ""
-      ) {
-        throw new OverrideRequiredError("Override requires a rationale", {
-          missing: "override_rationale",
-        });
-      }
-    }
+      // 5. Record transition
+      const id = crypto.randomUUID();
+      const now = this.getNow();
 
-    // 5. Record transition
-    const id = crypto.randomUUID();
-    const now = this.getNow();
+      const transition = {
+        id,
+        deal_id: dealId,
+        from_stage: fromStage,
+        to_stage: toStage,
+        actor,
+        rationale: input.rationale ?? null,
+        override: input.override ?? false,
+        override_rationale: input.override_rationale ?? null,
+        checklist_snapshot: checklist,
+        transitioned_at: now,
+      };
 
-    const transition = {
-      id,
-      deal_id: dealId,
-      from_stage: fromStage,
-      to_stage: toStage,
-      actor,
-      rationale: input.rationale ?? null,
-      override: input.override ?? false,
-      override_rationale: input.override_rationale ?? null,
-      checklist_snapshot: checklist,
-      transitioned_at: now,
-    };
+      await tx.insert(stageTransitions).values(transition);
 
-    await this.db.insert(stageTransitions).values(transition);
+      // Update deal stage
+      await tx
+        .update(deals)
+        .set({ stage: toStage, updated_at: now })
+        .where(eq(deals.id, dealId));
 
-    // Update deal stage
-    await this.db
-      .update(deals)
-      .set({ stage: toStage, updated_at: now })
-      .where(eq(deals.id, dealId));
+      // Record audit event
+      await this.audit.record(
+        {
+          deal_id: dealId,
+          type: "STAGE_TRANSITION",
+          actor,
+          timestamp: now,
+          object_type: "deal",
+          object_id: dealId,
+          changes: [{ field: "stage", before: fromStage, after: toStage }],
+        },
+        tx
+      );
 
-    // Record audit event
-    await this.audit.record({
-      deal_id: dealId,
-      type: "STAGE_TRANSITION",
-      actor,
-      timestamp: now,
-      object_type: "deal",
-      object_id: dealId,
-      changes: [{ field: "stage", before: fromStage, after: toStage }],
+      return transition;
     });
-
-    return transition;
   }
 
   async listByDeal(dealId: string) {
