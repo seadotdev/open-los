@@ -322,4 +322,122 @@ describe("SpreadsheetSyncEngine", () => {
     expect(secondRun.summary.skippedRows).toBe(1);
     expect(db.updateEntity).not.toHaveBeenCalled();
   });
+
+  it("supports concatenate, split, regex extract, and lookup transforms", async () => {
+    const mappings: FieldMapping[] = [
+      {
+        id: "m1",
+        connectionId: "conn-3",
+        sourceWorksheet: "Pipeline",
+        sourceColumn: "First Name",
+        targetEntity: "deals",
+        targetField: "borrower_name",
+        transform: {
+          type: "concatenate",
+          params: { fields: ["First Name", "Last Name"], separator: " " },
+        },
+        enabled: true,
+      },
+      {
+        id: "m2",
+        connectionId: "conn-3",
+        sourceWorksheet: "Pipeline",
+        sourceColumn: "Contact",
+        targetEntity: "deals",
+        targetField: "primary_contact.last_name",
+        transform: { type: "split", params: { delimiter: ",", index: 1 } },
+        enabled: true,
+      },
+      {
+        id: "m3",
+        connectionId: "conn-3",
+        sourceWorksheet: "Pipeline",
+        sourceColumn: "Deal Code",
+        targetEntity: "deals",
+        targetField: "external_id",
+        transform: { type: "regex_extract", params: { pattern: "DEAL-(\\d+)" } },
+        enabled: true,
+      },
+      {
+        id: "m4",
+        connectionId: "conn-3",
+        sourceWorksheet: "Pipeline",
+        sourceColumn: "Risk",
+        targetEntity: "deals",
+        targetField: "risk_level",
+        transform: {
+          type: "lookup",
+          params: { map: { H: "high", M: "medium", L: "low" }, fallback: "unknown" },
+        },
+        enabled: true,
+      },
+    ];
+
+    const db = createFakeDb(mappings);
+    const schema: SpreadsheetSchema = {
+      sourceType: "excel",
+      version: "1.0",
+      discoveredAt: new Date(),
+      worksheets: [
+        {
+          name: "Pipeline",
+          displayName: "Pipeline",
+          rowCount: 1,
+          columns: [
+            { header: "First Name", dataType: "text", index: 0, letter: "A", sampleValues: [], isPrimaryKeyCandidate: false, fillRate: 1 },
+            { header: "Last Name", dataType: "text", index: 1, letter: "B", sampleValues: [], isPrimaryKeyCandidate: false, fillRate: 1 },
+            { header: "Contact", dataType: "text", index: 2, letter: "C", sampleValues: [], isPrimaryKeyCandidate: false, fillRate: 1 },
+            { header: "Deal Code", dataType: "text", index: 3, letter: "D", sampleValues: [], isPrimaryKeyCandidate: false, fillRate: 1 },
+            { header: "Risk", dataType: "text", index: 4, letter: "E", sampleValues: [], isPrimaryKeyCandidate: false, fillRate: 1 },
+          ],
+          headerRowIndex: 0,
+          dataRowIndex: 1,
+        },
+      ],
+    };
+
+    const rows: SpreadsheetRow[] = [
+      {
+        rowIndex: 0,
+        rowNumber: 2,
+        data: {
+          "First Name": "Ada",
+          "Last Name": "Lovelace",
+          Contact: "Ada, Lovelace",
+          "Deal Code": "DEAL-4242",
+          Risk: "H",
+        },
+        hash: "hash-3",
+      },
+    ];
+
+    const adapter = new FakeAdapter(schema, { Pipeline: rows });
+    const engine = createSpreadsheetSyncEngine({
+      db,
+      tenantId: "tenant-3",
+      actorId: "actor-3",
+    });
+
+    (engine as any).adapters.set("conn-3", adapter);
+
+    const input: SpreadsheetSyncInput = {
+      connectionId: "conn-3",
+      mode: "full",
+      continueOnError: true,
+    };
+
+    const result = await engine.runSync("conn-3", input);
+
+    expect(result.summary.createdRecords).toBe(1);
+    expect(db.createDeal).toHaveBeenCalledWith(
+      {
+        borrower_name: "Ada Lovelace",
+        primary_contact: { last_name: "Lovelace" },
+        external_id: "4242",
+        risk_level: "high",
+        tenant_id: "tenant-3",
+      },
+      "actor-3"
+    );
+  });
 });
