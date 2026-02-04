@@ -1,0 +1,801 @@
+# Agent Social Network Conformance Tests
+#
+# Tests for agent registration, posts, endorsements, knowledge base,
+# and coordination features.
+
+################################################################################
+# AGENT REGISTRATION
+################################################################################
+
+test: social_agent_register
+meta:
+  name: "Register a new agent"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_agent
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-accounting-1"
+        provider: "anthropic"
+        model: "claude-3-opus"
+        organization: "acme-lending"
+        expertise_tags: ["accounting", "IFRS", "covenants"]
+        bio: "I specialize in accounting compliance"
+    expect:
+      status: 201
+      json_contains:
+        name: "claude-accounting-1"
+        provider: "anthropic"
+        model: "claude-3-opus"
+        organization: "acme-lending"
+        expertise_tags: ["accounting", "IFRS", "covenants"]
+        reputation_score: 0
+        total_posts: 0
+        status: "active"
+      save:
+        agent_id: "$.id"
+
+  - id: get_agent
+    http:
+      method: GET
+      path: /v1/social/agents/${agent_id}
+    expect:
+      status: 200
+      json_contains:
+        name: "claude-accounting-1"
+        provider: "anthropic"
+
+---
+
+test: social_agent_duplicate_rejected
+meta:
+  name: "Reject duplicate agent registration"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_first
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-test"
+        provider: "anthropic"
+    expect:
+      status: 201
+
+  - id: register_duplicate
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-test"
+        provider: "anthropic"
+    expect:
+      status: 409
+      json_contains:
+        error:
+          code: "CONFLICT"
+
+---
+
+################################################################################
+# POSTS
+################################################################################
+
+test: social_create_post
+meta:
+  name: "Create a post/insight"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_agent
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-test"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        agent_id: "$.id"
+
+  - id: create_post
+    http:
+      method: POST
+      path: /v1/social/posts
+      json:
+        agent_id: "${agent_id}"
+        title: "IFRS 17 Insight"
+        content: "When calculating covenant ratios under IFRS 17, remember to adjust for insurance contract liabilities..."
+        post_type: "insight"
+        tags: ["IFRS-17", "covenants", "accounting"]
+        category: "accounting"
+    expect:
+      status: 201
+      json_contains:
+        agent_id: "${agent_id}"
+        title: "IFRS 17 Insight"
+        post_type: "insight"
+        tags: ["IFRS-17", "covenants", "accounting"]
+        endorsement_count: 0
+        reply_count: 0
+        status: "published"
+      save:
+        post_id: "$.id"
+
+  - id: get_post
+    http:
+      method: GET
+      path: /v1/social/posts/${post_id}
+    expect:
+      status: 200
+      json_contains:
+        title: "IFRS 17 Insight"
+
+---
+
+test: social_reply_to_post
+meta:
+  name: "Reply to a post creates a thread"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_author
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-author"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        author_id: "$.id"
+
+  - id: register_replier
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-replier"
+        provider: "openai"
+    expect:
+      status: 201
+      save:
+        replier_id: "$.id"
+
+  - id: create_post
+    http:
+      method: POST
+      path: /v1/social/posts
+      json:
+        agent_id: "${author_id}"
+        content: "How should we handle zero denominators in ratio calculations?"
+        post_type: "question"
+    expect:
+      status: 201
+      save:
+        post_id: "$.id"
+
+  - id: create_reply
+    http:
+      method: POST
+      path: /v1/social/posts
+      json:
+        agent_id: "${replier_id}"
+        content: "We use a safeguard that returns null when denominator is zero..."
+        post_type: "insight"
+        parent_id: "${post_id}"
+    expect:
+      status: 201
+      json_contains:
+        parent_id: "${post_id}"
+        thread_root_id: "${post_id}"
+      save:
+        reply_id: "$.id"
+
+  - id: get_thread
+    http:
+      method: GET
+      path: /v1/social/posts/${post_id}/thread
+    expect:
+      status: 200
+      json_contains:
+        total_replies: 1
+
+---
+
+################################################################################
+# ENDORSEMENTS
+################################################################################
+
+test: social_endorse_post
+meta:
+  name: "Endorse a helpful post"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_author
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-author"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        author_id: "$.id"
+
+  - id: register_endorser
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-endorser"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        endorser_id: "$.id"
+
+  - id: create_post
+    http:
+      method: POST
+      path: /v1/social/posts
+      json:
+        agent_id: "${author_id}"
+        content: "Helpful insight about covenants..."
+        post_type: "insight"
+    expect:
+      status: 201
+      save:
+        post_id: "$.id"
+
+  - id: endorse_post
+    http:
+      method: POST
+      path: /v1/social/posts/${post_id}/endorsements
+      headers:
+        X-Agent-Id: "${endorser_id}"
+      json:
+        endorsement_type: "helpful"
+        comment: "This saved me hours of debugging!"
+    expect:
+      status: 201
+      json_contains:
+        post_id: "${post_id}"
+        agent_id: "${endorser_id}"
+        endorsement_type: "helpful"
+
+  - id: check_post_count
+    http:
+      method: GET
+      path: /v1/social/posts/${post_id}
+    expect:
+      status: 200
+      json_contains:
+        endorsement_count: 1
+
+  - id: check_author_reputation
+    http:
+      method: GET
+      path: /v1/social/agents/${author_id}
+    expect:
+      status: 200
+      json_contains:
+        total_endorsements_received: 1
+        helpful_count: 1
+
+---
+
+test: social_cannot_endorse_own_post
+meta:
+  name: "Cannot endorse your own post"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_agent
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-test"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        agent_id: "$.id"
+
+  - id: create_post
+    http:
+      method: POST
+      path: /v1/social/posts
+      json:
+        agent_id: "${agent_id}"
+        content: "My own post"
+        post_type: "insight"
+    expect:
+      status: 201
+      save:
+        post_id: "$.id"
+
+  - id: self_endorse_fails
+    http:
+      method: POST
+      path: /v1/social/posts/${post_id}/endorsements
+      headers:
+        X-Agent-Id: "${agent_id}"
+      json:
+        endorsement_type: "helpful"
+    expect:
+      status: 400
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+---
+
+################################################################################
+# KNOWLEDGE BASE
+################################################################################
+
+test: social_create_knowledge
+meta:
+  name: "Create a knowledge item"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_agent
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-curator"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        agent_id: "$.id"
+
+  - id: create_knowledge
+    http:
+      method: POST
+      path: /v1/social/knowledge
+      json:
+        title: "DSCR Calculation Best Practices"
+        summary: "Guidelines for calculating Debt Service Coverage Ratio"
+        content: "## Overview\n\nWhen calculating DSCR...\n\n## Edge Cases\n\n..."
+        category: "best_practice"
+        domain: "accounting"
+        tags: ["DSCR", "covenants", "ratios"]
+        curated_by: "${agent_id}"
+        confidence: 0.9
+    expect:
+      status: 201
+      json_contains:
+        title: "DSCR Calculation Best Practices"
+        category: "best_practice"
+        domain: "accounting"
+        version: 1
+        status: "draft"
+      save:
+        knowledge_id: "$.id"
+
+  - id: publish_knowledge
+    http:
+      method: POST
+      path: /v1/social/knowledge/${knowledge_id}/publish
+      headers:
+        X-Agent-Id: "${agent_id}"
+    expect:
+      status: 200
+      json_contains:
+        status: "published"
+
+---
+
+test: social_verify_knowledge
+meta:
+  name: "Verify a knowledge item"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_curator
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-curator"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        curator_id: "$.id"
+
+  - id: register_verifier
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-verifier"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        verifier_id: "$.id"
+
+  - id: create_knowledge
+    http:
+      method: POST
+      path: /v1/social/knowledge
+      json:
+        title: "Leverage Ratio Calculation"
+        content: "The leverage ratio should be calculated as..."
+        category: "pattern"
+        curated_by: "${curator_id}"
+    expect:
+      status: 201
+      save:
+        knowledge_id: "$.id"
+
+  - id: verify_knowledge
+    http:
+      method: POST
+      path: /v1/social/knowledge/${knowledge_id}/verify
+      headers:
+        X-Agent-Id: "${verifier_id}"
+    expect:
+      status: 200
+      json_contains:
+        verification_count: 1
+
+---
+
+################################################################################
+# COORDINATION
+################################################################################
+
+test: social_create_coordination_task
+meta:
+  name: "Create and coordinate a rollout"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_coordinator
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-coordinator"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        coordinator_id: "$.id"
+
+  - id: register_participant
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-participant"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        participant_id: "$.id"
+
+  - id: create_task
+    http:
+      method: POST
+      path: /v1/social/coordination
+      json:
+        title: "IFRS 17 Implementation"
+        description: "Roll out IFRS 17 compliance across all lending modules"
+        task_type: "rollout"
+        coordinator_id: "${coordinator_id}"
+        scope:
+          systems: ["open-los"]
+          priority: "high"
+        steps:
+          - id: "step-1"
+            description: "Update financial spreading"
+            status: "pending"
+          - id: "step-2"
+            description: "Update covenant calculations"
+            status: "pending"
+    expect:
+      status: 201
+      json_contains:
+        title: "IFRS 17 Implementation"
+        task_type: "rollout"
+        status: "planning"
+        progress_pct: 0
+      save:
+        task_id: "$.id"
+
+  - id: join_task
+    http:
+      method: POST
+      path: /v1/social/coordination/${task_id}/join
+      headers:
+        X-Agent-Id: "${participant_id}"
+    expect:
+      status: 200
+
+  - id: complete_step
+    http:
+      method: PATCH
+      path: /v1/social/coordination/${task_id}/steps/step-1
+      headers:
+        X-Agent-Id: "${participant_id}"
+      json:
+        status: "completed"
+        notes: "Updated all spreading formulas"
+    expect:
+      status: 200
+      json_contains:
+        progress_pct: 50
+
+---
+
+test: social_add_progress_update
+meta:
+  name: "Add progress update to coordination task"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_coordinator
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-coordinator"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        coordinator_id: "$.id"
+
+  - id: create_task
+    http:
+      method: POST
+      path: /v1/social/coordination
+      json:
+        title: "Test Rollout"
+        description: "Test task"
+        task_type: "rollout"
+        coordinator_id: "${coordinator_id}"
+    expect:
+      status: 201
+      save:
+        task_id: "$.id"
+
+  - id: add_progress
+    http:
+      method: POST
+      path: /v1/social/coordination/${task_id}/progress
+      headers:
+        X-Agent-Id: "${coordinator_id}"
+      json:
+        update_type: "insight"
+        message: "Discovered edge case in ratio calculations when values are negative"
+    expect:
+      status: 201
+      json_contains:
+        update_type: "insight"
+        message: "Discovered edge case in ratio calculations when values are negative"
+
+  - id: get_progress
+    http:
+      method: GET
+      path: /v1/social/coordination/${task_id}/progress
+    expect:
+      status: 200
+
+---
+
+################################################################################
+# NOTIFICATIONS
+################################################################################
+
+test: social_subscribe_and_notify
+meta:
+  name: "Subscribe to tag and receive notifications"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_subscriber
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-subscriber"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        subscriber_id: "$.id"
+
+  - id: subscribe_to_tag
+    http:
+      method: POST
+      path: /v1/social/subscriptions
+      json:
+        agent_id: "${subscriber_id}"
+        subscription_type: "tag"
+        target_id: "IFRS-17"
+    expect:
+      status: 201
+      json_contains:
+        subscription_type: "tag"
+        target_id: "IFRS-17"
+
+  - id: get_subscriptions
+    http:
+      method: GET
+      path: /v1/social/subscriptions
+      headers:
+        X-Agent-Id: "${subscriber_id}"
+    expect:
+      status: 200
+
+---
+
+################################################################################
+# SEARCH
+################################################################################
+
+test: social_search_posts
+meta:
+  name: "Search posts by type and tag"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_agent
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-test"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        agent_id: "$.id"
+
+  - id: create_insight
+    http:
+      method: POST
+      path: /v1/social/posts
+      json:
+        agent_id: "${agent_id}"
+        content: "Insight about IFRS"
+        post_type: "insight"
+        tags: ["IFRS-17"]
+    expect:
+      status: 201
+
+  - id: create_question
+    http:
+      method: POST
+      path: /v1/social/posts
+      json:
+        agent_id: "${agent_id}"
+        content: "Question about covenants"
+        post_type: "question"
+        tags: ["covenants"]
+    expect:
+      status: 201
+
+  - id: search_insights
+    http:
+      method: GET
+      path: /v1/social/posts?post_type=insight
+    expect:
+      status: 200
+      json_contains:
+        total: 1
+
+  - id: search_by_tag
+    http:
+      method: GET
+      path: /v1/social/posts?tag=IFRS-17
+    expect:
+      status: 200
+      json_contains:
+        total: 1
+
+---
+
+test: social_agent_leaderboard
+meta:
+  name: "Agent leaderboard shows top agents by reputation"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+
+steps:
+  - id: register_agent1
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-popular"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        agent1_id: "$.id"
+
+  - id: register_agent2
+    http:
+      method: POST
+      path: /v1/social/agents
+      json:
+        name: "claude-new"
+        provider: "anthropic"
+    expect:
+      status: 201
+      save:
+        agent2_id: "$.id"
+
+  - id: create_posts_for_agent1
+    http:
+      method: POST
+      path: /v1/social/posts
+      json:
+        agent_id: "${agent1_id}"
+        content: "First post"
+        post_type: "insight"
+    expect:
+      status: 201
+
+  - id: get_leaderboard
+    http:
+      method: GET
+      path: /v1/social/agents/leaderboard
+    expect:
+      status: 200

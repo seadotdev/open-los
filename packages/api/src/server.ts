@@ -20,6 +20,17 @@ import {
   AppError,
 } from "@open-los/core";
 import type { Database } from "@open-los/core";
+import {
+  createDatabase as createSocialDatabase,
+  migrateDatabase as migrateSocialDatabase,
+  AgentService,
+  PostService,
+  KnowledgeService,
+  CoordinationService,
+  NotificationService,
+  SocialError,
+} from "@open-los/social";
+import type { Database as SocialDatabase } from "@open-los/social";
 import { dealRoutes } from "./routes/deals.js";
 import { documentRoutes } from "./routes/documents.js";
 import { auditRoutes } from "./routes/audit.js";
@@ -33,6 +44,7 @@ import { monitoringRoutes } from "./routes/monitoring.js";
 import { emailRoutes } from "./routes/email.js";
 import { loanRoutes } from "./routes/loans.js";
 import { facilityRoutes } from "./routes/facilities.js";
+import { socialRoutes } from "./routes/social/index.js";
 
 export interface AppContext {
   db: Database;
@@ -50,6 +62,13 @@ export interface AppContext {
   emailService: EmailService;
   loanAccountService: LoanAccountService;
   facilityService: FacilityService;
+  // Social network services
+  socialDb?: SocialDatabase;
+  agentService?: AgentService;
+  postService?: PostService;
+  knowledgeService?: KnowledgeService;
+  coordinationService?: CoordinationService;
+  notificationService?: NotificationService;
   getNow: () => string;
   users?: Map<string, { id: string; role: string }>;
 }
@@ -85,9 +104,34 @@ export function createApp(ctx: AppContext) {
   app.route("/v1", loanRoutes(ctx));
   app.route("/v1", facilityRoutes(ctx));
 
+  // Mount social routes if services are available
+  if (ctx.agentService && ctx.postService && ctx.knowledgeService && ctx.coordinationService && ctx.notificationService) {
+    app.route("/v1", socialRoutes({
+      agentService: ctx.agentService,
+      postService: ctx.postService,
+      knowledgeService: ctx.knowledgeService,
+      coordinationService: ctx.coordinationService,
+      notificationService: ctx.notificationService,
+    }));
+  }
+
   // Global error handler
   app.onError((err, c) => {
     if (err instanceof AppError) {
+      return c.json(
+        {
+          error: {
+            code: err.code,
+            message: err.message,
+            details: err.details,
+            retryable: err.retryable,
+          },
+        },
+        err.statusCode as 400
+      );
+    }
+
+    if (err instanceof SocialError) {
       return c.json(
         {
           error: {
@@ -117,7 +161,7 @@ export function createApp(ctx: AppContext) {
   return app;
 }
 
-export async function createAppWithDb(getNow?: () => string) {
+export async function createAppWithDb(getNow?: () => string, options?: { enableSocial?: boolean }) {
   const db = createDatabase(":memory:");
   await migrateDatabase(db);
 
@@ -156,6 +200,19 @@ export async function createAppWithDb(getNow?: () => string) {
     getNow: clock,
     users: new Map(),
   };
+
+  // Initialize social services if enabled
+  if (options?.enableSocial !== false) {
+    const socialDb = createSocialDatabase(":memory:");
+    await migrateSocialDatabase(socialDb);
+
+    ctx.socialDb = socialDb;
+    ctx.agentService = new AgentService(socialDb, clock);
+    ctx.postService = new PostService(socialDb, clock);
+    ctx.knowledgeService = new KnowledgeService(socialDb, clock);
+    ctx.coordinationService = new CoordinationService(socialDb, clock);
+    ctx.notificationService = new NotificationService(socialDb, clock);
+  }
 
   return { app: createApp(ctx), ctx };
 }
