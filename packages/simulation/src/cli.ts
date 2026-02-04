@@ -18,7 +18,7 @@ import { Command } from "commander";
 import { getAllPersonas, getPersonasByBusinessModel, getPersonasByChallenge } from "./personas/index.js";
 import { getAllCapabilities, getCapabilitiesForBusinessModel } from "./capabilities/index.js";
 import { runSimulation, runSimulations, DEFAULT_CONFIG, type SimulationConfig } from "./runner/index.js";
-import { createAgent, DEFAULT_AGENT_CONFIG } from "./agents/index.js";
+import { createAgent, DEFAULT_AGENT_CONFIG, LLMAgent, type AgentConfig } from "./agents/index.js";
 import { generateSuiteReport, formatReportAsMarkdown, formatQuickSummary, formatReportAsJson } from "./reports/index.js";
 import type { Persona, SimulationResult } from "./types.js";
 import * as fs from "node:fs";
@@ -140,6 +140,9 @@ program
   .option("--verbose", "Verbose logging", false)
   .option("--output <file>", "Output report to file")
   .option("--format <format>", "Output format (json, markdown)", "markdown")
+  .option("--llm", "Use LLM-based workflow generation (requires API key)")
+  .option("--api-key <key>", "Anthropic API key (or use ANTHROPIC_API_KEY env var)")
+  .option("--model <model>", "LLM model to use", "claude-sonnet-4-20250514")
   .action(async (options) => {
     // Select personas
     let personas: Persona[] = [];
@@ -187,14 +190,39 @@ program
       verbose: options.verbose,
     };
 
-    // Create agent
-    const agent = createAgent(DEFAULT_AGENT_CONFIG);
+    // Create agent config
+    const apiKey = options.apiKey || process.env.ANTHROPIC_API_KEY;
+    const useLlm = options.llm && apiKey;
 
-    // Generate scenarios
-    const scenarios = personas.map((persona) => ({
-      scenario: agent.generateScenario(persona),
-      persona,
-    }));
+    if (options.llm && !apiKey) {
+      console.warn("Warning: --llm specified but no API key found. Falling back to rule-based generation.");
+      console.warn("Provide API key via --api-key or ANTHROPIC_API_KEY environment variable.\n");
+    }
+
+    const agentConfig: AgentConfig = {
+      useRuleBased: !useLlm,
+      maxSteps: 20,
+      apiKey: apiKey,
+      model: options.model,
+    };
+
+    // Create agent
+    const agent = useLlm ? new LLMAgent(agentConfig) : createAgent(agentConfig);
+
+    if (useLlm) {
+      console.log(`Using LLM-based workflow generation with model: ${options.model}\n`);
+    }
+
+    // Generate scenarios (async for LLM agent)
+    const scenarios: Array<{ scenario: any; persona: Persona }> = [];
+    for (const persona of personas) {
+      if (useLlm && agent instanceof LLMAgent) {
+        const scenario = await agent.generateScenarioAsync(persona);
+        scenarios.push({ scenario, persona });
+      } else {
+        scenarios.push({ scenario: agent.generateScenario(persona), persona });
+      }
+    }
 
     // Track progress
     let completed = 0;
@@ -256,6 +284,9 @@ program
   .description("Run a quick smoke test with a few key personas")
   .option("--base-url <url>", "API base URL", DEFAULT_CONFIG.baseUrl)
   .option("--verbose", "Verbose logging", false)
+  .option("--llm", "Use LLM-based workflow generation (requires API key)")
+  .option("--api-key <key>", "Anthropic API key (or use ANTHROPIC_API_KEY env var)")
+  .option("--model <model>", "LLM model to use", "claude-sonnet-4-20250514")
   .action(async (options) => {
     // Select a diverse set of key personas
     const keyPersonaIds = [
@@ -279,12 +310,34 @@ program
       verbose: options.verbose,
     };
 
-    const agent = createAgent(DEFAULT_AGENT_CONFIG);
+    // Create agent config
+    const apiKey = options.apiKey || process.env.ANTHROPIC_API_KEY;
+    const useLlm = options.llm && apiKey;
+
+    if (options.llm && !apiKey) {
+      console.warn("Warning: --llm specified but no API key found. Falling back to rule-based generation.\n");
+    }
+
+    const agentConfig: AgentConfig = {
+      useRuleBased: !useLlm,
+      maxSteps: 20,
+      apiKey: apiKey,
+      model: options.model,
+    };
+
+    const agent = useLlm ? new LLMAgent(agentConfig) : createAgent(agentConfig);
+
+    if (useLlm) {
+      console.log(`Using LLM-based workflow generation with model: ${options.model}\n`);
+    }
+
     const results: SimulationResult[] = [];
 
     for (const persona of personas) {
       console.log(`Testing: ${persona.name}...`);
-      const scenario = agent.generateScenario(persona);
+      const scenario = useLlm && agent instanceof LLMAgent
+        ? await agent.generateScenarioAsync(persona)
+        : agent.generateScenario(persona);
 
       try {
         const result = await runSimulation(scenario, persona, config);

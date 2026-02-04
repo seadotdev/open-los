@@ -4,6 +4,7 @@
  * Validates extracted API calls against expected patterns and touchpoints.
  */
 
+import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import type {
   ValidationRule,
   ValidationResult,
@@ -12,6 +13,178 @@ import type {
   Touchpoint,
   TOUCHPOINTS,
 } from '../types.js';
+
+// Initialize AJV with common settings
+const ajv = new Ajv({ allErrors: true, strict: false });
+
+// ============================================================================
+// JSON Schemas for API Request Bodies (derived from OpenAPI spec)
+// ============================================================================
+
+const API_SCHEMAS: Record<string, object> = {
+  // Create Deal - POST /v1/deals
+  'POST /v1/deals': {
+    type: 'object',
+    required: ['borrower_name'],
+    properties: {
+      borrower_name: { type: 'string', minLength: 1 },
+      jurisdiction: { type: 'string' },
+      requested_amount: { type: 'integer', minimum: 0 },
+      purpose: { type: 'string' },
+      borrower_registration_number: { type: 'string' },
+      assigned_to: { type: 'string' },
+      custom_fields: { type: 'object' },
+    },
+  },
+
+  // Update Deal - PATCH /v1/deals/{id}
+  'PATCH /v1/deals/{id}': {
+    type: 'object',
+    properties: {
+      borrower_name: { type: 'string', minLength: 1 },
+      jurisdiction: { type: 'string' },
+      requested_amount: { type: 'integer', minimum: 0 },
+      purpose: { type: 'string' },
+      borrower_registration_number: { type: 'string' },
+      assigned_to: { type: 'string' },
+      origination_outcome: { type: 'string' },
+      custom_fields: { type: 'object' },
+    },
+  },
+
+  // Stage Transition - POST /v1/deals/{id}/stage-transitions
+  'POST /v1/deals/{id}/stage-transitions': {
+    type: 'object',
+    required: ['to_stage'],
+    properties: {
+      to_stage: {
+        type: 'string',
+        enum: ['lead', 'origination', 'underwriting', 'approval', 'documentation', 'closing', 'funded', 'servicing', 'closed'],
+      },
+      rationale: { type: 'string' },
+      override: { type: 'boolean' },
+      override_rationale: { type: 'string' },
+    },
+  },
+
+  // Create Entity - POST /v1/entities
+  'POST /v1/entities': {
+    type: 'object',
+    required: ['type', 'name'],
+    properties: {
+      type: { type: 'string', enum: ['company', 'person'] },
+      name: { type: 'string', minLength: 1 },
+      legal_name: { type: 'string' },
+      jurisdiction: { type: 'string' },
+      registration_number: { type: 'string' },
+      tax_id: { type: 'string' },
+      address: { type: 'object' },
+    },
+  },
+
+  // Create Relationship - POST /v1/relationships
+  'POST /v1/relationships': {
+    type: 'object',
+    required: ['deal_id', 'entity_id', 'relationship_type'],
+    properties: {
+      deal_id: { type: 'string' },
+      entity_id: { type: 'string' },
+      relationship_type: {
+        type: 'string',
+        enum: ['borrower', 'guarantor', 'sponsor', 'owner', 'subsidiary', 'parent'],
+      },
+      ownership_pct: { type: 'number', minimum: 0, maximum: 100 },
+      role: { type: 'string' },
+    },
+  },
+
+  // Create Covenant - POST /v1/deals/{id}/covenants
+  'POST /v1/deals/{id}/covenants': {
+    type: 'object',
+    required: ['name', 'type', 'metric', 'operator', 'threshold'],
+    properties: {
+      name: { type: 'string', minLength: 1 },
+      type: { type: 'string', enum: ['financial', 'affirmative', 'negative', 'reporting'] },
+      metric: { type: 'string' },
+      operator: { type: 'string', enum: ['lt', 'lte', 'gt', 'gte', 'eq', 'neq', 'between'] },
+      threshold: { type: 'number' },
+      threshold_max: { type: 'number' },
+      frequency: { type: 'string' },
+      grace_period_days: { type: 'integer', minimum: 0 },
+      effective_date: { type: 'string' },
+    },
+  },
+
+  // Create Facility - POST /v1/facilities
+  'POST /v1/facilities': {
+    type: 'object',
+    required: ['deal_id', 'type', 'amount'],
+    properties: {
+      deal_id: { type: 'string' },
+      type: { type: 'string' },
+      amount: { type: 'integer', minimum: 0 },
+      currency: { type: 'string' },
+      interest_rate: { type: 'number', minimum: 0 },
+      term_months: { type: 'integer', minimum: 1 },
+      start_date: { type: 'string' },
+    },
+  },
+
+  // Create Loan - POST /v1/loans
+  'POST /v1/loans': {
+    type: 'object',
+    required: ['facility_id', 'principal_amount'],
+    properties: {
+      facility_id: { type: 'string' },
+      principal_amount: { type: 'integer', minimum: 0 },
+      currency: { type: 'string' },
+      interest_rate: { type: 'number', minimum: 0 },
+      repayment_frequency: { type: 'string' },
+      term_months: { type: 'integer', minimum: 1 },
+    },
+  },
+
+  // Upload Document - POST /v1/deals/{id}/documents (JSON variant)
+  'POST /v1/deals/{id}/documents': {
+    type: 'object',
+    required: ['doc_type', 'filename'],
+    properties: {
+      doc_type: { type: 'string' },
+      filename: { type: 'string' },
+      phase: { type: 'string' },
+      label: { type: 'string' },
+      content_base64: { type: 'string' },
+    },
+  },
+
+  // Create Spread - POST /v1/deals/{id}/spread (JSON variant)
+  'POST /v1/deals/{id}/spread': {
+    type: 'object',
+    required: ['entity_id', 'period', 'line_items'],
+    properties: {
+      entity_id: { type: 'string' },
+      period: { type: 'string' },
+      line_items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['category', 'label', 'amount'],
+          properties: {
+            category: { type: 'string' },
+            label: { type: 'string' },
+            amount: { type: 'integer' },
+          },
+        },
+      },
+    },
+  },
+};
+
+// Compile all schemas upfront
+const compiledSchemas = new Map<string, ValidateFunction>();
+for (const [key, schema] of Object.entries(API_SCHEMAS)) {
+  compiledSchemas.set(key, ajv.compile(schema));
+}
 
 /**
  * Run all validations for a scenario result
@@ -347,18 +520,131 @@ function validateHeaderPresent(
 }
 
 /**
- * Validate schema compliance (placeholder - would use AJV)
+ * Validate schema compliance using AJV
+ *
+ * Validates API call bodies against JSON schemas derived from OpenAPI spec.
+ * The rule.target should specify the API endpoint pattern (e.g., "POST /v1/deals")
  */
 function validateSchemaCompliance(
   rule: ValidationRule,
   calls: ExtractedApiCall[]
 ): ValidationResult {
-  // TODO: Implement with AJV schema validation
+  const targetEndpoint = rule.target;
+
+  // Find matching calls for this endpoint
+  const matchingCalls = findMatchingCalls(calls, targetEndpoint);
+
+  if (matchingCalls.length === 0) {
+    return {
+      ruleId: rule.id,
+      passed: false,
+      message: `No API calls found matching "${targetEndpoint}"`,
+    };
+  }
+
+  // Find the schema for this endpoint
+  const schemaKey = findSchemaKey(targetEndpoint);
+  const validateFn = schemaKey ? compiledSchemas.get(schemaKey) : null;
+
+  if (!validateFn) {
+    // No schema defined for this endpoint - pass with warning
+    return {
+      ruleId: rule.id,
+      passed: true,
+      message: `No schema defined for "${targetEndpoint}", skipping validation`,
+    };
+  }
+
+  // Validate each matching call
+  const errors: string[] = [];
+
+  for (const call of matchingCalls) {
+    if (!call.body) {
+      errors.push(`Call to ${call.method} ${call.path} has no body`);
+      continue;
+    }
+
+    const valid = validateFn(call.body);
+    if (!valid && validateFn.errors) {
+      const errorMessages = validateFn.errors.map((e: ErrorObject) => {
+        const path = e.instancePath || 'root';
+        return `${path}: ${e.message}`;
+      });
+      errors.push(`${call.method} ${call.path}: ${errorMessages.join('; ')}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    return {
+      ruleId: rule.id,
+      passed: false,
+      actual: errors,
+      message: rule.errorMessage || `Schema validation failed: ${errors.join(', ')}`,
+    };
+  }
+
   return {
     ruleId: rule.id,
     passed: true,
-    message: 'Schema validation passed (not fully implemented)',
+    message: `Schema validation passed for ${matchingCalls.length} call(s) to "${targetEndpoint}"`,
   };
+}
+
+/**
+ * Find API calls matching an endpoint pattern
+ */
+function findMatchingCalls(
+  calls: ExtractedApiCall[],
+  targetEndpoint: string
+): ExtractedApiCall[] {
+  const match = targetEndpoint.match(/^(GET|POST|PATCH|PUT|DELETE)\s+(.+)$/i);
+
+  if (!match) {
+    // Just a path pattern
+    return calls.filter((c) => c.path.includes(targetEndpoint.replace(/\{[^}]+\}/g, '')));
+  }
+
+  const method = match[1].toUpperCase();
+  const pathPattern = match[2]
+    .replace(/\{[^}]+\}/g, '[^/]+')  // Replace all {param} with regex
+    .replace(/\//g, '\\/');          // Escape slashes
+
+  const regex = new RegExp(`^${pathPattern}$`);
+
+  return calls.filter((c) => c.method === method && regex.test(c.path));
+}
+
+/**
+ * Find the schema key that matches a target endpoint
+ */
+function findSchemaKey(targetEndpoint: string): string | null {
+  // Direct match
+  if (compiledSchemas.has(targetEndpoint)) {
+    return targetEndpoint;
+  }
+
+  // Try normalizing the path (replace actual IDs with {id})
+  const match = targetEndpoint.match(/^(GET|POST|PATCH|PUT|DELETE)\s+(.+)$/i);
+  if (!match) return null;
+
+  const method = match[1].toUpperCase();
+  let path = match[2];
+
+  // Normalize common path patterns
+  path = path
+    .replace(/\/v1\/deals\/[^/]+\/stage-transitions/i, '/v1/deals/{id}/stage-transitions')
+    .replace(/\/v1\/deals\/[^/]+\/documents/i, '/v1/deals/{id}/documents')
+    .replace(/\/v1\/deals\/[^/]+\/covenants/i, '/v1/deals/{id}/covenants')
+    .replace(/\/v1\/deals\/[^/]+\/spread/i, '/v1/deals/{id}/spread')
+    .replace(/\/v1\/deals\/[^/]+/i, '/v1/deals/{id}');
+
+  const normalizedKey = `${method} ${path}`;
+
+  if (compiledSchemas.has(normalizedKey)) {
+    return normalizedKey;
+  }
+
+  return null;
 }
 
 /**

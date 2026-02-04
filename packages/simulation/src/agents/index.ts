@@ -616,37 +616,268 @@ export class RuleBasedAgent {
 }
 
 /**
- * LLM-powered agent (placeholder for future implementation)
- * This would use an LLM to dynamically generate more sophisticated workflows
+ * LLM-powered agent that uses Claude to generate realistic lending workflows
  */
 export class LLMAgent {
   private ruleAgent: RuleBasedAgent;
+  private baseUrl: string;
 
   constructor(private config: AgentConfig) {
     this.ruleAgent = new RuleBasedAgent(config);
+    this.baseUrl = "https://api.anthropic.com";
   }
 
   /**
    * Generate a simulation scenario (synchronous fallback to rule-based)
    */
   generateScenario(persona: Persona): SimulationScenario {
-    // TODO: Implement LLM-based workflow generation
-    // This would:
-    // 1. Send persona description to LLM
-    // 2. Ask LLM to generate a realistic workflow
-    // 3. Parse and validate the workflow
-    // 4. Return as SimulationScenario
-
-    // For now, fall back to rule-based
+    // Synchronous call falls back to rule-based
     return this.ruleAgent.generateScenario(persona);
   }
 
   /**
-   * Generate scenario asynchronously (for future LLM implementation)
+   * Build the system prompt for workflow generation
+   */
+  private buildSystemPrompt(): string {
+    return `You are an expert lending workflow designer. Your task is to generate realistic API workflow scenarios for different types of lending businesses.
+
+You must generate workflows as JSON that use the Open LOS API. Available actions are:
+- create_deal: Create a new loan deal (params: borrower_name, jurisdiction, requested_amount, currency, purpose)
+- update_deal: Update deal details (params: any deal fields)
+- transition_stage: Move deal to next stage (params: to_stage - one of: lead, origination, underwriting, approval, documentation, closing, funded, servicing, closed)
+- upload_document: Attach document to deal (params: doc_type, filename, content)
+- create_entity: Create borrower/guarantor entity (params: type, name, legal_name, jurisdiction, registration_number)
+- create_relationship: Link entity to deal (params: relationship_type, ownership_pct, source_entity_id)
+- create_spread: Add financial spreading data (params: period, line_items object with revenue/cogs/operating_expense/interest/tax/depreciation)
+- define_covenant: Create covenant (params: name, type, metric, operator, threshold, frequency, grace_period_days)
+- test_covenant: Test covenant compliance (params: none, uses covenant_id from previous step)
+- create_facility: Create loan facility (params: type, amount, currency, interest_rate, term_months)
+- create_loan: Create loan account (params: principal_amount, currency, interest_rate, repayment_frequency, term_months)
+- disburse_loan: Disburse funds (params: amount, disbursement_date)
+- record_repayment: Record payment (params: amount, payment_date)
+- ingest_transactions: Upload bank transactions for monitoring (params: transactions array)
+- check_monitoring: Check monitoring status (params: none)
+- custom_api_call: Custom API request (params: method, path, body)
+
+Your response must be valid JSON matching this structure:
+{
+  "name": "scenario name",
+  "description": "what this tests",
+  "objective": "business goal",
+  "workflow": [
+    {
+      "id": "step-id",
+      "description": "what this step does",
+      "action": "action_name",
+      "params": { ... },
+      "expectedOutcome": { "success": true, "statusCode": 201 }
+    }
+  ]
+}
+
+Generate realistic workflows that reflect how the specific lending business would actually operate.`;
+  }
+
+  /**
+   * Build the user prompt for a specific persona
+   */
+  private buildUserPrompt(persona: Persona): string {
+    return `Generate a realistic lending workflow for this business persona:
+
+**Business:** ${persona.name}
+**Type:** ${persona.businessModel}
+**Description:** ${persona.description}
+
+**Characteristics:**
+- Geographic Scope: ${persona.geographicScope}
+- Base Currency: ${persona.baseCurrency}
+- Operating Currencies: ${persona.operatingCurrencies.join(", ")}
+- Jurisdictions: ${persona.jurisdictions.join(", ")}
+- Products: ${persona.products.join(", ")}
+- Takes Deposits: ${persona.takesDeposits}
+- Typical Deal Size: ${persona.typicalDealSize.min.toLocaleString()} - ${persona.typicalDealSize.max.toLocaleString()} ${persona.typicalDealSize.currency}
+- Workflow Complexity: ${persona.workflowComplexity}
+- Approval Levels: ${persona.approvalLevels}
+- Covenant Complexity: ${persona.covenantComplexity}
+
+**Test Challenges:** ${persona.testChallenges.join(", ")}
+
+Generate a workflow that:
+1. Creates a deal appropriate for this business type
+2. Sets up the borrower entity and relationships
+3. Handles any required financial analysis/spreading (if covenant complexity > none)
+4. Tests specific capabilities this business needs
+5. Includes ${Math.min(persona.approvalLevels * 3, this.config.maxSteps)} steps maximum
+
+Return ONLY the JSON, no markdown code blocks or explanation.`;
+  }
+
+  /**
+   * Parse LLM response into a SimulationScenario
+   */
+  private parseResponse(
+    response: string,
+    persona: Persona
+  ): SimulationScenario | null {
+    try {
+      // Try to extract JSON from the response
+      let jsonStr = response.trim();
+
+      // Remove markdown code blocks if present
+      if (jsonStr.startsWith("```")) {
+        const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (match) {
+          jsonStr = match[1].trim();
+        }
+      }
+
+      const parsed = JSON.parse(jsonStr);
+
+      // Validate and transform the workflow steps
+      const workflow: WorkflowStep[] = (parsed.workflow || []).map(
+        (step: any, idx: number) => ({
+          id: step.id || `step-${idx}`,
+          description: step.description || `Step ${idx + 1}`,
+          action: step.action,
+          params: step.params || {},
+          expectedOutcome: step.expectedOutcome || { success: true },
+        })
+      );
+
+      return {
+        id: `llm-scenario-${persona.id}-${Date.now()}`,
+        personaId: persona.id,
+        name: parsed.name || `${persona.name} LLM Workflow`,
+        description:
+          parsed.description || `LLM-generated workflow for ${persona.businessModel}`,
+        objective: parsed.objective || `Test ${persona.name} capabilities`,
+        workflow,
+        capabilitiesUnderTest: this.inferCapabilities(workflow),
+        expectedOutcome: "success",
+      };
+    } catch (error) {
+      console.error("Failed to parse LLM response:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Infer capabilities being tested from workflow steps
+   */
+  private inferCapabilities(workflow: WorkflowStep[]): string[] {
+    const capabilities = new Set<string>();
+
+    for (const step of workflow) {
+      switch (step.action) {
+        case "create_deal":
+        case "update_deal":
+          capabilities.add("deal_management");
+          break;
+        case "transition_stage":
+          capabilities.add("workflow");
+          break;
+        case "create_entity":
+        case "create_relationship":
+          capabilities.add("entity_management");
+          break;
+        case "create_spread":
+          capabilities.add("financial_analysis");
+          break;
+        case "define_covenant":
+        case "test_covenant":
+          capabilities.add("covenant_management");
+          break;
+        case "create_facility":
+        case "create_loan":
+        case "disburse_loan":
+        case "record_repayment":
+          capabilities.add("loan_origination");
+          break;
+        case "ingest_transactions":
+        case "check_monitoring":
+          capabilities.add("monitoring");
+          break;
+        case "upload_document":
+          capabilities.add("document_management");
+          break;
+      }
+
+      // Check for multi-currency
+      if (step.params && typeof step.params === "object") {
+        const params = step.params as Record<string, unknown>;
+        if (params.currency && params.currency !== "USD") {
+          capabilities.add("multi_currency");
+        }
+      }
+    }
+
+    return Array.from(capabilities);
+  }
+
+  /**
+   * Generate scenario asynchronously using Claude API
    */
   async generateScenarioAsync(persona: Persona): Promise<SimulationScenario> {
-    // TODO: Implement actual LLM call here
-    return this.generateScenario(persona);
+    if (!this.config.apiKey) {
+      console.warn("No API key configured, falling back to rule-based generation");
+      return this.generateScenario(persona);
+    }
+
+    try {
+      const body = {
+        model: this.config.model || "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: this.buildSystemPrompt(),
+        messages: [
+          {
+            role: "user",
+            content: this.buildUserPrompt(persona),
+          },
+        ],
+      };
+
+      const response = await fetch(`${this.baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.config.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error(`Anthropic API error: ${response.status} - ${error}`);
+        return this.generateScenario(persona);
+      }
+
+      const data = (await response.json()) as {
+        content: Array<{ type: string; text: string }>;
+        usage: { input_tokens: number; output_tokens: number };
+      };
+
+      const content = data.content
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("\n");
+
+      const scenario = this.parseResponse(content, persona);
+
+      if (scenario && scenario.workflow.length > 0) {
+        console.log(
+          `  [LLM] Generated ${scenario.workflow.length} steps for ${persona.name}`
+        );
+        return scenario;
+      }
+
+      // Fall back to rule-based if parsing failed
+      console.warn("LLM response parsing failed, falling back to rule-based");
+      return this.generateScenario(persona);
+    } catch (error) {
+      console.error("LLM generation failed:", error);
+      return this.generateScenario(persona);
+    }
   }
 }
 
