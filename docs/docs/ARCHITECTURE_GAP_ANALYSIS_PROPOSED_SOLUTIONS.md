@@ -1,5 +1,7 @@
 # Proposed Solutions: QMD and Pi for Agentic Open LOS
 
+Refers to docs/ARCHITECTURE_GAP_ANALYSIS.md
+
 This document analyzes two open-source projects that can address the critical gaps identified in our architecture analysis:
 
 1. **[QMD](https://github.com/tobi/qmd)** - Hybrid search engine for the **Accessibility** problem
