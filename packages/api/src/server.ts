@@ -17,6 +17,8 @@ import {
   EmailService,
   LoanAccountService,
   FacilityService,
+  SandboxService,
+  InMemoryGitProvider,
   AppError,
 } from "@open-los/core";
 import type { Database } from "@open-los/core";
@@ -33,6 +35,7 @@ import { monitoringRoutes } from "./routes/monitoring.js";
 import { emailRoutes } from "./routes/email.js";
 import { loanRoutes } from "./routes/loans.js";
 import { facilityRoutes } from "./routes/facilities.js";
+import { sandboxRoutes } from "./routes/sandboxes.js";
 
 export interface AppContext {
   db: Database;
@@ -50,6 +53,7 @@ export interface AppContext {
   emailService: EmailService;
   loanAccountService: LoanAccountService;
   facilityService: FacilityService;
+  sandboxService: SandboxService;
   getNow: () => string;
   users?: Map<string, { id: string; role: string }>;
 }
@@ -84,6 +88,7 @@ export function createApp(ctx: AppContext) {
   app.route("/v1", emailRoutes(ctx));
   app.route("/v1", loanRoutes(ctx));
   app.route("/v1", facilityRoutes(ctx));
+  app.route("/v1", sandboxRoutes(ctx));
 
   // Global error handler
   app.onError((err, c) => {
@@ -136,6 +141,8 @@ export async function createAppWithDb(getNow?: () => string) {
   const emailService = new EmailService(db, auditService, clock);
   const loanAccountService = new LoanAccountService(db, auditService, clock);
   const facilityService = new FacilityService(db, auditService, clock);
+  const gitProvider = new InMemoryGitProvider();
+  const sandboxService = new SandboxService(db, auditService, gitProvider, clock);
 
   const ctx: AppContext = {
     db,
@@ -153,6 +160,7 @@ export async function createAppWithDb(getNow?: () => string) {
     emailService,
     loanAccountService,
     facilityService,
+    sandboxService,
     getNow: clock,
     users: new Map(),
   };

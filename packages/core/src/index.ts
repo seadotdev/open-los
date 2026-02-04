@@ -21,6 +21,9 @@ export {
   loanAccounts,
   loanTransactions,
   repaymentSchedule,
+  sandboxes,
+  checkpoints,
+  sandboxEntities,
 } from "./schema/tables.js";
 export { DealService } from "./services/deal.js";
 export type { CreateDealInput, UpdateDealInput } from "./services/deal.js";
@@ -81,3 +84,15 @@ export {
   OverrideRequiredError,
   ConflictError,
 } from "./services/errors.js";
+export { SandboxService, InMemoryGitProvider } from "./services/sandbox.js";
+export type {
+  CreateSandboxInput,
+  CreateCheckpointInput,
+  CloneEntityInput,
+  UpdateSandboxEntityInput,
+  SandboxSnapshot,
+  SandboxStatus,
+  SandboxParentType,
+  EntityOrigin,
+  GitProvider,
+} from "./services/sandbox.js";

@@ -17,6 +17,8 @@ import {
   EmailService,
   LoanAccountService,
   FacilityService,
+  SandboxService,
+  InMemoryGitProvider,
 } from "@open-los/core";
 import { createApp } from "./server.js";
 import type { AppContext } from "./server.js";
@@ -50,6 +52,8 @@ async function main() {
   const emailService = new EmailService(db, auditService, clock);
   const loanAccountService = new LoanAccountService(db, auditService, clock);
   const facilityService = new FacilityService(db, auditService, clock);
+  const gitProvider = new InMemoryGitProvider();
+  const sandboxService = new SandboxService(db, auditService, gitProvider, clock);
 
   const ctx: AppContext = {
     db,
@@ -67,6 +71,7 @@ async function main() {
     emailService,
     loanAccountService,
     facilityService,
+    sandboxService,
     getNow: clock,
     users: new Map(),
   };
