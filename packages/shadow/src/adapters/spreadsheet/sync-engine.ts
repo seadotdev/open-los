@@ -435,7 +435,12 @@ export class SpreadsheetSyncEngine {
 
       // Apply transformation
       if (mapping.transform) {
-        value = this.applyTransform(value, mapping.transform, mapping.sourceColumn);
+        value = this.applyTransform(
+          value,
+          mapping.transform,
+          mapping.sourceColumn,
+          row.data
+        );
       }
 
       // Apply validations
@@ -471,7 +476,8 @@ export class SpreadsheetSyncEngine {
   private applyTransform(
     value: CellValue,
     transform: FieldMapping["transform"],
-    columnName: string
+    columnName: string,
+    rowData: Record<string, CellValue>
   ): CellValue {
     if (!transform) return value;
 
@@ -504,6 +510,18 @@ export class SpreadsheetSyncEngine {
 
       case "parse_boolean":
         return this.parseBoolean(strValue);
+
+      case "lookup":
+        return this.applyLookup(value, transform.params);
+
+      case "concatenate":
+        return this.concatenateValues(columnName, rowData, transform.params);
+
+      case "split":
+        return this.splitValue(strValue, transform.params);
+
+      case "regex_extract":
+        return this.extractRegexValue(strValue, transform.params);
 
       case "stage_normalize":
         const normalized = normalizeStageValue(strValue);
@@ -699,6 +717,85 @@ export class SpreadsheetSyncEngine {
     }
 
     return value;
+  }
+
+  private applyLookup(
+    value: CellValue,
+    params: Record<string, unknown> | undefined
+  ): CellValue {
+    if (!params) return value;
+    const map =
+      (params.map as Record<string, CellValue> | undefined) ||
+      (params.mapping as Record<string, CellValue> | undefined);
+    if (!map) return value;
+
+    const fallback =
+      (params.defaultValue as CellValue | undefined) ??
+      (params.fallback as CellValue | undefined);
+    const caseInsensitive = Boolean(params.caseInsensitive);
+    const key = value === null || value === undefined ? "" : String(value);
+
+    if (caseInsensitive) {
+      const matchKey = Object.keys(map).find(
+        (entry) => entry.toLowerCase() === key.toLowerCase()
+      );
+      if (matchKey) {
+        return map[matchKey];
+      }
+      return fallback ?? value;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(map, key)) {
+      return map[key];
+    }
+    return fallback ?? value;
+  }
+
+  private concatenateValues(
+    columnName: string,
+    rowData: Record<string, CellValue>,
+    params: Record<string, unknown> | undefined
+  ): CellValue {
+    const fields = (params?.fields as string[] | undefined) ?? [columnName];
+    const separator = (params?.separator as string | undefined) ?? " ";
+    const trimValues = params?.trim === undefined ? true : Boolean(params.trim);
+    const skipEmpty = params?.skipEmpty === undefined ? true : Boolean(params.skipEmpty);
+
+    const values = fields.map((field) => {
+      const raw = rowData[field];
+      const stringValue = raw === null || raw === undefined ? "" : String(raw);
+      return trimValues ? stringValue.trim() : stringValue;
+    });
+
+    const filtered = skipEmpty ? values.filter((val) => val !== "") : values;
+    return filtered.join(separator);
+  }
+
+  private splitValue(
+    value: string,
+    params: Record<string, unknown> | undefined
+  ): CellValue {
+    const delimiter = (params?.delimiter as string | undefined) ?? " ";
+    const index = Number(params?.index ?? 0);
+    const trimValue = params?.trim === undefined ? true : Boolean(params.trim);
+    const parts = delimiter === "" ? [value] : value.split(delimiter);
+    const selected = parts[index];
+    if (selected === undefined) return null;
+    return trimValue ? selected.trim() : selected;
+  }
+
+  private extractRegexValue(
+    value: string,
+    params: Record<string, unknown> | undefined
+  ): CellValue {
+    const pattern = params?.pattern as string | undefined;
+    if (!pattern) return value;
+    const flags = (params?.flags as string | undefined) ?? "";
+    const group = Number(params?.group ?? 1);
+    const regex = new RegExp(pattern, flags);
+    const match = regex.exec(value);
+    if (!match) return null;
+    return match[group] ?? match[0] ?? null;
   }
 
   /**
