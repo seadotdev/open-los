@@ -9,11 +9,6 @@ export interface ClientConfig {
   tenantId: string;
 }
 
-export interface ApiError {
-  error: string;
-  details?: unknown;
-}
-
 export class LosClient {
   private config: ClientConfig;
 
@@ -72,13 +67,21 @@ export class LosClient {
 
     if (!response.ok) {
       const text = await response.text();
-      let error: ApiError;
+      let errorMsg = `Request failed: ${response.status}`;
       try {
-        error = JSON.parse(text);
+        const parsed = JSON.parse(text);
+        // API returns { error: { code, message, ... } } or { error: "string" }
+        if (typeof parsed.error === 'object' && parsed.error?.message) {
+          errorMsg = parsed.error.message;
+        } else if (typeof parsed.error === 'string') {
+          errorMsg = parsed.error;
+        } else if (parsed.message) {
+          errorMsg = parsed.message;
+        }
       } catch {
-        error = { error: text || `HTTP ${response.status}` };
+        if (text) errorMsg = text;
       }
-      throw new Error(error.error || `Request failed: ${response.status}`);
+      throw new Error(errorMsg);
     }
 
     if (response.status === 204) {
@@ -422,6 +425,20 @@ export class LosClient {
     }
   ): Promise<{ id: string; [key: string]: unknown }> {
     return this.request('POST', `/v1/deals/${dealId}/artifacts`, { body: data });
+  }
+
+  // === DEPOSITS ===
+
+  async createDeposit(data: Record<string, unknown>): Promise<unknown> {
+    return this.request('POST', '/v1/deposits', { body: data });
+  }
+
+  async listDeposits(): Promise<unknown[]> {
+    return this.request('GET', '/v1/deposits');
+  }
+
+  async getDeposit(depositId: string): Promise<unknown> {
+    return this.request('GET', `/v1/deposits/${depositId}`);
   }
 
   // === EMAIL ===
