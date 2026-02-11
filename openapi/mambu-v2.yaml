@@ -1,0 +1,6606 @@
+openapi: "3.1.0"
+info:
+  title: Mambu Banking Engine API v2
+  description: |
+    Complete OpenAPI specification for the Mambu cloud banking platform API v2.
+    Mambu provides core banking capabilities including client management,
+    loan origination & servicing, deposit accounts, accounting, and more.
+
+    ## Authentication
+    All endpoints require one of:
+    - **API Key**: `apiKey` header with a UUID token from an API Consumer
+    - **Basic Auth**: Standard HTTP Basic Authentication
+
+    ## Versioning
+    API v2 uses content-type versioning via the Accept header:
+    `Accept: application/vnd.mambu.v2+json`
+
+    ## Base URL
+    `https://{tenant}.mambu.com/api/`
+  version: "2.0"
+  contact:
+    name: Mambu
+    url: https://www.mambu.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://{tenant}.mambu.com/api
+    description: Production
+    variables:
+      tenant:
+        default: demo
+        description: Your Mambu tenant name
+  - url: https://{tenant}.sandbox.mambu.com/api
+    description: Sandbox
+    variables:
+      tenant:
+        default: demo
+        description: Your Mambu tenant name
+
+tags:
+  - name: Clients
+    description: Client (customer/borrower) management
+  - name: Groups
+    description: Group entity management
+  - name: Loan Accounts
+    description: Loan account lifecycle management
+  - name: Loan Transactions
+    description: Loan financial transactions
+  - name: Loan Products
+    description: Loan product configuration
+  - name: Loan Schedule
+    description: Loan repayment schedule management
+  - name: Deposit Accounts
+    description: Deposit/savings account management
+  - name: Deposit Transactions
+    description: Deposit financial transactions
+  - name: Deposit Products
+    description: Deposit product configuration
+  - name: Credit Arrangements
+    description: Credit facility/line management
+  - name: Cards
+    description: Card operations and authorization holds
+  - name: Branches
+    description: Branch management
+  - name: Centres
+    description: Centre management
+  - name: Users
+    description: User management
+  - name: GL Accounts
+    description: General ledger accounts
+  - name: Journal Entries
+    description: GL journal entries
+  - name: Tasks
+    description: Task management
+  - name: Documents
+    description: Document management
+  - name: Communications
+    description: Messaging (email, SMS, webhooks)
+  - name: API Consumers
+    description: API consumer and key management
+  - name: Configuration
+    description: Configuration-as-Code (YAML)
+  - name: Organization
+    description: Organization setup and holidays
+  - name: Accounting
+    description: Interest accrual and accounting reports
+  - name: Index Rates
+    description: Index rate source management
+  - name: Currencies
+    description: Currency and exchange rate management
+
+security:
+  - ApiKeyAuth: []
+  - BasicAuth: []
+
+paths:
+  # ── Clients ────────────────────────────────────────────────────────────
+  /clients:
+    get:
+      operationId: getAllClients
+      summary: List all clients
+      tags: [Clients]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+        - $ref: "#/components/parameters/SortByParam"
+        - name: branchId
+          in: query
+          schema: { type: string }
+        - name: centreId
+          in: query
+          schema: { type: string }
+        - name: creditOfficerUsername
+          in: query
+          schema: { type: string }
+        - name: firstName
+          in: query
+          schema: { type: string }
+        - name: lastName
+          in: query
+          schema: { type: string }
+        - name: idNumber
+          in: query
+          schema: { type: string }
+        - name: state
+          in: query
+          schema: { type: string, enum: [PENDING_APPROVAL, INACTIVE, ACTIVE, EXITED, BLACKLISTED, REJECTED] }
+        - name: birthDate
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: List of clients
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createClient
+      summary: Create a new client
+      tags: [Clients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Client"
+      responses:
+        "201":
+          description: Client created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /clients/{clientId}:
+    parameters:
+      - name: clientId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getClientById
+      summary: Get client by ID or encoded key
+      tags: [Clients]
+      parameters:
+        - $ref: "#/components/parameters/DetailsLevelParam"
+      responses:
+        "200":
+          description: Client details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: patchClient
+      summary: Partially update client
+      tags: [Clients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Client updated
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateClient
+      summary: Full update of client
+      tags: [Clients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Client"
+      responses:
+        "200":
+          description: Client updated
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Client"
+    delete:
+      operationId: deleteClient
+      summary: Delete client
+      tags: [Clients]
+      responses:
+        "204":
+          description: Client deleted
+
+  "/clients:search":
+    post:
+      operationId: searchClients
+      summary: Search clients with filter criteria
+      tags: [Clients]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+
+  /clients/{clientId}/creditarrangements:
+    parameters:
+      - name: clientId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getClientCreditArrangements
+      summary: Get credit arrangements for client
+      tags: [Clients]
+      responses:
+        "200":
+          description: Credit arrangements
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditArrangement"
+
+  /clients/{clientId}/role:
+    parameters:
+      - name: clientId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getClientRole
+      summary: Get role for client
+      tags: [Clients]
+      responses:
+        "200":
+          description: Client role
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: object
+
+  /clients/{clientId}/documents:
+    parameters:
+      - name: clientId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getClientDocuments
+      summary: Get documents metadata for client
+      tags: [Documents]
+      responses:
+        "200":
+          description: Document metadata list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Document"
+    post:
+      operationId: createClientDocument
+      summary: Upload document for client
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        "201":
+          description: Document uploaded
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  # ── Groups ─────────────────────────────────────────────────────────────
+  /groups:
+    get:
+      operationId: getAllGroups
+      summary: List all groups
+      tags: [Groups]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+        - $ref: "#/components/parameters/SortByParam"
+        - name: branchId
+          in: query
+          schema: { type: string }
+        - name: centreId
+          in: query
+          schema: { type: string }
+        - name: creditOfficerUsername
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of groups
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Group"
+    post:
+      operationId: createGroup
+      summary: Create a new group
+      tags: [Groups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Group"
+      responses:
+        "201":
+          description: Group created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Group"
+
+  /groups/{groupId}:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getGroupById
+      summary: Get group by ID
+      tags: [Groups]
+      responses:
+        "200":
+          description: Group details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Group"
+    patch:
+      operationId: patchGroup
+      summary: Partially update group
+      tags: [Groups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Group updated
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Group"
+    put:
+      operationId: updateGroup
+      summary: Full update of group
+      tags: [Groups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Group"
+      responses:
+        "200":
+          description: Group updated
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Group"
+    delete:
+      operationId: deleteGroup
+      summary: Delete group
+      tags: [Groups]
+      responses:
+        "204":
+          description: Group deleted
+
+  "/groups:search":
+    post:
+      operationId: searchGroups
+      summary: Search groups
+      tags: [Groups]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Group"
+
+  /groups/{groupId}/creditarrangements:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getGroupCreditArrangements
+      summary: Get credit arrangements for group
+      tags: [Groups]
+      responses:
+        "200":
+          description: Credit arrangements
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditArrangement"
+
+  # ── Loan Accounts ──────────────────────────────────────────────────────
+  /loans:
+    get:
+      operationId: getAllLoans
+      summary: List all loan accounts
+      tags: [Loan Accounts]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+        - $ref: "#/components/parameters/SortByParam"
+        - name: accountState
+          in: query
+          schema: { type: string }
+        - name: accountHolderType
+          in: query
+          schema: { type: string, enum: [CLIENT, GROUP] }
+        - name: accountHolderId
+          in: query
+          schema: { type: string }
+        - name: branchId
+          in: query
+          schema: { type: string }
+        - name: centreId
+          in: query
+          schema: { type: string }
+        - name: creditOfficerUsername
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of loan accounts
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoanAccount"
+    post:
+      operationId: createLoan
+      summary: Create a new loan account
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoanAccount"
+      responses:
+        "201":
+          description: Loan account created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanAccount"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /loans/{loanAccountId}:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getLoanById
+      summary: Get loan account by ID
+      tags: [Loan Accounts]
+      parameters:
+        - $ref: "#/components/parameters/DetailsLevelParam"
+      responses:
+        "200":
+          description: Loan account details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanAccount"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: patchLoan
+      summary: Partially update loan account
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Loan updated
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanAccount"
+    put:
+      operationId: updateLoan
+      summary: Full update of loan account
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoanAccount"
+      responses:
+        "200":
+          description: Loan updated
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanAccount"
+    delete:
+      operationId: deleteLoan
+      summary: Delete loan account
+      tags: [Loan Accounts]
+      responses:
+        "204":
+          description: Loan deleted
+
+  "/loans:search":
+    post:
+      operationId: searchLoans
+      summary: Search loan accounts
+      tags: [Loan Accounts]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoanAccount"
+
+  "/loans/{loanAccountId}:changeState":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: changeLoanState
+      summary: Change loan account state (approve, reject, withdraw, close, etc.)
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoanAccountAction"
+      responses:
+        "200":
+          description: State changed
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanAccount"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  "/loans/{loanAccountId}:changeInterestRate":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: changeLoanInterestRate
+      summary: Change interest rate on loan
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                interestRate:
+                  type: number
+                valueDate:
+                  type: string
+                  format: date
+                notes:
+                  type: string
+      responses:
+        "204":
+          description: Interest rate changed
+
+  "/loans/{loanAccountId}:changePeriodicPayment":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: changeLoanPeriodicPayment
+      summary: Change periodic payment amount
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                notes:
+                  type: string
+      responses:
+        "204":
+          description: Payment changed
+
+  "/loans/{loanAccountId}:applyInterest":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: applyLoanInterest
+      summary: Apply accrued interest to loan
+      tags: [Loan Accounts]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                interestApplicationDate:
+                  type: string
+                  format: date
+                notes:
+                  type: string
+      responses:
+        "204":
+          description: Interest applied
+
+  "/loans/{loanAccountId}:writeOff":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: writeOffLoan
+      summary: Write off loan account
+      tags: [Loan Accounts]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        "204":
+          description: Loan written off
+
+  "/loans/{loanAccountId}:undoWriteOff":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: undoWriteOffLoan
+      summary: Reverse loan write-off
+      tags: [Loan Accounts]
+      responses:
+        "204":
+          description: Write-off reversed
+
+  "/loans/{loanAccountId}:payOff":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: payOffLoan
+      summary: Pay off entire loan balance
+      tags: [Loan Accounts]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        "204":
+          description: Loan paid off
+
+  "/loans/{loanAccountId}:refinance":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: refinanceLoan
+      summary: Refinance loan into a new loan
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoanAccount"
+      responses:
+        "200":
+          description: New loan created from refinance
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanAccount"
+
+  "/loans/{loanAccountId}:reschedule":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: rescheduleLoan
+      summary: Reschedule loan into a new loan
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoanAccount"
+      responses:
+        "200":
+          description: New loan created from reschedule
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanAccount"
+
+  "/loans/{loanAccountId}:terminate":
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: terminateLoan
+      summary: Terminate loan account
+      tags: [Loan Accounts]
+      responses:
+        "204":
+          description: Loan terminated
+
+  "/loans:previewSchedule":
+    post:
+      operationId: previewLoanSchedule
+      summary: Preview schedule for a loan without creating it
+      tags: [Loan Schedule]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoanAccount"
+      responses:
+        "200":
+          description: Preview schedule
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: object
+                properties:
+                  installments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Installment"
+
+  /loans/{loanAccountId}/schedule:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getLoanSchedule
+      summary: Get repayment schedule for loan
+      tags: [Loan Schedule]
+      responses:
+        "200":
+          description: Loan schedule
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: object
+                properties:
+                  installments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Installment"
+    put:
+      operationId: editLoanSchedule
+      summary: Edit loan schedule
+      tags: [Loan Schedule]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                installments:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Installment"
+      responses:
+        "200":
+          description: Schedule updated
+
+  /loans/{loanAccountId}/tranches:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getLoanTranches
+      summary: Get loan tranches
+      tags: [Loan Accounts]
+      responses:
+        "200":
+          description: Loan tranches
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoanTranche"
+    put:
+      operationId: editLoanTranches
+      summary: Edit loan tranches
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/LoanTranche"
+      responses:
+        "200":
+          description: Tranches updated
+
+  /loans/{loanAccountId}/funding:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: createLoanFundingSources
+      summary: Add funding sources to loan
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/InvestorFund"
+      responses:
+        "201":
+          description: Funding sources added
+    put:
+      operationId: updateLoanFundingSources
+      summary: Replace all funding sources
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/InvestorFund"
+      responses:
+        "200":
+          description: Funding sources updated
+    delete:
+      operationId: deleteLoanFundingSources
+      summary: Remove all funding sources
+      tags: [Loan Accounts]
+      responses:
+        "204":
+          description: Funding sources removed
+
+  /loans/{loanAccountId}/cards:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getLoanCards
+      summary: Get cards linked to loan
+      tags: [Loan Accounts]
+      responses:
+        "200":
+          description: Cards list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      operationId: createLoanCard
+      summary: Link card to loan account
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                referenceToken:
+                  type: string
+      responses:
+        "201":
+          description: Card linked
+
+  /loans/{loanAccountId}/plannedfees:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getLoanPlannedFees
+      summary: Get planned fees for loan
+      tags: [Loan Accounts]
+      responses:
+        "200":
+          description: Planned fees
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlannedInstallmentFee"
+    post:
+      operationId: createLoanPlannedFees
+      summary: Add planned fees
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PlannedInstallmentFee"
+      responses:
+        "201":
+          description: Planned fees added
+    put:
+      operationId: updateLoanPlannedFees
+      summary: Replace all planned fees
+      tags: [Loan Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PlannedInstallmentFee"
+      responses:
+        "200":
+          description: Planned fees updated
+
+  /loans/{loanAccountId}/balances:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getLoanBalances
+      summary: Get loan account balances
+      tags: [Loan Accounts]
+      responses:
+        "200":
+          description: Balance breakdown
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanBalances"
+
+  # ── Loan Transactions ──────────────────────────────────────────────────
+  /loans/{loanAccountId}/transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getAllLoanTransactions
+      summary: List transactions for a loan account
+      tags: [Loan Transactions]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoanTransaction"
+
+  /loans/transactions/{loanTransactionId}:
+    parameters:
+      - name: loanTransactionId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getLoanTransactionById
+      summary: Get a specific loan transaction
+      tags: [Loan Transactions]
+      responses:
+        "200":
+          description: Transaction details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanTransaction"
+
+  "/loans/transactions/{loanTransactionId}:adjust":
+    parameters:
+      - name: loanTransactionId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: adjustLoanTransaction
+      summary: Adjust (reverse) a loan transaction
+      tags: [Loan Transactions]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        "204":
+          description: Transaction adjusted
+
+  "/loans/transactions:search":
+    post:
+      operationId: searchLoanTransactions
+      summary: Search loan transactions
+      tags: [Loan Transactions]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoanTransaction"
+
+  /loans/{loanAccountId}/disbursement-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makeLoanDisbursement
+      summary: Disburse loan funds
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                valueDate:
+                  type: string
+                  format: date-time
+                bookingDate:
+                  type: string
+                  format: date-time
+                notes:
+                  type: string
+                transactionDetails:
+                  type: object
+                  properties:
+                    transactionChannelId:
+                      type: string
+                firstRepaymentDate:
+                  type: string
+                  format: date
+                externalId:
+                  type: string
+      responses:
+        "201":
+          description: Disbursement created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanTransaction"
+
+  /loans/{loanAccountId}/repayment-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makeLoanRepayment
+      summary: Make a loan repayment
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                valueDate:
+                  type: string
+                  format: date-time
+                bookingDate:
+                  type: string
+                  format: date-time
+                notes:
+                  type: string
+                transactionDetails:
+                  type: object
+                  properties:
+                    transactionChannelId:
+                      type: string
+                externalId:
+                  type: string
+                installmentEncodedKey:
+                  type: string
+                prepaymentRecalculationMethod:
+                  type: string
+      responses:
+        "201":
+          description: Repayment created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanTransaction"
+
+  /loans/{loanAccountId}/fee-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: applyLoanFee
+      summary: Apply fee to loan account
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                predefinedFeeKey:
+                  type: string
+                installmentNumber:
+                  type: integer
+                notes:
+                  type: string
+                externalId:
+                  type: string
+      responses:
+        "201":
+          description: Fee applied
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanTransaction"
+
+  /loans/{loanAccountId}/refund-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makeLoanRefund
+      summary: Refund on loan account
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                notes:
+                  type: string
+                externalId:
+                  type: string
+      responses:
+        "201":
+          description: Refund created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanTransaction"
+
+  /loans/{loanAccountId}/payment-made-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: applyPaymentMade
+      summary: Apply a payment-made transaction
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                notes:
+                  type: string
+                externalId:
+                  type: string
+      responses:
+        "201":
+          description: Payment made applied
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanTransaction"
+
+  /loans/{loanAccountId}/lock-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: applyLoanLock
+      summary: Lock loan balance components
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Lock applied
+
+  /loans/{loanAccountId}/unlock-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: applyLoanUnlock
+      summary: Unlock loan balance components
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Unlock applied
+
+  /loans/{loanAccountId}/withdrawal-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makeLoanWithdrawal
+      summary: Make withdrawal on revolving credit loan
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                notes:
+                  type: string
+                externalId:
+                  type: string
+      responses:
+        "201":
+          description: Withdrawal made
+
+  /loans/{loanAccountId}/principal-overpayment-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makePrincipalOverpayment
+      summary: Make principal overpayment
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                notes:
+                  type: string
+                externalId:
+                  type: string
+      responses:
+        "201":
+          description: Overpayment made
+
+  /loans/{loanAccountId}/redraw-repayment-transactions:
+    parameters:
+      - name: loanAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makeRedrawRepayment
+      summary: Make a redraw repayment
+      tags: [Loan Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                notes:
+                  type: string
+                externalId:
+                  type: string
+      responses:
+        "201":
+          description: Redraw repayment made
+
+  # ── Deposit Accounts ───────────────────────────────────────────────────
+  /deposits:
+    get:
+      operationId: getAllDeposits
+      summary: List all deposit accounts
+      tags: [Deposit Accounts]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+        - $ref: "#/components/parameters/SortByParam"
+        - name: accountState
+          in: query
+          schema: { type: string }
+        - name: accountHolderType
+          in: query
+          schema: { type: string, enum: [CLIENT, GROUP] }
+        - name: accountHolderId
+          in: query
+          schema: { type: string }
+        - name: branchId
+          in: query
+          schema: { type: string }
+        - name: centreId
+          in: query
+          schema: { type: string }
+        - name: creditOfficerUsername
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of deposit accounts
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DepositAccount"
+    post:
+      operationId: createDeposit
+      summary: Create a new deposit account
+      tags: [Deposit Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositAccount"
+      responses:
+        "201":
+          description: Deposit account created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/DepositAccount"
+
+  /deposits/{depositAccountId}:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getDepositById
+      summary: Get deposit account by ID
+      tags: [Deposit Accounts]
+      parameters:
+        - $ref: "#/components/parameters/DetailsLevelParam"
+      responses:
+        "200":
+          description: Deposit account details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/DepositAccount"
+    patch:
+      operationId: patchDeposit
+      summary: Partially update deposit account
+      tags: [Deposit Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Deposit updated
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/DepositAccount"
+    put:
+      operationId: updateDeposit
+      summary: Full update of deposit account
+      tags: [Deposit Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositAccount"
+      responses:
+        "200":
+          description: Deposit updated
+    delete:
+      operationId: deleteDeposit
+      summary: Delete deposit account
+      tags: [Deposit Accounts]
+      responses:
+        "204":
+          description: Deposit deleted
+
+  "/deposits:search":
+    post:
+      operationId: searchDeposits
+      summary: Search deposit accounts
+      tags: [Deposit Accounts]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DepositAccount"
+
+  "/deposits/{depositAccountId}:changeState":
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: changeDepositState
+      summary: Change deposit state (approve, activate, close, lock, etc.)
+      tags: [Deposit Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositAccountAction"
+      responses:
+        "200":
+          description: State changed
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/DepositAccount"
+
+  "/deposits/{depositAccountId}:changeInterestRate":
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: changeDepositInterestRate
+      summary: Change interest rate on deposit
+      tags: [Deposit Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                interestRate:
+                  type: number
+                valueDate:
+                  type: string
+                  format: date
+                notes:
+                  type: string
+      responses:
+        "204":
+          description: Interest rate changed
+
+  "/deposits/{depositAccountId}:applyInterest":
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: applyDepositInterest
+      summary: Apply accrued interest to deposit
+      tags: [Deposit Accounts]
+      responses:
+        "204":
+          description: Interest applied
+
+  "/deposits/{depositAccountId}:startMaturity":
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: startDepositMaturity
+      summary: Start maturity on fixed deposit
+      tags: [Deposit Accounts]
+      responses:
+        "204":
+          description: Maturity started
+
+  "/deposits/{depositAccountId}:undoMaturity":
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: undoDepositMaturity
+      summary: Undo maturity
+      tags: [Deposit Accounts]
+      responses:
+        "204":
+          description: Maturity undone
+
+  "/deposits/{depositAccountId}:transferOwnership":
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: transferDepositOwnership
+      summary: Transfer account ownership
+      tags: [Deposit Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accountHolderKey:
+                  type: string
+                accountHolderType:
+                  type: string
+                  enum: [CLIENT, GROUP]
+      responses:
+        "204":
+          description: Ownership transferred
+
+  /deposits/{depositAccountId}/authorizationholds:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getDepositAuthorizationHolds
+      summary: Get all authorization holds
+      tags: [Deposit Accounts]
+      responses:
+        "200":
+          description: Authorization holds
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuthorizationHold"
+    post:
+      operationId: createDepositAuthorizationHold
+      summary: Create authorization hold
+      tags: [Deposit Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthorizationHold"
+      responses:
+        "201":
+          description: Hold created
+
+  /deposits/{depositAccountId}/blocks:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getDepositBlocks
+      summary: Get all fund blocks
+      tags: [Deposit Accounts]
+      responses:
+        "200":
+          description: Block funds
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlockFund"
+    post:
+      operationId: createDepositBlock
+      summary: Block funds on deposit
+      tags: [Deposit Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockFund"
+      responses:
+        "201":
+          description: Block created
+
+  /deposits/{depositAccountId}/cards:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getDepositCards
+      summary: Get cards linked to deposit
+      tags: [Deposit Accounts]
+      responses:
+        "200":
+          description: Cards list
+    post:
+      operationId: createDepositCard
+      summary: Link card to deposit
+      tags: [Deposit Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                referenceToken:
+                  type: string
+      responses:
+        "201":
+          description: Card linked
+
+  /deposits/{depositAccountId}/funding:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getDepositFundedLoans
+      summary: Get loans funded by this deposit
+      tags: [Deposit Accounts]
+      responses:
+        "200":
+          description: Funded loans list
+
+  # ── Deposit Transactions ───────────────────────────────────────────────
+  /deposits/{depositAccountId}/transactions:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getAllDepositTransactions
+      summary: List transactions for deposit account
+      tags: [Deposit Transactions]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DepositTransaction"
+
+  /deposits/transactions/{depositTransactionId}:
+    parameters:
+      - name: depositTransactionId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getDepositTransactionById
+      summary: Get deposit transaction by ID
+      tags: [Deposit Transactions]
+      responses:
+        "200":
+          description: Transaction details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/DepositTransaction"
+    patch:
+      operationId: editDepositTransactionDetails
+      summary: Edit transaction details
+      tags: [Deposit Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Transaction updated
+
+  "/deposits/transactions/{depositTransactionId}:adjust":
+    parameters:
+      - name: depositTransactionId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: adjustDepositTransaction
+      summary: Adjust (reverse) deposit transaction
+      tags: [Deposit Transactions]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        "204":
+          description: Transaction adjusted
+
+  "/deposits/transactions:search":
+    post:
+      operationId: searchDepositTransactions
+      summary: Search deposit transactions
+      tags: [Deposit Transactions]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DepositTransaction"
+
+  /deposits/{depositAccountId}/deposit-transactions:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makeDeposit
+      summary: Make a deposit
+      tags: [Deposit Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                valueDate:
+                  type: string
+                  format: date-time
+                bookingDate:
+                  type: string
+                  format: date-time
+                notes:
+                  type: string
+                transactionDetails:
+                  type: object
+                  properties:
+                    transactionChannelId:
+                      type: string
+                externalId:
+                  type: string
+                paymentDetails:
+                  type: object
+      responses:
+        "201":
+          description: Deposit made
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/DepositTransaction"
+
+  /deposits/{depositAccountId}/withdrawal-transactions:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makeDepositWithdrawal
+      summary: Make a withdrawal
+      tags: [Deposit Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                valueDate:
+                  type: string
+                  format: date-time
+                notes:
+                  type: string
+                transactionDetails:
+                  type: object
+                  properties:
+                    transactionChannelId:
+                      type: string
+                externalId:
+                  type: string
+                paymentDetails:
+                  type: object
+      responses:
+        "201":
+          description: Withdrawal made
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/DepositTransaction"
+
+  /deposits/{depositAccountId}/transfer-transactions:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makeDepositTransfer
+      summary: Transfer between accounts
+      tags: [Deposit Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                transferDetails:
+                  type: object
+                  properties:
+                    linkedAccountId:
+                      type: string
+                    linkedAccountType:
+                      type: string
+                      enum: [LOAN, DEPOSIT]
+                    linkedAccountKey:
+                      type: string
+                notes:
+                  type: string
+                externalId:
+                  type: string
+      responses:
+        "201":
+          description: Transfer made
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/DepositTransaction"
+
+  /deposits/{depositAccountId}/fee-transactions:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: applyDepositFee
+      summary: Apply fee to deposit
+      tags: [Deposit Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                predefinedFeeKey:
+                  type: string
+                notes:
+                  type: string
+                externalId:
+                  type: string
+      responses:
+        "201":
+          description: Fee applied
+
+  /deposits/{depositAccountId}/seizure-transactions:
+    parameters:
+      - name: depositAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: makeDepositSeizure
+      summary: Seize funds from deposit
+      tags: [Deposit Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                externalReferenceId:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Seizure made
+
+  "/deposits/deposit-transactions:bulk":
+    post:
+      operationId: makeBulkDeposits
+      summary: Bulk deposit transactions
+      tags: [Deposit Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  depositAccountId:
+                    type: string
+                  amount:
+                    type: number
+                  notes:
+                    type: string
+                  externalId:
+                    type: string
+      responses:
+        "202":
+          description: Bulk operation accepted
+
+  # ── Credit Arrangements ────────────────────────────────────────────────
+  /creditarrangements:
+    get:
+      operationId: getAllCreditArrangements
+      summary: List credit arrangements
+      tags: [Credit Arrangements]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/SortByParam"
+      responses:
+        "200":
+          description: Credit arrangements list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditArrangement"
+    post:
+      operationId: createCreditArrangement
+      summary: Create credit arrangement
+      tags: [Credit Arrangements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreditArrangement"
+      responses:
+        "201":
+          description: Credit arrangement created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/CreditArrangement"
+
+  /creditarrangements/{creditArrangementId}:
+    parameters:
+      - name: creditArrangementId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getCreditArrangementById
+      summary: Get credit arrangement by ID
+      tags: [Credit Arrangements]
+      responses:
+        "200":
+          description: Credit arrangement details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/CreditArrangement"
+    patch:
+      operationId: patchCreditArrangement
+      summary: Partially update credit arrangement
+      tags: [Credit Arrangements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/CreditArrangement"
+    put:
+      operationId: updateCreditArrangement
+      summary: Full update of credit arrangement
+      tags: [Credit Arrangements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreditArrangement"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteCreditArrangement
+      summary: Delete credit arrangement
+      tags: [Credit Arrangements]
+      responses:
+        "204":
+          description: Deleted
+
+  "/creditarrangements:search":
+    post:
+      operationId: searchCreditArrangements
+      summary: Search credit arrangements
+      tags: [Credit Arrangements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Results
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditArrangement"
+
+  "/creditarrangements/{creditArrangementId}:changeState":
+    parameters:
+      - name: creditArrangementId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: changeCreditArrangementState
+      summary: Change credit arrangement state
+      tags: [Credit Arrangements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreditArrangementAction"
+      responses:
+        "200":
+          description: State changed
+
+  "/creditarrangements/{creditArrangementId}:addAccount":
+    parameters:
+      - name: creditArrangementId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: addAccountToCreditArrangement
+      summary: Add loan or deposit account to credit arrangement
+      tags: [Credit Arrangements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountId, accountType]
+              properties:
+                accountId:
+                  type: string
+                accountType:
+                  type: string
+                  enum: [LOAN, DEPOSIT]
+      responses:
+        "204":
+          description: Account added
+
+  "/creditarrangements/{creditArrangementId}:removeAccount":
+    parameters:
+      - name: creditArrangementId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: removeAccountFromCreditArrangement
+      summary: Remove account from credit arrangement
+      tags: [Credit Arrangements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountId, accountType]
+              properties:
+                accountId:
+                  type: string
+                accountType:
+                  type: string
+                  enum: [LOAN, DEPOSIT]
+      responses:
+        "204":
+          description: Account removed
+
+  /creditarrangements/{creditArrangementId}/accounts:
+    parameters:
+      - name: creditArrangementId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getCreditArrangementAccounts
+      summary: Get all accounts under credit arrangement
+      tags: [Credit Arrangements]
+      responses:
+        "200":
+          description: Linked accounts
+
+  /creditarrangements/{creditArrangementId}/schedule:
+    parameters:
+      - name: creditArrangementId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getCreditArrangementSchedule
+      summary: Get combined schedule for credit arrangement
+      tags: [Credit Arrangements]
+      responses:
+        "200":
+          description: Combined schedule
+
+  # ── Cards ──────────────────────────────────────────────────────────────
+  /cards/{cardReferenceToken}/authorizationholds:
+    parameters:
+      - name: cardReferenceToken
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: createCardAuthorizationHold
+      summary: Create card authorization hold
+      tags: [Cards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthorizationHold"
+      responses:
+        "201":
+          description: Hold created
+
+  "/cards/{cardReferenceToken}/authorizationholds:bulk":
+    parameters:
+      - name: cardReferenceToken
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: createBulkCardAuthorizationHolds
+      summary: Create multiple card authorization holds
+      tags: [Cards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuthorizationHold"
+      responses:
+        "202":
+          description: Bulk accepted
+
+  /cards/{cardReferenceToken}/financialtransactions:
+    parameters:
+      - name: cardReferenceToken
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: createCardTransaction
+      summary: Create card financial transaction
+      tags: [Cards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                advice:
+                  type: boolean
+                currencyCode:
+                  type: string
+                externalReferenceId:
+                  type: string
+                externalAuthorizationReferenceId:
+                  type: string
+      responses:
+        "201":
+          description: Transaction created
+
+  /cards/{cardReferenceToken}/balanceInquiry:
+    parameters:
+      - name: cardReferenceToken
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getCardAccountBalances
+      summary: Get account balances via card token
+      tags: [Cards]
+      responses:
+        "200":
+          description: Account balances
+
+  # ── Branches / Centres / Users ─────────────────────────────────────────
+  /branches:
+    get:
+      operationId: getAllBranches
+      summary: List all branches
+      tags: [Branches]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+        - $ref: "#/components/parameters/SortByParam"
+      responses:
+        "200":
+          description: Branches list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Branch"
+    post:
+      operationId: createBranch
+      summary: Create branch
+      tags: [Branches]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Branch"
+      responses:
+        "201":
+          description: Branch created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+
+  /branches/{branchId}:
+    parameters:
+      - name: branchId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getBranchById
+      summary: Get branch by ID
+      tags: [Branches]
+      responses:
+        "200":
+          description: Branch details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+    patch:
+      operationId: patchBranch
+      summary: Partially update branch
+      tags: [Branches]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteBranch
+      summary: Delete branch
+      tags: [Branches]
+      responses:
+        "204":
+          description: Deleted
+
+  /centres:
+    get:
+      operationId: getAllCentres
+      summary: List all centres
+      tags: [Centres]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+        - $ref: "#/components/parameters/SortByParam"
+      responses:
+        "200":
+          description: Centres list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Centre"
+    post:
+      operationId: createCentre
+      summary: Create centre
+      tags: [Centres]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Centre"
+      responses:
+        "201":
+          description: Centre created
+
+  /centres/{centreId}:
+    parameters:
+      - name: centreId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getCentreById
+      summary: Get centre by ID
+      tags: [Centres]
+      responses:
+        "200":
+          description: Centre details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Centre"
+    patch:
+      operationId: patchCentre
+      summary: Partially update centre
+      tags: [Centres]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteCentre
+      summary: Delete centre
+      tags: [Centres]
+      responses:
+        "204":
+          description: Deleted
+
+  /users:
+    get:
+      operationId: getAllUsers
+      summary: List all users
+      tags: [Users]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+        - $ref: "#/components/parameters/SortByParam"
+        - name: branchId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      summary: Create user
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/User"
+      responses:
+        "201":
+          description: User created
+
+  /users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getUserById
+      summary: Get user by ID
+      tags: [Users]
+      responses:
+        "200":
+          description: User details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/User"
+    patch:
+      operationId: patchUser
+      summary: Partially update user
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteUser
+      summary: Delete user
+      tags: [Users]
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Products ───────────────────────────────────────────────────────────
+  /loanproducts:
+    get:
+      operationId: getAllLoanProducts
+      summary: List all loan products
+      tags: [Loan Products]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+        - $ref: "#/components/parameters/SortByParam"
+      responses:
+        "200":
+          description: Loan products list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoanProduct"
+    post:
+      operationId: createLoanProduct
+      summary: Create loan product
+      tags: [Loan Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoanProduct"
+      responses:
+        "201":
+          description: Product created
+
+  /loanproducts/{loanProductId}:
+    parameters:
+      - name: loanProductId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getLoanProductById
+      summary: Get loan product by ID
+      tags: [Loan Products]
+      responses:
+        "200":
+          description: Product details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/LoanProduct"
+    patch:
+      operationId: patchLoanProduct
+      summary: Partially update loan product
+      tags: [Loan Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteLoanProduct
+      summary: Delete loan product
+      tags: [Loan Products]
+      responses:
+        "204":
+          description: Deleted
+
+  /depositproducts:
+    get:
+      operationId: getAllDepositProducts
+      summary: List all deposit products
+      tags: [Deposit Products]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - $ref: "#/components/parameters/DetailsLevelParam"
+        - $ref: "#/components/parameters/SortByParam"
+      responses:
+        "200":
+          description: Deposit products list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DepositProduct"
+    post:
+      operationId: createDepositProduct
+      summary: Create deposit product
+      tags: [Deposit Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositProduct"
+      responses:
+        "201":
+          description: Product created
+
+  /depositproducts/{depositProductId}:
+    parameters:
+      - name: depositProductId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getDepositProductById
+      summary: Get deposit product by ID
+      tags: [Deposit Products]
+      responses:
+        "200":
+          description: Product details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/DepositProduct"
+    patch:
+      operationId: patchDepositProduct
+      summary: Partially update deposit product
+      tags: [Deposit Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteDepositProduct
+      summary: Delete deposit product
+      tags: [Deposit Products]
+      responses:
+        "204":
+          description: Deleted
+
+  # ── GL Accounts & Journal Entries ──────────────────────────────────────
+  /glaccounts:
+    get:
+      operationId: getAllGLAccounts
+      summary: List GL accounts
+      tags: [GL Accounts]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - name: type
+          in: query
+          schema: { type: string, enum: [ASSET, LIABILITY, EQUITY, INCOME, EXPENSE] }
+      responses:
+        "200":
+          description: GL accounts
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GLAccount"
+    post:
+      operationId: createGLAccount
+      summary: Create GL account
+      tags: [GL Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GLAccount"
+      responses:
+        "201":
+          description: GL account created
+
+  /glaccounts/{glAccountId}:
+    parameters:
+      - name: glAccountId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getGLAccountById
+      summary: Get GL account by ID
+      tags: [GL Accounts]
+      responses:
+        "200":
+          description: GL account details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/GLAccount"
+    patch:
+      operationId: patchGLAccount
+      summary: Partially update GL account
+      tags: [GL Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Updated
+
+  /gljournalentries:
+    get:
+      operationId: getAllJournalEntries
+      summary: List journal entries
+      tags: [Journal Entries]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+      responses:
+        "200":
+          description: Journal entries
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GLJournalEntry"
+    post:
+      operationId: createJournalEntry
+      summary: Create manual journal entry
+      tags: [Journal Entries]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                debits:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      glAccountId:
+                        type: string
+                      amount:
+                        type: number
+                credits:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      glAccountId:
+                        type: string
+                      amount:
+                        type: number
+                date:
+                  type: string
+                  format: date
+                notes:
+                  type: string
+                branchId:
+                  type: string
+                transactionId:
+                  type: string
+      responses:
+        "201":
+          description: Journal entry created
+
+  "/gljournalentries:search":
+    post:
+      operationId: searchJournalEntries
+      summary: Search journal entries
+      tags: [Journal Entries]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Results
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GLJournalEntry"
+
+  # ── Tasks ──────────────────────────────────────────────────────────────
+  /tasks:
+    get:
+      operationId: getAllTasks
+      summary: List tasks
+      tags: [Tasks]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/PaginationDetailsParam"
+        - name: status
+          in: query
+          schema: { type: string, enum: [OPEN, COMPLETED] }
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      summary: Create task
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Task"
+      responses:
+        "201":
+          description: Task created
+
+  /tasks/{taskId}:
+    parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getTaskById
+      summary: Get task by ID
+      tags: [Tasks]
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    patch:
+      operationId: patchTask
+      summary: Update task
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteTask
+      summary: Delete task
+      tags: [Tasks]
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Documents ──────────────────────────────────────────────────────────
+  /documents:
+    post:
+      operationId: createDocument
+      summary: Upload a document
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+                ownerKey:
+                  type: string
+                ownerType:
+                  type: string
+      responses:
+        "201":
+          description: Document uploaded
+
+  /documents/{documentId}:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: downloadDocument
+      summary: Download document
+      tags: [Documents]
+      responses:
+        "200":
+          description: Document content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+    delete:
+      operationId: deleteDocument
+      summary: Delete document
+      tags: [Documents]
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Communications ─────────────────────────────────────────────────────
+  /communications/messages:
+    post:
+      operationId: sendMessage
+      summary: Send communication message
+      tags: [Communications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunicationMessage"
+      responses:
+        "201":
+          description: Message sent
+
+  "/communications/messages:search":
+    post:
+      operationId: searchMessages
+      summary: Search communication messages
+      tags: [Communications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Results
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunicationMessage"
+
+  /communications/messages/{encodedKey}:
+    parameters:
+      - name: encodedKey
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getMessageByKey
+      summary: Get message by encoded key
+      tags: [Communications]
+      responses:
+        "200":
+          description: Message details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/CommunicationMessage"
+
+  # ── API Consumers & Keys ───────────────────────────────────────────────
+  /consumers:
+    get:
+      operationId: getAllApiConsumers
+      summary: List API consumers
+      tags: [API Consumers]
+      responses:
+        "200":
+          description: API consumers
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiConsumer"
+    post:
+      operationId: createApiConsumer
+      summary: Create API consumer
+      tags: [API Consumers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiConsumer"
+      responses:
+        "201":
+          description: Consumer created
+
+  /consumers/{apiConsumerId}:
+    parameters:
+      - name: apiConsumerId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getApiConsumerById
+      summary: Get API consumer by ID
+      tags: [API Consumers]
+      responses:
+        "200":
+          description: Consumer details
+    patch:
+      operationId: patchApiConsumer
+      summary: Update API consumer
+      tags: [API Consumers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/PatchOperation"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      operationId: deleteApiConsumer
+      summary: Delete API consumer
+      tags: [API Consumers]
+      responses:
+        "204":
+          description: Deleted
+
+  /consumers/{apiConsumerId}/apikeys:
+    parameters:
+      - name: apiConsumerId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: createApiKey
+      summary: Create API key for consumer
+      tags: [API Consumers]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expirationTime:
+                  type: integer
+                  description: TTL in seconds
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  apiKey:
+                    type: string
+
+  /apikey/rotation:
+    post:
+      operationId: rotateApiKey
+      summary: Rotate API key using secret key
+      tags: [API Consumers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                secretKey:
+                  type: string
+                expirationTime:
+                  type: integer
+      responses:
+        "200":
+          description: Key rotated
+
+  # ── Currencies & Exchange Rates ────────────────────────────────────────
+  /currencies:
+    get:
+      operationId: getAllCurrencies
+      summary: List all currencies
+      tags: [Currencies]
+      responses:
+        "200":
+          description: Currencies list
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Currency"
+
+  /currencies/{currencyCode}/rates:
+    parameters:
+      - name: currencyCode
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getExchangeRates
+      summary: Get exchange rates for currency
+      tags: [Currencies]
+      responses:
+        "200":
+          description: Exchange rates
+    post:
+      operationId: createExchangeRate
+      summary: Create exchange rate
+      tags: [Currencies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                buyRate:
+                  type: number
+                sellRate:
+                  type: number
+                startDate:
+                  type: string
+                  format: date
+      responses:
+        "201":
+          description: Rate created
+
+  # ── Index Rate Sources ─────────────────────────────────────────────────
+  /indexratesources:
+    get:
+      operationId: getAllIndexRateSources
+      summary: List index rate sources
+      tags: [Index Rates]
+      responses:
+        "200":
+          description: Index rate sources
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IndexRateSource"
+    post:
+      operationId: createIndexRateSource
+      summary: Create index rate source
+      tags: [Index Rates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IndexRateSource"
+      responses:
+        "201":
+          description: Created
+
+  /indexratesources/{indexRateSourceId}:
+    parameters:
+      - name: indexRateSourceId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getIndexRateSourceById
+      summary: Get index rate source by ID
+      tags: [Index Rates]
+      responses:
+        "200":
+          description: Details
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                $ref: "#/components/schemas/IndexRateSource"
+    delete:
+      operationId: deleteIndexRateSource
+      summary: Delete index rate source
+      tags: [Index Rates]
+      responses:
+        "204":
+          description: Deleted
+
+  /indexratesources/{indexRateSourceId}/indexrates:
+    parameters:
+      - name: indexRateSourceId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getAllIndexRates
+      summary: List rates for source
+      tags: [Index Rates]
+      responses:
+        "200":
+          description: Index rates
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IndexRate"
+    post:
+      operationId: createIndexRate
+      summary: Add rate to source
+      tags: [Index Rates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IndexRate"
+      responses:
+        "201":
+          description: Rate added
+
+  # ── Accounting ─────────────────────────────────────────────────────────
+  "/accounting/interestaccrual:search":
+    post:
+      operationId: searchInterestAccrual
+      summary: Search interest accrual entries
+      tags: [Accounting]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchCriteria"
+      responses:
+        "200":
+          description: Results
+
+  /accounting/reports:
+    post:
+      operationId: createAccountingReport
+      summary: Request accounting report generation
+      tags: [Accounting]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reportType:
+                  type: string
+                startDate:
+                  type: string
+                  format: date
+                endDate:
+                  type: string
+                  format: date
+      responses:
+        "202":
+          description: Report generation started
+
+  /accounting/reports/{reportKey}:
+    parameters:
+      - name: reportKey
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getAccountingReport
+      summary: Get accounting report
+      tags: [Accounting]
+      responses:
+        "200":
+          description: Report data
+
+  # ── Organization ───────────────────────────────────────────────────────
+  /setup/general:
+    get:
+      operationId: getGeneralSetup
+      summary: Get general setup configuration
+      tags: [Organization]
+      responses:
+        "200":
+          description: General setup
+
+  /setup/organization:
+    get:
+      operationId: getOrganizationSetup
+      summary: Get organization details
+      tags: [Organization]
+      responses:
+        "200":
+          description: Organization details
+    put:
+      operationId: updateOrganizationSetup
+      summary: Update organization details
+      tags: [Organization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Updated
+
+  /organization/holidays:
+    get:
+      operationId: getHolidays
+      summary: Get holidays configuration
+      tags: [Organization]
+      responses:
+        "200":
+          description: Holidays
+    put:
+      operationId: updateHolidays
+      summary: Update holidays
+      tags: [Organization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Updated
+
+  /organization/holidays/general:
+    post:
+      operationId: createGeneralHoliday
+      summary: Create a general holiday
+      tags: [Organization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                isAnnuallyRecurring:
+                  type: boolean
+      responses:
+        "201":
+          description: Holiday created
+
+  /organization/holidays/nonworkingdays:
+    get:
+      operationId: getNonWorkingDays
+      summary: Get non-working days
+      tags: [Organization]
+      responses:
+        "200":
+          description: Non-working days
+    put:
+      operationId: updateNonWorkingDays
+      summary: Update non-working days
+      tags: [Organization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Updated
+
+  /organization/transactionChannels:
+    get:
+      operationId: getAllTransactionChannels
+      summary: List transaction channels
+      tags: [Organization]
+      responses:
+        "200":
+          description: Transaction channels
+    post:
+      operationId: createTransactionChannel
+      summary: Create transaction channel
+      tags: [Organization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+      responses:
+        "201":
+          description: Channel created
+
+  /organization/identificationDocumentTemplates:
+    get:
+      operationId: getIdDocumentTemplates
+      summary: List ID document templates
+      tags: [Organization]
+      responses:
+        "200":
+          description: ID templates
+
+  # ── Custom Fields ──────────────────────────────────────────────────────
+  /customfields/{customfieldId}:
+    parameters:
+      - name: customfieldId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getCustomFieldById
+      summary: Get custom field definition
+      tags: [Configuration]
+      responses:
+        "200":
+          description: Custom field details
+
+  /customfieldsets:
+    get:
+      operationId: getAllCustomFieldSets
+      summary: List all custom field sets
+      tags: [Configuration]
+      responses:
+        "200":
+          description: Custom field sets
+
+  /customfieldsets/{customFieldSetId}/customfields:
+    parameters:
+      - name: customFieldSetId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getCustomFieldsBySetId
+      summary: List fields in a custom field set
+      tags: [Configuration]
+      responses:
+        "200":
+          description: Custom fields
+
+  # ── Comments ───────────────────────────────────────────────────────────
+  /comments:
+    get:
+      operationId: getComments
+      summary: List comments
+      tags: [Tasks]
+      parameters:
+        - name: ownerType
+          in: query
+          required: true
+          schema: { type: string }
+        - name: ownerKey
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Comments
+    post:
+      operationId: createComment
+      summary: Create a comment
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ownerType:
+                  type: string
+                ownerKey:
+                  type: string
+                text:
+                  type: string
+      responses:
+        "201":
+          description: Comment created
+
+  # ── Installments ───────────────────────────────────────────────────────
+  /installments:
+    get:
+      operationId: getAllInstallments
+      summary: List installments across accounts
+      tags: [Loan Schedule]
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: dueFrom
+          in: query
+          schema: { type: string, format: date }
+        - name: dueTo
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Installments
+          content:
+            application/vnd.mambu.v2+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Installment"
+
+  # ── Application Status ─────────────────────────────────────────────────
+  /application/status:
+    get:
+      operationId: getApplicationStatus
+      summary: Get application health status
+      tags: [Organization]
+      responses:
+        "200":
+          description: Application status
+
+  # ── Database Backup ────────────────────────────────────────────────────
+  /database/backup:
+    post:
+      operationId: triggerBackup
+      summary: Trigger a database backup
+      tags: [Organization]
+      responses:
+        "202":
+          description: Backup started
+
+  /database/backup/{databaseBackupVersion}:
+    parameters:
+      - name: databaseBackupVersion
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: downloadBackup
+      summary: Download database backup
+      tags: [Organization]
+      responses:
+        "200":
+          description: Backup file
+
+  # ── EOD Processing ─────────────────────────────────────────────────────
+  "/crons/eod:run":
+    post:
+      operationId: runEndOfDay
+      summary: Run hourly and end-of-day crons
+      tags: [Organization]
+      responses:
+        "202":
+          description: EOD started
+
+  # ── Data Import ────────────────────────────────────────────────────────
+  /data/import:
+    post:
+      operationId: dataImport
+      summary: Import data
+      tags: [Organization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "202":
+          description: Import started
+
+  # ── Bulk Operations ────────────────────────────────────────────────────
+  /bulks/{bulkProcessKey}:
+    parameters:
+      - name: bulkProcessKey
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getBulkStatus
+      summary: Get bulk operation status
+      tags: [Organization]
+      responses:
+        "200":
+          description: Bulk status
+
+  # ── Notification Settings ──────────────────────────────────────────────
+  /notificationsettings/webhook:
+    get:
+      operationId: getWebhookSettings
+      summary: Get webhook notification settings
+      tags: [Communications]
+      responses:
+        "200":
+          description: Webhook settings
+    put:
+      operationId: updateWebhookSettings
+      summary: Update webhook notification settings
+      tags: [Communications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Updated
+
+  # ── Configuration as Code (YAML) ──────────────────────────────────────
+  /configuration/organization.yaml:
+    get:
+      operationId: getOrgConfig
+      summary: Get organization configuration
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML configuration
+          content:
+            application/yaml: {}
+    put:
+      operationId: putOrgConfig
+      summary: Update organization configuration
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/loanproducts.yaml:
+    get:
+      operationId: getLoanProductsConfig
+      summary: Get loan products configuration
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML configuration
+          content:
+            application/yaml: {}
+    put:
+      operationId: putLoanProductsConfig
+      summary: Update loan products configuration
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/depositproducts.yaml:
+    get:
+      operationId: getDepositProductsConfig
+      summary: Get deposit products configuration
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML configuration
+          content:
+            application/yaml: {}
+    put:
+      operationId: putDepositProductsConfig
+      summary: Update deposit products configuration
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/currencies.yaml:
+    get:
+      operationId: getCurrenciesConfig
+      summary: Get currencies configuration
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putCurrenciesConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/branches.yaml:
+    get:
+      operationId: getBranchesConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putBranchesConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/centres.yaml:
+    get:
+      operationId: getCentresConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putCentresConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/holidays.yaml:
+    get:
+      operationId: getHolidaysConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putHolidaysConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/userroles.yaml:
+    get:
+      operationId: getUserRolesConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putUserRolesConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/customfields.yaml:
+    get:
+      operationId: getCustomFieldsConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putCustomFieldsConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/clientroles.yaml:
+    get:
+      operationId: getClientRolesConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putClientRolesConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/accountingrules.yaml:
+    get:
+      operationId: getAccountingRulesConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putAccountingRulesConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/transactionchannels.yaml:
+    get:
+      operationId: getTransactionChannelsConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putTransactionChannelsConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/indexrates.yaml:
+    get:
+      operationId: getIndexRatesConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putIndexRatesConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/iddocumenttemplates.yaml:
+    get:
+      operationId: getIdDocTemplatesConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putIdDocTemplatesConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/endofdayprocessing.yaml:
+    get:
+      operationId: getEodConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putEodConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/internalcontrols.yaml:
+    get:
+      operationId: getInternalControlsConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putInternalControlsConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/labels.yaml:
+    get:
+      operationId: getLabelsConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putLabelsConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/loanrisklevels.yaml:
+    get:
+      operationId: getLoanRiskLevelsConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putLoanRiskLevelsConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/grouprolenames.yaml:
+    get:
+      operationId: getGroupRoleNamesConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putGroupRoleNamesConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+  /configuration/authorizationholds.yaml:
+    get:
+      operationId: getAuthHoldsConfig
+      tags: [Configuration]
+      responses:
+        "200":
+          description: YAML
+          content:
+            application/yaml: {}
+    put:
+      operationId: putAuthHoldsConfig
+      tags: [Configuration]
+      requestBody:
+        required: true
+        content:
+          application/yaml: {}
+      responses:
+        "200":
+          description: Updated
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: apiKey
+      description: UUID token from an API Consumer
+    BasicAuth:
+      type: http
+      scheme: basic
+      description: Mambu UI username and password
+
+  parameters:
+    OffsetParam:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+      description: Pagination offset
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 50
+        maximum: 1000
+      description: Pagination limit
+    PaginationDetailsParam:
+      name: paginationDetails
+      in: query
+      schema:
+        type: string
+        enum: ["ON", "OFF"]
+        default: "OFF"
+      description: Whether to include total count in response
+    DetailsLevelParam:
+      name: detailsLevel
+      in: query
+      schema:
+        type: string
+        enum: ["BASIC", "FULL"]
+        default: "BASIC"
+      description: Level of detail in response
+    SortByParam:
+      name: sortBy
+      in: query
+      schema:
+        type: string
+      description: "Field and order, e.g. creationDate:ASC"
+
+  schemas:
+    # ── Error ──
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              errorCode:
+                type: integer
+              errorSource:
+                type: string
+              errorReason:
+                type: string
+
+    # ── Patch Operation ──
+    PatchOperation:
+      type: object
+      required: [op, path, value]
+      properties:
+        op:
+          type: string
+          enum: [ADD, REPLACE, REMOVE, MOVE]
+        path:
+          type: string
+        from:
+          type: string
+        value: {}
+
+    # ── Search ──
+    SearchCriteria:
+      type: object
+      properties:
+        filterCriteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/FilterCriterion"
+        sortingCriteria:
+          $ref: "#/components/schemas/SortingCriteria"
+    FilterCriterion:
+      type: object
+      required: [field, operator]
+      properties:
+        field:
+          type: string
+        operator:
+          type: string
+          enum:
+            - EQUALS
+            - EQUALS_CASE_SENSITIVE
+            - DIFFERENT_THAN
+            - MORE_THAN
+            - LESS_THAN
+            - BETWEEN
+            - ON
+            - AFTER
+            - AFTER_INCLUSIVE
+            - BEFORE
+            - BEFORE_INCLUSIVE
+            - STARTS_WITH
+            - STARTS_WITH_CASE_SENSITIVE
+            - IN
+            - TODAY
+            - THIS_WEEK
+            - THIS_MONTH
+            - THIS_YEAR
+            - LAST_DAYS
+            - EMPTY
+            - NOT_EMPTY
+        value:
+          type: string
+        secondValue:
+          type: string
+          description: Used with BETWEEN operator
+        values:
+          type: array
+          items:
+            type: string
+          description: Used with IN operator
+    SortingCriteria:
+      type: object
+      properties:
+        field:
+          type: string
+        order:
+          type: string
+          enum: [ASC, DESC]
+
+    # ── Address ──
+    Address:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        line1:
+          type: string
+        line2:
+          type: string
+        city:
+          type: string
+        region:
+          type: string
+        postcode:
+          type: string
+        country:
+          type: string
+        parentKey:
+          type: string
+        indexInList:
+          type: integer
+
+    # ── Identification Document ──
+    IdentificationDocument:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        documentId:
+          type: string
+        documentType:
+          type: string
+        identificationDocumentTemplateKey:
+          type: string
+        issuingAuthority:
+          type: string
+        validUntil:
+          type: string
+          format: date
+        indexInList:
+          type: integer
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              encodedKey:
+                type: string
+              fileName:
+                type: string
+              fileSize:
+                type: integer
+              name:
+                type: string
+              type:
+                type: string
+
+    # ── Currency ──
+    Currency:
+      type: object
+      properties:
+        code:
+          type: string
+          description: ISO 4217 currency code
+        name:
+          type: string
+        symbol:
+          type: string
+        digitsAfterDecimal:
+          type: integer
+        currencySymbolPosition:
+          type: string
+          enum: [BEFORE_NUMBER, AFTER_NUMBER]
+        isBaseCurrency:
+          type: boolean
+
+    # ── Client ──
+    Client:
+      type: object
+      required: [firstName, lastName]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        state:
+          type: string
+          enum: [PENDING_APPROVAL, INACTIVE, ACTIVE, EXITED, BLACKLISTED, REJECTED]
+        firstName:
+          type: string
+        lastName:
+          type: string
+        middleName:
+          type: string
+        gender:
+          type: string
+          enum: [MALE, FEMALE]
+        birthDate:
+          type: string
+          format: date
+        emailAddress:
+          type: string
+        mobilePhone:
+          type: string
+        mobilePhone2:
+          type: string
+        homePhone:
+          type: string
+        preferredLanguage:
+          type: string
+          enum:
+            - ENGLISH
+            - PORTUGESE
+            - SPANISH
+            - RUSSIAN
+            - FRENCH
+            - GEORGIAN
+            - CHINESE
+            - INDONESIAN
+            - ROMANIAN
+            - BURMESE
+            - GERMAN
+            - PORTUGUESE_BRAZIL
+            - VIETNAMESE
+            - ITALIAN
+            - THAI
+            - NORWEGIAN
+            - PHRASE
+        notes:
+          type: string
+        clientRoleKey:
+          type: string
+        assignedBranchKey:
+          type: string
+        assignedCentreKey:
+          type: string
+        assignedUserKey:
+          type: string
+        groupKeys:
+          type: array
+          items:
+            type: string
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+        idDocuments:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdentificationDocument"
+        profilePictureKey:
+          type: string
+        profileSignatureKey:
+          type: string
+        loanCycle:
+          type: integer
+          readOnly: true
+        groupLoanCycle:
+          type: integer
+          readOnly: true
+        activationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        approvedDate:
+          type: string
+          format: date-time
+          readOnly: true
+        closedDate:
+          type: string
+          format: date-time
+          readOnly: true
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Group ──
+    Group:
+      type: object
+      required: [groupName]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        groupName:
+          type: string
+        assignedBranchKey:
+          type: string
+        assignedCentreKey:
+          type: string
+        assignedUserKey:
+          type: string
+        groupRoleKey:
+          type: string
+        groupMembers:
+          type: array
+          items:
+            type: object
+            properties:
+              clientKey:
+                type: string
+              roles:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    groupRoleNameKey:
+                      type: string
+                    roleName:
+                      type: string
+                    roleNameId:
+                      type: string
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+        notes:
+          type: string
+        emailAddress:
+          type: string
+        mobilePhone:
+          type: string
+        preferredLanguage:
+          type: string
+        loanCycle:
+          type: integer
+          readOnly: true
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Branch ──
+    Branch:
+      type: object
+      required: [name]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        phoneNumber:
+          type: string
+        emailAddress:
+          type: string
+        notes:
+          type: string
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+        holidays:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              date:
+                type: string
+                format: date
+              isAnnuallyRecurring:
+                type: boolean
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Centre ──
+    Centre:
+      type: object
+      required: [name]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        assignedBranchKey:
+          type: string
+        meetingDay:
+          type: string
+        notes:
+          type: string
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── User ──
+    User:
+      type: object
+      required: [username, firstName, lastName, email]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        username:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        userState:
+          type: string
+          enum: [ACTIVE, INACTIVE, LOCKED]
+        language:
+          type: string
+        role:
+          type: object
+          properties:
+            encodedKey:
+              type: string
+            id:
+              type: string
+        title:
+          type: string
+        mobilePhone:
+          type: string
+        homePhone:
+          type: string
+        notes:
+          type: string
+        access:
+          $ref: "#/components/schemas/UserAccess"
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+    UserAccess:
+      type: object
+      properties:
+        mambuAccess:
+          type: boolean
+        apiAccess:
+          type: boolean
+        administratorAccess:
+          type: boolean
+        creditOfficerAccess:
+          type: boolean
+        tellerAccess:
+          type: boolean
+        supportAccess:
+          type: boolean
+        canManageAllBranches:
+          type: boolean
+        canManageEntitiesAssignedToOtherOfficers:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            type: string
+        managedBranches:
+          type: array
+          items:
+            type: object
+            properties:
+              branchKey:
+                type: string
+
+    # ── Loan Account ──
+    LoanAccount:
+      type: object
+      required: [loanAmount, productTypeKey, accountHolderKey, accountHolderType]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        loanName:
+          type: string
+        loanAmount:
+          type: number
+        productTypeKey:
+          type: string
+        accountHolderKey:
+          type: string
+        accountHolderType:
+          type: string
+          enum: [CLIENT, GROUP]
+        accountState:
+          type: string
+          enum:
+            - PARTIAL_APPLICATION
+            - PENDING_APPROVAL
+            - APPROVED
+            - ACTIVE
+            - ACTIVE_IN_ARREARS
+            - CLOSED
+            - CLOSED_WRITTEN_OFF
+            - CLOSED_REJECTED
+        accountSubState:
+          type: string
+          enum:
+            - PARTIALLY_DISBURSED
+            - LOCKED
+            - LOCKED_CAPPING
+            - REFINANCED
+            - RESCHEDULED
+            - WITHDRAWN
+            - REPAID
+            - REJECTED
+            - WRITTEN_OFF
+            - TERMINATED
+        assignedBranchKey:
+          type: string
+        assignedCentreKey:
+          type: string
+        assignedUserKey:
+          type: string
+        creditArrangementKey:
+          type: string
+        currencyCode:
+          type: string
+        scheduleSettings:
+          $ref: "#/components/schemas/LoanScheduleSettings"
+        interestSettings:
+          $ref: "#/components/schemas/LoanInterestSettings"
+        penaltySettings:
+          $ref: "#/components/schemas/LoanPenaltySettings"
+        prepaymentSettings:
+          $ref: "#/components/schemas/LoanPrepaymentSettings"
+        principalPaymentSettings:
+          $ref: "#/components/schemas/PrincipalPaymentSettings"
+        disbursementDetails:
+          $ref: "#/components/schemas/DisbursementDetails"
+        balances:
+          $ref: "#/components/schemas/LoanBalances"
+          readOnly: true
+        feesSettings:
+          $ref: "#/components/schemas/FeesAccountSettings"
+        accountArrearsSettings:
+          $ref: "#/components/schemas/AccountArrearsSettings"
+        redrawSettings:
+          $ref: "#/components/schemas/RedrawSettings"
+        guarantors:
+          type: array
+          items:
+            $ref: "#/components/schemas/Guarantor"
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Asset"
+        fundingSources:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvestorFund"
+        tranches:
+          type: array
+          items:
+            $ref: "#/components/schemas/LoanTranche"
+        plannedInstallmentFees:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlannedInstallmentFee"
+        futurePaymentsAcceptance:
+          type: string
+          enum: [NO_FUTURE_PAYMENTS, ACCEPT_FUTURE_PAYMENTS, ACCEPT_OVERPAYMENTS]
+        paymentMethod:
+          type: string
+          enum: [HORIZONTAL, VERTICAL]
+        latePaymentsRecalculationMethod:
+          type: string
+          enum: [OVERDUE_INSTALLMENTS_INCREASE, LAST_INSTALLMENT_INCREASE, NO_RECALCULATION]
+        lockedOperations:
+          type: array
+          items:
+            type: string
+            enum: [APPLY_INTEREST, APPLY_FEES, APPLY_PENALTIES]
+        notes:
+          type: string
+        migrationEventKey:
+          type: string
+        activationTransactionKey:
+          type: string
+          readOnly: true
+        lineOfCreditKey:
+          type: string
+        settingsKey:
+          type: string
+        accrueInterestAfterMaturity:
+          type: boolean
+        accrueLateInterest:
+          type: boolean
+        taxRate:
+          type: number
+        approvedDate:
+          type: string
+          format: date-time
+          readOnly: true
+        closedDate:
+          type: string
+          format: date-time
+          readOnly: true
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+      additionalProperties: true
+
+    LoanScheduleSettings:
+      type: object
+      properties:
+        repaymentInstallments:
+          type: integer
+        repaymentPeriodCount:
+          type: integer
+        repaymentPeriodUnit:
+          type: string
+          enum: [DAYS, WEEKS, MONTHS, YEARS]
+        repaymentScheduleMethod:
+          type: string
+          enum: [NONE, FIXED, DYNAMIC]
+        scheduleDueDatesMethod:
+          type: string
+          enum: [INTERVAL, FIXED_DAYS_OF_MONTH]
+        fixedDaysOfMonth:
+          type: array
+          items:
+            type: integer
+        shortMonthHandlingMethod:
+          type: string
+          enum: [LAST_DAY_IN_MONTH, FIRST_DAY_OF_NEXT_MONTH]
+        gracePeriod:
+          type: integer
+        gracePeriodType:
+          type: string
+          enum: [NONE, PAY_INTEREST_ONLY, INTEREST_FORGIVENESS]
+        amortizationMethod:
+          type: string
+          enum: [STANDARD_PAYMENTS, BALLOON_PAYMENTS, OPTIMIZED_PAYMENTS, PAYMENT_PLAN]
+        repaymentReschedulingMethod:
+          type: string
+          enum: [NONE, NEXT_WORKING_DAY, PREVIOUS_WORKING_DAY, EXTEND_SCHEDULE]
+        principalRoundingSettings:
+          type: object
+          properties:
+            roundingRepaymentCurrencyDigits:
+              type: string
+        hasCustomSchedule:
+          type: boolean
+        periodicPayment:
+          type: number
+        paymentPlan:
+          type: array
+          items:
+            type: object
+            properties:
+              amount:
+                type: number
+              toInstallment:
+                type: integer
+        firstRepaymentDate:
+          type: string
+          format: date
+
+    LoanInterestSettings:
+      type: object
+      properties:
+        interestRate:
+          type: number
+        interestSpread:
+          type: number
+        interestRateSource:
+          type: string
+          enum: [FIXED_INTEREST_RATE, INDEX_INTEREST_RATE]
+        interestRateTerms:
+          type: string
+          enum: [FIXED, TIERED, TIERED_PERIOD, TIERED_BAND]
+        interestChargeFrequency:
+          type: string
+          enum: [ANNUALIZED, EVERY_MONTH, EVERY_FOUR_WEEKS, EVERY_WEEK, EVERY_DAY, EVERY_X_DAYS]
+        interestChargeFrequencyCount:
+          type: integer
+        interestCalculationMethod:
+          type: string
+          enum: [FLAT, DECLINING_BALANCE, DECLINING_BALANCE_DISCOUNTED, EQUAL_INSTALLMENTS]
+        interestType:
+          type: string
+          enum: [SIMPLE_INTEREST, CAPITALIZED_INTEREST, COMPOUNDING_INTEREST]
+        interestApplicationMethod:
+          type: string
+          enum: [AFTER_DISBURSEMENT, REPAYMENT_DUE_DATE, FIXED_DAYS_OF_MONTH]
+        interestBalanceCalculationMethod:
+          type: string
+          enum: [ONLY_PRINCIPAL, PRINCIPAL_AND_INTEREST, PRINCIPAL_AND_FEE, PRINCIPAL_INTEREST_AND_FEE]
+        interestRateReviewUnit:
+          type: string
+          enum: [DAYS, WEEKS, MONTHS]
+        interestRateReviewCount:
+          type: integer
+        interestFloorValue:
+          type: number
+        interestCeilingValue:
+          type: number
+        indexRateSourceKey:
+          type: string
+        accrueInterestAfterMaturity:
+          type: boolean
+        accrueLateInterest:
+          type: boolean
+
+    LoanPenaltySettings:
+      type: object
+      properties:
+        penaltyRate:
+          type: number
+        loanPenaltyCalculationMethod:
+          type: string
+          enum: [NONE, OVERDUE_BALANCE, OVERDUE_BALANCE_AND_INTEREST, OVERDUE_BALANCE_INTEREST_AND_FEE, OUTSTANDING_PRINCIPAL]
+        loanPenaltyGracePeriod:
+          type: integer
+
+    LoanPrepaymentSettings:
+      type: object
+      properties:
+        prepaymentRecalculationMethod:
+          type: string
+          enum:
+            - NO_RECALCULATION
+            - RESCHEDULE_REMAINING_REPAYMENTS
+            - RECALCULATE_SCHEDULE_KEEP_SAME_NUMBER_OF_TERMS
+            - RECALCULATE_SCHEDULE_KEEP_SAME_PRINCIPAL_AMOUNT
+            - RECALCULATE_SCHEDULE_KEEP_SAME_TOTAL_REPAYMENT_AMOUNT
+            - REDUCE_AMOUNT_PER_INSTALLMENT
+            - REDUCE_NUMBER_OF_INSTALLMENTS
+            - REDUCE_NUMBER_OF_INSTALLMENTS_NEW
+        futurePaymentsAcceptance:
+          type: string
+          enum: [NO_FUTURE_PAYMENTS, ACCEPT_FUTURE_PAYMENTS, ACCEPT_OVERPAYMENTS]
+        principalPaidInstallmentStatus:
+          type: string
+          enum: [PARTIALLY_PAID, PAID, ORIGINAL_TOTAL_EXPECTED_PAID]
+        elementsRecalculationMethod:
+          type: string
+          enum: [PRINCIPAL_EXPECTED_FIXED, TOTAL_EXPECTED_FIXED]
+        applyInterestOnPrepaymentMethod:
+          type: string
+          enum: [AUTOMATIC, MANUAL]
+
+    PrincipalPaymentSettings:
+      type: object
+      properties:
+        amount:
+          type: number
+        percentage:
+          type: number
+        principalPaymentMethod:
+          type: string
+          enum: [FLAT, OUTSTANDING_PRINCIPAL_PERCENTAGE, PRINCIPAL_PERCENTAGE_LAST_DISB, TOTAL_BALANCE_PERCENTAGE, TOTAL_BALANCE_FLAT, TOTAL_PRINCIPAL_PERCENTAGE]
+        totalDuePayment:
+          type: string
+          enum: [FLAT, OUTSTANDING_PRINCIPAL_PERCENTAGE, TOTAL_BALANCE_PERCENTAGE, TOTAL_BALANCE_FLAT, TOTAL_PRINCIPAL_PERCENTAGE]
+        totalDueAmountFloor:
+          type: number
+        includeInterestInFloorAmount:
+          type: boolean
+        includeFeesInFloorAmount:
+          type: boolean
+
+    DisbursementDetails:
+      type: object
+      properties:
+        expectedDisbursementDate:
+          type: string
+          format: date
+        disbursementDate:
+          type: string
+          format: date
+        firstRepaymentDate:
+          type: string
+          format: date
+        transactionDetails:
+          type: object
+          properties:
+            transactionChannelId:
+              type: string
+            transactionChannelKey:
+              type: string
+        fees:
+          type: array
+          items:
+            type: object
+            properties:
+              predefinedFeeEncodedKey:
+                type: string
+              amount:
+                type: number
+
+    LoanBalances:
+      type: object
+      readOnly: true
+      properties:
+        principalDue:
+          type: number
+        principalPaid:
+          type: number
+        principalBalance:
+          type: number
+        interestDue:
+          type: number
+        interestPaid:
+          type: number
+        interestBalance:
+          type: number
+        interestFromArrearsBalance:
+          type: number
+        interestFromArrearsDue:
+          type: number
+        interestFromArrearsPaid:
+          type: number
+        feesDue:
+          type: number
+        feesPaid:
+          type: number
+        feesBalance:
+          type: number
+        penaltyDue:
+          type: number
+        penaltyPaid:
+          type: number
+        penaltyBalance:
+          type: number
+        holdBalance:
+          type: number
+        redrawBalance:
+          type: number
+        totalBalance:
+          type: number
+
+    FeesAccountSettings:
+      type: object
+      properties:
+        fees:
+          type: array
+          items:
+            type: object
+            properties:
+              encodedKey:
+                type: string
+              predefinedFeeKey:
+                type: string
+              amount:
+                type: number
+
+    AccountArrearsSettings:
+      type: object
+      properties:
+        toleranceCalculationMethod:
+          type: string
+        tolerancePeriod:
+          type: integer
+        toleranceFloorAmount:
+          type: number
+        tolerancePercentageOfOutstandingPrincipal:
+          type: number
+        dateCalculationMethod:
+          type: string
+        nonWorkingDaysMethod:
+          type: string
+
+    RedrawSettings:
+      type: object
+      properties:
+        allowRedraw:
+          type: boolean
+
+    Guarantor:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        guarantorKey:
+          type: string
+        guarantorType:
+          type: string
+          enum: [CLIENT, GROUP]
+        amount:
+          type: number
+        assetName:
+          type: string
+        depositAccountKey:
+          type: string
+        savingsAccountKey:
+          type: string
+
+    Asset:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        assetName:
+          type: string
+        amount:
+          type: number
+        depositAccountKey:
+          type: string
+        originalAmount:
+          type: number
+        originalCurrency:
+          $ref: "#/components/schemas/Currency"
+
+    InvestorFund:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        savingsAccountKey:
+          type: string
+        amount:
+          type: number
+        sharePercentage:
+          type: number
+        interestCommission:
+          type: number
+
+    LoanTranche:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        amount:
+          type: number
+        expectedDisbursementDate:
+          type: string
+          format: date
+        disbursementTransactionKey:
+          type: string
+        trancheNumber:
+          type: integer
+        fees:
+          type: array
+          items:
+            type: object
+            properties:
+              predefinedFeeEncodedKey:
+                type: string
+              amount:
+                type: number
+
+    PlannedInstallmentFee:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        predefinedFeeKey:
+          type: string
+        amount:
+          type: number
+        installmentKey:
+          type: string
+        installmentNumber:
+          type: integer
+        applyOnDate:
+          type: string
+          format: date
+
+    # ── Loan Transaction ──
+    LoanTransaction:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        externalId:
+          type: string
+        type:
+          type: string
+          enum:
+            - IMPORT
+            - DISBURSEMENT
+            - DISBURSEMENT_ADJUSTMENT
+            - WRITE_OFF
+            - WRITE_OFF_ADJUSTMENT
+            - REPAYMENT
+            - PAYMENT_MADE
+            - WITHDRAWAL_REDRAW
+            - WITHDRAWAL_REDRAW_ADJUSTMENT
+            - FEE_APPLIED
+            - FEE_CHARGED
+            - FEE_CAPITALISED
+            - FEE_ADJUSTMENT
+            - FEE_CAPITALISED_ADJUSTMENT
+            - PENALTY_APPLIED
+            - PENALTY_ADJUSTMENT
+            - INTEREST_APPLIED
+            - INTEREST_APPLIED_ADJUSTMENT
+            - TRANSFER
+            - TRANSFER_ADJUSTMENT
+            - BRANCH_CHANGED
+            - TERMS_CHANGED
+            - REFUND
+            - REFUND_ADJUSTMENT
+            - PRINCIPAL_OVERPAYMENT
+            - PRINCIPAL_OVERPAYMENT_ADJUSTMENT
+            - REDRAW_REPAYMENT
+            - REDRAW_REPAYMENT_ADJUSTMENT
+            - REDRAW_TRANSFER
+            - REDRAW_TRANSFER_ADJUSTMENT
+            - INTEREST_LOCKED
+            - INTEREST_UNLOCKED
+            - FEE_LOCKED
+            - FEE_UNLOCKED
+            - PENALTY_LOCKED
+            - PENALTY_UNLOCKED
+            - CARD_TRANSACTION_REVERSAL
+            - CARD_TRANSACTION_REVERSAL_ADJUSTMENT
+            - SCHEDULE_FIX_APPLIED
+            - ACCOUNT_TERMINATED
+            - ACCOUNT_TERMINATED_ADJUSTMENT
+        amount:
+          type: number
+        valueDate:
+          type: string
+          format: date-time
+        bookingDate:
+          type: string
+          format: date-time
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        parentAccountKey:
+          type: string
+        affectedAmounts:
+          type: object
+          properties:
+            principalAmount:
+              type: number
+            interestAmount:
+              type: number
+            feesAmount:
+              type: number
+            penaltyAmount:
+              type: number
+            fundsAmount:
+              type: number
+            fractionAmount:
+              type: number
+            overdraftAmount:
+              type: number
+            overdraftFeesAmount:
+              type: number
+            overdraftInterestAmount:
+              type: number
+            technicalOverdraftAmount:
+              type: number
+            technicalOverdraftInterestAmount:
+              type: number
+        accountBalances:
+          type: object
+          properties:
+            principalBalance:
+              type: number
+            redrawBalance:
+              type: number
+            totalBalance:
+              type: number
+            advancePosition:
+              type: number
+            arrearsPosition:
+              type: number
+            expectedPrincipalRedraw:
+              type: number
+        taxes:
+          type: object
+          properties:
+            taxRate:
+              type: number
+            deferredTaxOnInterestAmount:
+              type: number
+            taxOnFeesAmount:
+              type: number
+            taxOnInterestAmount:
+              type: number
+            taxOnInterestFromArrearsAmount:
+              type: number
+            taxOnPenaltyAmount:
+              type: number
+        terms:
+          type: object
+          properties:
+            interestSettings:
+              type: object
+              properties:
+                interestRate:
+                  type: number
+                indexInterestRate:
+                  type: number
+                interestSpread:
+                  type: number
+        fees:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              amount:
+                type: number
+              predefinedFeeKey:
+                type: string
+              taxAmount:
+                type: number
+              trigger:
+                type: string
+        transactionDetails:
+          type: object
+          properties:
+            transactionChannelId:
+              type: string
+            transactionChannelKey:
+              type: string
+            internalTransfer:
+              type: boolean
+        transferDetails:
+          type: object
+          properties:
+            linkedLoanTransactionKey:
+              type: string
+            linkedDepositTransactionKey:
+              type: string
+        cardTransaction:
+          type: object
+          properties:
+            advice:
+              type: boolean
+            amount:
+              type: number
+            cardToken:
+              type: string
+            currencyCode:
+              type: string
+            externalAuthorizationReferenceId:
+              type: string
+            externalReferenceId:
+              type: string
+        notes:
+          type: string
+        userKey:
+          type: string
+        branchKey:
+          type: string
+        centreKey:
+          type: string
+        tillKey:
+          type: string
+        adjustmentTransactionKey:
+          type: string
+        originalTransactionKey:
+          type: string
+        migrationEventKey:
+          type: string
+      additionalProperties: true
+
+    # ── Deposit Account ──
+    DepositAccount:
+      type: object
+      required: [name, accountHolderKey, accountHolderType, productTypeKey]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        name:
+          type: string
+        accountHolderKey:
+          type: string
+        accountHolderType:
+          type: string
+          enum: [CLIENT, GROUP]
+        productTypeKey:
+          type: string
+        accountState:
+          type: string
+          enum:
+            - PENDING_APPROVAL
+            - APPROVED
+            - ACTIVE
+            - ACTIVE_IN_ARREARS
+            - MATURED
+            - LOCKED
+            - DORMANT
+            - CLOSED
+            - CLOSED_WRITTEN_OFF
+            - WITHDRAWN
+            - CLOSED_REJECTED
+        accountType:
+          type: string
+          enum: [CURRENT_ACCOUNT, REGULAR_SAVINGS, FIXED_DEPOSIT, SAVINGS_PLAN, INVESTOR_ACCOUNT]
+        assignedBranchKey:
+          type: string
+        assignedCentreKey:
+          type: string
+        assignedUserKey:
+          type: string
+        creditArrangementKey:
+          type: string
+        currencyCode:
+          type: string
+        linkedSettlementAccountKeys:
+          type: array
+          items:
+            type: string
+        balances:
+          $ref: "#/components/schemas/DepositBalances"
+          readOnly: true
+        accruedAmounts:
+          type: object
+          readOnly: true
+          properties:
+            interestAccrued:
+              type: number
+            overdraftInterestAccrued:
+              type: number
+            technicalOverdraftInterestAccrued:
+              type: number
+            negativeInterestAccrued:
+              type: number
+        interestSettings:
+          $ref: "#/components/schemas/DepositInterestSettings"
+        overdraftSettings:
+          type: object
+          properties:
+            allowOverdraft:
+              type: boolean
+            overdraftLimit:
+              type: number
+            overdraftExpiryDate:
+              type: string
+              format: date
+        overdraftInterestSettings:
+          type: object
+          properties:
+            interestRate:
+              type: number
+            interestRateSource:
+              type: string
+              enum: [FIXED_INTEREST_RATE, INDEX_INTEREST_RATE]
+            interestSpread:
+              type: number
+            indexRateSourceKey:
+              type: string
+            interestChargeFrequency:
+              type: string
+            interestChargeFrequencyCount:
+              type: integer
+            interestRateReviewUnit:
+              type: string
+            interestRateReviewCount:
+              type: integer
+        internalControls:
+          type: object
+          properties:
+            maxWithdrawalAmount:
+              type: number
+            recommendedDepositAmount:
+              type: number
+            targetAmount:
+              type: number
+            openingBalance:
+              type: number
+        notes:
+          type: string
+        activationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        approvedDate:
+          type: string
+          format: date-time
+          readOnly: true
+        closedDate:
+          type: string
+          format: date-time
+          readOnly: true
+        maturityDate:
+          type: string
+          format: date-time
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+      additionalProperties: true
+
+    DepositBalances:
+      type: object
+      readOnly: true
+      properties:
+        totalBalance:
+          type: number
+        availableBalance:
+          type: number
+        holdBalance:
+          type: number
+        lockedBalance:
+          type: number
+        overdraftAmount:
+          type: number
+        overdraftInterestDue:
+          type: number
+        technicalOverdraftAmount:
+          type: number
+        technicalOverdraftInterestAmount:
+          type: number
+        feesDue:
+          type: number
+        blockedBalance:
+          type: number
+        forwardAvailableBalance:
+          type: number
+
+    DepositInterestSettings:
+      type: object
+      properties:
+        interestRate:
+          type: number
+        interestRateSource:
+          type: string
+          enum: [FIXED_INTEREST_RATE, INDEX_INTEREST_RATE]
+        interestRateTerms:
+          type: string
+          enum: [FIXED, TIERED, TIERED_PERIOD, TIERED_BAND]
+        interestPaymentPoint:
+          type: string
+          enum:
+            - FIRST_DAY_OF_MONTH
+            - EVERY_WEEK
+            - EVERY_OTHER_WEEK
+            - EVERY_MONTH
+            - EVERY_3_MONTHS
+            - ON_FIXED_DATES
+            - DAILY
+            - ANNUALLY
+            - BI_ANNUALLY
+            - ON_ACCOUNT_MATURITY
+        interestPaymentDates:
+          type: array
+          items:
+            type: object
+            properties:
+              day:
+                type: integer
+              month:
+                type: integer
+        interestSpread:
+          type: number
+        interestChargeFrequency:
+          type: string
+        interestChargeFrequencyCount:
+          type: integer
+        interestRateReviewUnit:
+          type: string
+          enum: [DAYS, WEEKS, MONTHS]
+        interestRateReviewCount:
+          type: integer
+        indexRateSourceKey:
+          type: string
+        interestFloorValue:
+          type: number
+        interestCeilingValue:
+          type: number
+        compoundingFrequency:
+          type: string
+          enum: [DAILY, SEMI_ANNUALLY]
+        daysInYear:
+          type: string
+          enum: [ACTUAL_365_FIXED, ACTUAL_364, ACTUAL_360, ACTUAL_ACTUAL_ISDA, E30_360, BUS_252, E30_42_365]
+
+    # ── Deposit Transaction ──
+    DepositTransaction:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        externalId:
+          type: string
+        type:
+          type: string
+          enum:
+            - IMPORT
+            - WRITE_OFF
+            - WRITE_OFF_ADJUSTMENT
+            - DEPOSIT
+            - ADJUSTMENT
+            - WITHDRAWAL
+            - WITHDRAWAL_ADJUSTMENT
+            - TRANSFER
+            - TRANSFER_ADJUSTMENT
+            - FEE_APPLIED
+            - FEE_ADJUSTED
+            - INTEREST_APPLIED
+            - INTEREST_APPLIED_ADJUSTMENT
+            - WITHHOLDING_TAX
+            - WITHHOLDING_TAX_ADJUSTMENT
+            - CARD_TRANSACTION_REVERSAL
+            - CARD_TRANSACTION_REVERSAL_ADJUSTMENT
+            - LOAN_FUNDED
+            - LOAN_FUNDED_ADJUSTMENT
+            - LOAN_REPAID
+            - LOAN_REPAID_ADJUSTMENT
+            - LOAN_FRACTION_BOUGHT
+            - LOAN_FRACTION_BOUGHT_ADJUSTMENT
+            - LOAN_FRACTION_SOLD
+            - LOAN_FRACTION_SOLD_ADJUSTMENT
+            - SEIZED_AMOUNT
+            - OVERDRAFT_INTEREST_RATE_CHANGED
+            - OVERDRAFT_LIMIT_CHANGED
+            - BRANCH_CHANGED
+            - ACCOUNT_HOLDER_CHANGED
+            - INTEREST_RATE_CHANGED
+            - NET_DIFF_INTEREST
+            - FEES_DUE_REDUCED
+            - FEE_REDUCTION_ADJUSTMENT
+            - PROFIT_APPLIED
+            - PROFIT_APPLIED_ADJUSTMENT
+        amount:
+          type: number
+        valueDate:
+          type: string
+          format: date-time
+        bookingDate:
+          type: string
+          format: date-time
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        parentAccountKey:
+          type: string
+        affectedAmounts:
+          type: object
+          properties:
+            fundsAmount:
+              type: number
+            interestAmount:
+              type: number
+            feesAmount:
+              type: number
+            overdraftAmount:
+              type: number
+            overdraftFeesAmount:
+              type: number
+            overdraftInterestAmount:
+              type: number
+            technicalOverdraftAmount:
+              type: number
+            technicalOverdraftInterestAmount:
+              type: number
+            fractionAmount:
+              type: number
+        accountBalances:
+          type: object
+          properties:
+            totalBalance:
+              type: number
+            availableBalance:
+              type: number
+        taxes:
+          type: object
+          properties:
+            taxRate:
+              type: number
+            taxAmount:
+              type: number
+        terms:
+          type: object
+          properties:
+            interestSettings:
+              type: object
+              properties:
+                interestRate:
+                  type: number
+                indexInterestRate:
+                  type: number
+                interestSpread:
+                  type: number
+            overdraftInterestSettings:
+              type: object
+              properties:
+                interestRate:
+                  type: number
+                indexInterestRate:
+                  type: number
+                interestSpread:
+                  type: number
+            overdraftSettings:
+              type: object
+              properties:
+                overdraftLimit:
+                  type: number
+        fees:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              amount:
+                type: number
+              predefinedFeeKey:
+                type: string
+              taxAmount:
+                type: number
+              trigger:
+                type: string
+        transactionDetails:
+          type: object
+          properties:
+            transactionChannelId:
+              type: string
+            transactionChannelKey:
+              type: string
+            internalTransfer:
+              type: boolean
+        transferDetails:
+          type: object
+          properties:
+            linkedLoanTransactionKey:
+              type: string
+            linkedDepositTransactionKey:
+              type: string
+        cardTransaction:
+          type: object
+          properties:
+            advice:
+              type: boolean
+            amount:
+              type: number
+            cardToken:
+              type: string
+            currencyCode:
+              type: string
+            externalAuthorizationReferenceId:
+              type: string
+            externalReferenceId:
+              type: string
+        paymentDetails:
+          type: object
+          properties:
+            creditor:
+              type: object
+              properties:
+                name:
+                  type: string
+            debtor:
+              type: object
+              properties:
+                name:
+                  type: string
+            paymentOrderId:
+              type: string
+            reason:
+              type: string
+        notes:
+          type: string
+        userKey:
+          type: string
+        branchKey:
+          type: string
+        centreKey:
+          type: string
+        tillKey:
+          type: string
+        adjustmentTransactionKey:
+          type: string
+        originalTransactionKey:
+          type: string
+      additionalProperties: true
+
+    # ── Credit Arrangement ──
+    CreditArrangement:
+      type: object
+      required: [amount, holderType, startDate, expireDate]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        holderKey:
+          type: string
+        holderType:
+          type: string
+          enum: [CLIENT, GROUP]
+        amount:
+          type: number
+        state:
+          type: string
+          enum: [PENDING_APPROVAL, APPROVED, ACTIVE, CLOSED, WITHDRAWN, REJECTED]
+        subState:
+          type: string
+        exposureLimitType:
+          type: string
+          enum: [APPROVED_AMOUNT, OUTSTANDING_AMOUNT]
+        startDate:
+          type: string
+          format: date-time
+        expireDate:
+          type: string
+          format: date-time
+        closedDate:
+          type: string
+          format: date-time
+          readOnly: true
+        currency:
+          $ref: "#/components/schemas/Currency"
+        availableCreditAmount:
+          type: number
+          readOnly: true
+        consumedCreditAmount:
+          type: number
+          readOnly: true
+        notes:
+          type: string
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+        approvedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Loan Product ──
+    LoanProduct:
+      type: object
+      required: [name]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        category:
+          type: string
+          enum: [PERSONAL_LENDING, PURCHASE_FINANCING, RETAIL_MORTGAGES, SME_LENDING, COMMERCIAL, UNCATEGORIZED]
+        type:
+          type: string
+          enum: [FIXED_TERM_LOAN, DYNAMIC_TERM_LOAN, INTEREST_FREE_LOAN, TRANCHED_LOAN, REVOLVING_CREDIT, INTEREST_ONLY_EQUAL_INSTALLMENTS, DYNAMIC_MORTGAGE]
+        notes:
+          type: string
+        description:
+          type: string
+        interestSettings:
+          type: object
+          description: Product-level interest configuration
+        scheduleSettings:
+          type: object
+          description: Product-level schedule configuration
+        paymentSettings:
+          type: object
+          description: Product-level payment configuration
+        accountingSettings:
+          type: object
+          properties:
+            accountingMethod:
+              type: string
+              enum: [NONE, CASH, ACCRUAL]
+            interestAccrualCalculation:
+              type: string
+              enum: [NONE, AGGREGATED_AMOUNT, BREAKDOWN_PER_ACCOUNT]
+            interestAccruedAccountingMethod:
+              type: string
+              enum: [NONE, DAILY, END_OF_MONTH]
+        arrearsSettings:
+          type: object
+          description: Product-level arrears configuration
+        prepaymentSettings:
+          type: object
+          description: Product-level prepayment configuration
+        penaltySettings:
+          type: object
+          description: Product-level penalty configuration
+        feesSettings:
+          type: object
+          description: Product-level fees configuration
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Deposit Product ──
+    DepositProduct:
+      type: object
+      required: [name]
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        category:
+          type: string
+          enum: [PERSONAL_DEPOSIT, BUSINESS_DEPOSIT, DAILY_BANKING_ACCOUNTS, BUSINESS_BANKING_ACCOUNTS, STORED_VALUE_ACCOUNTS, UNCATEGORIZED]
+        type:
+          type: string
+          enum: [CURRENT_ACCOUNT, REGULAR_SAVINGS, FIXED_DEPOSIT, SAVINGS_PLAN, INVESTOR_ACCOUNT]
+        notes:
+          type: string
+        description:
+          type: string
+        interestSettings:
+          type: object
+          description: Product-level interest configuration
+        accountingSettings:
+          type: object
+          properties:
+            accountingMethod:
+              type: string
+              enum: [NONE, CASH, ACCRUAL]
+        availabilitySettings:
+          type: object
+          description: Product availability configuration
+        feeSettings:
+          type: object
+          description: Product-level fee configuration
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── GL Account ──
+    GLAccount:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        glCode:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [ASSET, LIABILITY, EQUITY, INCOME, EXPENSE]
+        usage:
+          type: string
+          enum: [DETAIL, HEADER]
+        description:
+          type: string
+        allowManualJournalEntries:
+          type: boolean
+        balance:
+          type: number
+          readOnly: true
+        currency:
+          $ref: "#/components/schemas/Currency"
+        stripTrailingZeros:
+          type: boolean
+        migrationEventKey:
+          type: string
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Journal Entry ──
+    GLJournalEntry:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        entryId:
+          type: integer
+          readOnly: true
+        amount:
+          type: number
+        glAccountKey:
+          type: string
+        type:
+          type: string
+          enum: [DEBIT, CREDIT]
+        transactionId:
+          type: string
+        bookingDate:
+          type: string
+          format: date
+        notes:
+          type: string
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        productKey:
+          type: string
+        productType:
+          type: string
+        assignedBranchKey:
+          type: string
+        userKey:
+          type: string
+
+    # ── Task ──
+    Task:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [OPEN, COMPLETED]
+        dueDate:
+          type: string
+          format: date-time
+        assignedUserKey:
+          type: string
+        taskLinkKey:
+          type: string
+        taskLinkType:
+          type: string
+          enum: [CLIENT, GROUP, LOAN_ACCOUNT, DEPOSIT_ACCOUNT, CENTRE, BRANCH, USER]
+        createdByUserKey:
+          type: string
+          readOnly: true
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Document ──
+    Document:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        name:
+          type: string
+        fileName:
+          type: string
+        fileSize:
+          type: integer
+        type:
+          type: string
+        ownerKey:
+          type: string
+        ownerType:
+          type: string
+          enum: [CLIENT, GROUP, LOAN_PRODUCT, SAVINGS_PRODUCT, CENTRE, BRANCH, USER, LOAN_ACCOUNT, DEPOSIT_ACCOUNT, ID_DOCUMENT, LINE_OF_CREDIT, GL_JOURNAL_ENTRY]
+        description:
+          type: string
+        location:
+          type: string
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        lastModifiedDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Communication ──
+    CommunicationMessage:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        type:
+          type: string
+          enum: [EMAIL, SMS, WEB_HOOK, EVENT_STREAM, TASK]
+        state:
+          type: string
+          enum: [SENT, QUEUED, QUEUED_FOR_STREAM, WAITING, SENDING_ASYNC, FAILED]
+        event:
+          type: string
+          description: "Trigger event (e.g. CLIENT_CREATED, LOAN_REPAYMENT, etc.)"
+        subject:
+          type: string
+        body:
+          type: string
+        destination:
+          type: string
+        senderKey:
+          type: string
+        clientKey:
+          type: string
+        groupKey:
+          type: string
+        loanAccountKey:
+          type: string
+        depositAccountKey:
+          type: string
+        repaymentKey:
+          type: string
+        failureCause:
+          type: string
+        failureReason:
+          type: string
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+        sendDate:
+          type: string
+          format: date-time
+
+    # ── Installment ──
+    Installment:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        number:
+          type: integer
+        state:
+          type: string
+          enum: [PENDING, LATE, PAID, PARTIALLY_PAID, GRACE]
+        dueDate:
+          type: string
+          format: date
+        repaidDate:
+          type: string
+          format: date
+        lastPaidDate:
+          type: string
+          format: date
+        principal:
+          type: object
+          properties:
+            amount:
+              type: object
+              properties:
+                due:
+                  type: number
+                paid:
+                  type: number
+                expected:
+                  type: number
+        interest:
+          type: object
+          properties:
+            amount:
+              type: object
+              properties:
+                due:
+                  type: number
+                paid:
+                  type: number
+                expected:
+                  type: number
+            tax:
+              type: object
+              properties:
+                due:
+                  type: number
+                paid:
+                  type: number
+                expected:
+                  type: number
+        fee:
+          type: object
+          properties:
+            amount:
+              type: object
+              properties:
+                due:
+                  type: number
+                paid:
+                  type: number
+                expected:
+                  type: number
+        penalty:
+          type: object
+          properties:
+            amount:
+              type: object
+              properties:
+                due:
+                  type: number
+                paid:
+                  type: number
+                expected:
+                  type: number
+        parentAccountKey:
+          type: string
+        isPaymentHoliday:
+          type: boolean
+
+    # ── Authorization Hold ──
+    AuthorizationHold:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        externalReferenceId:
+          type: string
+        amount:
+          type: number
+        originalAmount:
+          type: number
+        currencyCode:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, REVERSED, SETTLED, EXPIRED]
+        source:
+          type: string
+          enum: [CARD, ACCOUNT]
+        advice:
+          type: boolean
+        cardToken:
+          type: string
+        originalCurrency:
+          type: string
+        exchangeRate:
+          type: number
+        holdExpirationDate:
+          type: string
+          format: date-time
+        userTransactionTime:
+          type: string
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Block Fund ──
+    BlockFund:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        externalReferenceId:
+          type: string
+        amount:
+          type: number
+        state:
+          type: string
+          enum: [PENDING, SEIZED, REMOVED, PARTIALLY_SEIZED]
+        notes:
+          type: string
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Index Rate Source ──
+    IndexRateSource:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        name:
+          type: string
+        notes:
+          type: string
+        type:
+          type: string
+        interestRateTerms:
+          type: string
+        indexRates:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndexRate"
+    IndexRate:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        startDate:
+          type: string
+          format: date
+        rate:
+          type: number
+        notes:
+          type: string
+
+    # ── API Consumer ──
+    ApiConsumer:
+      type: object
+      properties:
+        encodedKey:
+          type: string
+          readOnly: true
+        id:
+          type: string
+        name:
+          type: string
+        access:
+          type: object
+          properties:
+            administratorAccess:
+              type: boolean
+            canManageAllBranches:
+              type: boolean
+            permissions:
+              type: array
+              items:
+                type: string
+            managedBranches:
+              type: array
+              items:
+                type: object
+                properties:
+                  branchKey:
+                    type: string
+        role:
+          type: object
+          properties:
+            encodedKey:
+              type: string
+            id:
+              type: string
+        transactionLimits:
+          type: object
+          additionalProperties:
+            type: number
+        creationDate:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── Change State Action ──
+    LoanAccountAction:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [APPROVE, UNDO_APPROVE, REJECT, UNDO_REJECT, WITHDRAW, UNDO_WITHDRAW, CLOSE, UNDO_CLOSE]
+        notes:
+          type: string
+    DepositAccountAction:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [APPROVE, UNDO_APPROVE, ACTIVATE, UNDO_ACTIVATE, CLOSE, UNDO_CLOSE, CLOSE_REJECT, UNDO_CLOSE_REJECT, CLOSE_WITHDRAW, UNDO_CLOSE_WITHDRAW, LOCK, UNLOCK, REOPEN, UNDO_REOPEN]
+        notes:
+          type: string
+    CreditArrangementAction:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [APPROVE, UNDO_APPROVE, REJECT, UNDO_REJECT, WITHDRAW, UNDO_WITHDRAW, CLOSE, UNDO_CLOSE]
+        notes:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad request - validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Unauthorized - invalid or missing credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Conflict - resource state conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
