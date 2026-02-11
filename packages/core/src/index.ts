@@ -21,6 +21,7 @@ export {
   loanAccounts,
   loanTransactions,
   repaymentSchedule,
+  depositAccounts,
   sandboxes,
   checkpoints,
   sandboxEntities,
@@ -74,6 +75,8 @@ export {
   checkDealArrearsStatus,
 } from "./services/loan-integration.js";
 export type { CreateLoanFromFacilityInput } from "./services/loan-integration.js";
+export { DepositAccountService } from "./services/deposit-account.js";
+export type { CreateDepositAccountInput } from "./services/deposit-account.js";
 export {
   AppError,
   NotFoundError,

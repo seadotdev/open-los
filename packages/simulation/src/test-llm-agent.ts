@@ -1,27 +1,27 @@
 #!/usr/bin/env npx tsx
 /**
  * Simple test script for LLM Agent
- * Run with: ANTHROPIC_API_KEY=your-key npx tsx packages/simulation/src/test-llm-agent.ts
+ * Run with: OPENROUTER_API_KEY=your-key npx tsx packages/simulation/src/test-llm-agent.ts
  */
 
 import { LLMAgent, type AgentConfig } from "./agents/index.js";
 import { getAllPersonas } from "./personas/index.js";
 
 async function main() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY;
 
   if (!apiKey) {
-    console.error("Error: ANTHROPIC_API_KEY environment variable is required");
+    console.error("Error: OPENROUTER_API_KEY environment variable is required");
     process.exit(1);
   }
 
-  console.log("Testing LLM Agent with Anthropic API...\n");
+  console.log("Testing LLM Agent with OpenRouter API...\n");
 
   const agentConfig: AgentConfig = {
     useRuleBased: false,
     maxSteps: 15,
     apiKey: apiKey,
-    model: "claude-sonnet-4-20250514",
+    model: "anthropic/claude-sonnet-4",
   };
 
   const agent = new LLMAgent(agentConfig);

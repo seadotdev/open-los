@@ -140,7 +140,7 @@ export class DealService {
           or(
             gt(deals.created_at, cursorRow.created_at),
             and(eq(deals.created_at, cursorRow.created_at), gt(deals.id, cursorRow.id))
-          )
+          )!
         );
       }
     }

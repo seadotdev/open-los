@@ -103,6 +103,58 @@ class ApiClient {
     return this.request("POST", path, body);
   }
 
+  async postAs(path: string, body: unknown, actor: string) {
+    return this.requestAs("POST", path, body, actor);
+  }
+
+  async requestAs(
+    method: string,
+    path: string,
+    body: unknown,
+    actor: string
+  ): Promise<{ status: number; data: unknown; duration: number }> {
+    const start = Date.now();
+    const url = `${this.config.baseUrl}${path}`;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-Actor": actor,
+      "X-Tenant-Id": this.config.tenantId,
+    };
+
+    const options: RequestInit = {
+      method,
+      headers,
+      signal: AbortSignal.timeout(this.config.timeout),
+    };
+
+    if (body && method !== "GET") {
+      options.body = JSON.stringify(body);
+    }
+
+    try {
+      const response = await fetch(url, options);
+      const duration = Date.now() - start;
+
+      let data: unknown;
+      const contentType = response.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
+
+      return { status: response.status, data, duration };
+    } catch (error) {
+      const duration = Date.now() - start;
+      return {
+        status: 0,
+        data: { error: error instanceof Error ? error.message : "Unknown error" },
+        duration,
+      };
+    }
+  }
+
   async patch(path: string, body: unknown) {
     return this.request("PATCH", path, body);
   }
@@ -154,9 +206,12 @@ async function executeStep(
         break;
 
       case "transition_stage":
-        response = await ctx.client.post(
+        // Stage transitions require an authorized actor — use "system" which
+        // auto-gets credit_lead role, since simulation actors aren't pre-registered
+        response = await ctx.client.postAs(
           `/v1/deals/${ctx.variables.get("deal_id")}/stage-transitions`,
-          params
+          params,
+          "system"
         );
         break;
 
@@ -239,18 +294,21 @@ async function executeStep(
         );
         if (response.status === 201 && response.data && typeof response.data === "object") {
           ctx.variables.set("loan_id", (response.data as any).id);
+          ctx.variables.set("loan_amount", (response.data as any).loan_amount);
         }
         break;
 
       case "disburse_loan":
         // Disbursements use the transactions endpoint with type DISBURSEMENT
+        // Use the loan amount from context if not explicitly specified
+        const disbursementAmount = params.amount || ctx.variables.get("loan_amount");
         response = await ctx.client.post(
           `/v1/loans/${ctx.variables.get("loan_id")}/transactions`,
           {
             type: "DISBURSEMENT",
-            amount: params.amount,
+            amount: disbursementAmount,
             valueDate: params.value_date || new Date().toISOString().split("T")[0],
-            notes: params.notes,
+            notes: params.notes || "Loan disbursement",
           }
         );
         break;
@@ -288,6 +346,17 @@ async function executeStep(
         });
         break;
 
+      case "approve_loan":
+        // Approve a loan account: POST /v1/loans/:loanId/transactions with type APPROVAL
+        response = await ctx.client.post(
+          `/v1/loans/${ctx.variables.get("loan_id")}/transactions`,
+          {
+            type: "APPROVAL",
+            notes: "Approved by simulation",
+          }
+        );
+        break;
+
       case "request_approval":
         response = await ctx.client.post("/v1/approvals", {
           ...params,
@@ -322,7 +391,7 @@ async function executeStep(
     };
   }
 
-  // Determine success
+  // Determine success with refined logic
   const expectedSuccess = step.expectedOutcome.success;
   const actualSuccess =
     response.status >= 200 && response.status < 300;
@@ -330,9 +399,30 @@ async function executeStep(
   // Detect capability gaps
   const capabilityGap = detectCapabilityGap(step, response);
 
+  // Refined success determination:
+  // 1. If a capability gap is detected (404 route missing, 501 not implemented),
+  //    mark as failed — that's a platform gap, not a step logic error.
+  // 2. If response is 2xx and we expected success, it's a success regardless of
+  //    exact status code (201 vs 200 shouldn't cause failure).
+  // 3. If response is 400 (validation error) on a step that expected success,
+  //    it's a step parameter issue, not a capability gap — still mark as failed
+  //    but don't treat as a blocker.
+  // 4. If response is 0 (network/timeout error), mark as failed.
+  let success: boolean;
+  if (capabilityGap.detected) {
+    // Capability gap always means failure for the step
+    success = false;
+  } else if (response.status === 0) {
+    // Network or timeout error
+    success = false;
+  } else {
+    // Normal success/failure matching
+    success = actualSuccess === expectedSuccess;
+  }
+
   const result: StepResult = {
     stepId: step.id,
-    success: actualSuccess === expectedSuccess,
+    success,
     statusCode: response.status,
     response: response.data,
     duration: response.duration,
@@ -355,39 +445,57 @@ async function executeStep(
 }
 
 /**
- * Detect if a step result indicates a capability gap
+ * Detect if a step result indicates a capability gap (missing platform feature)
+ * vs a normal step execution error (bad params, missing prerequisite, etc.)
  */
 function detectCapabilityGap(
   step: WorkflowStep,
   response: { status: number; data: unknown }
 ): StepResult["capabilityGap"] {
-  // 404 on an endpoint suggests missing capability
   if (response.status === 404) {
     const errorData = response.data as any;
-    const message = errorData?.error?.message || errorData?.message || "Endpoint not found";
+    const message = errorData?.error?.message || errorData?.message || "";
+    const responseText = typeof response.data === "string" ? response.data : "";
 
-    // Check for specific patterns
-    if (message.includes("not found") || message.includes("does not exist")) {
-      return {
-        detected: true,
-        description: `API endpoint or resource not supported: ${message}`,
-        severity: "blocker",
-      };
+    // Distinguish route-level 404 (capability gap) from resource-not-found 404.
+    // Resource-not-found errors reference a specific ID (e.g., "Deal abc123 not found").
+    // Route-level 404s are generic ("Not Found") or reference the endpoint path.
+    const isResourceNotFound =
+      message.includes("Deal ") ||
+      message.includes("Entity ") ||
+      message.includes("Loan ") ||
+      message.includes("Facility ") ||
+      message.includes("Covenant ") ||
+      message.includes("Deposit account ");
+
+    if (isResourceNotFound) {
+      // This is a normal error — the resource doesn't exist yet, not a missing capability
+      return { detected: false };
     }
+
+    // Route-level 404 — the endpoint doesn't exist at all
+    return {
+      detected: true,
+      description: `API endpoint not found: ${step.action} (${message || responseText || "404"})`,
+      severity: "blocker",
+    };
   }
 
-  // 400 with specific validation errors might indicate missing field support
+  // 400 errors are validation issues, not capability gaps — except for specific patterns
   if (response.status === 400) {
     const errorData = response.data as any;
     const message = errorData?.error?.message || "";
 
-    if (message.includes("currency") || message.includes("not supported")) {
+    if (message.includes("not supported") || message.includes("not implemented")) {
       return {
         detected: true,
         description: `Feature not supported: ${message}`,
         severity: "major",
       };
     }
+
+    // Normal validation error — not a capability gap
+    return { detected: false };
   }
 
   // 501 Not Implemented is an explicit gap
@@ -414,6 +522,16 @@ function interpolateParams(
   for (const [key, value] of Object.entries(params)) {
     if (typeof value === "string") {
       result[key] = interpolateString(value, variables);
+    } else if (Array.isArray(value)) {
+      // Preserve arrays — interpolate string values within them
+      result[key] = value.map((item) => {
+        if (typeof item === "string") {
+          return interpolateString(item, variables);
+        } else if (typeof item === "object" && item !== null) {
+          return interpolateParams(item as Record<string, unknown>, variables);
+        }
+        return item;
+      });
     } else if (typeof value === "object" && value !== null) {
       result[key] = interpolateParams(value as Record<string, unknown>, variables);
     } else {

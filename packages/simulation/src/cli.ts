@@ -141,8 +141,8 @@ program
   .option("--output <file>", "Output report to file")
   .option("--format <format>", "Output format (json, markdown)", "markdown")
   .option("--llm", "Use LLM-based workflow generation (requires API key)")
-  .option("--api-key <key>", "Anthropic API key (or use ANTHROPIC_API_KEY env var)")
-  .option("--model <model>", "LLM model to use", "claude-sonnet-4-20250514")
+  .option("--api-key <key>", "OpenRouter API key (or use OPENROUTER_API_KEY env var)")
+  .option("--model <model>", "LLM model to use (OpenRouter format)", "anthropic/claude-sonnet-4")
   .action(async (options) => {
     // Select personas
     let personas: Persona[] = [];
@@ -190,13 +190,13 @@ program
       verbose: options.verbose,
     };
 
-    // Create agent config
-    const apiKey = options.apiKey || process.env.ANTHROPIC_API_KEY;
+    // Create agent config - supports OPENROUTER_API_KEY (preferred) and ANTHROPIC_API_KEY (legacy)
+    const apiKey = options.apiKey || process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY;
     const useLlm = options.llm && apiKey;
 
     if (options.llm && !apiKey) {
       console.warn("Warning: --llm specified but no API key found. Falling back to rule-based generation.");
-      console.warn("Provide API key via --api-key or ANTHROPIC_API_KEY environment variable.\n");
+      console.warn("Provide API key via --api-key or OPENROUTER_API_KEY environment variable.\n");
     }
 
     const agentConfig: AgentConfig = {
@@ -285,8 +285,8 @@ program
   .option("--base-url <url>", "API base URL", DEFAULT_CONFIG.baseUrl)
   .option("--verbose", "Verbose logging", false)
   .option("--llm", "Use LLM-based workflow generation (requires API key)")
-  .option("--api-key <key>", "Anthropic API key (or use ANTHROPIC_API_KEY env var)")
-  .option("--model <model>", "LLM model to use", "claude-sonnet-4-20250514")
+  .option("--api-key <key>", "OpenRouter API key (or use OPENROUTER_API_KEY env var)")
+  .option("--model <model>", "LLM model to use (OpenRouter format)", "anthropic/claude-sonnet-4")
   .action(async (options) => {
     // Select a diverse set of key personas
     const keyPersonaIds = [
@@ -311,7 +311,7 @@ program
     };
 
     // Create agent config
-    const apiKey = options.apiKey || process.env.ANTHROPIC_API_KEY;
+    const apiKey = options.apiKey || process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY;
     const useLlm = options.llm && apiKey;
 
     if (options.llm && !apiKey) {
