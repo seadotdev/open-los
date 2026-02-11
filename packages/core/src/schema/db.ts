@@ -235,6 +235,201 @@ export async function migrateDatabase(db: Database) {
     payload TEXT
   )`);
 
+  // ─── Deposit Account Tables ─────────────────────────────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS deposit_accounts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    account_id TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL,
+    account_holder TEXT NOT NULL,
+    account_holder_id TEXT,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    balance INTEGER NOT NULL DEFAULT 0,
+    interest_rate REAL,
+    maturity_date TEXT,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    custom_fields TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`);
+
+  // ─── Loan Ledger Tables ─────────────────────────────────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS loan_accounts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    encoded_key TEXT NOT NULL UNIQUE,
+    account_id TEXT NOT NULL UNIQUE,
+    deal_id TEXT REFERENCES deals(id),
+    facility_id TEXT REFERENCES facilities(id),
+    account_holder_type TEXT NOT NULL,
+    account_holder_id TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'PENDING_APPROVAL',
+    sub_state TEXT,
+    loan_amount INTEGER NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    interest_rate REAL,
+    interest_rate_type TEXT,
+    interest_rate_spread REAL,
+    interest_calculation_method TEXT,
+    repayment_method TEXT,
+    repayment_frequency TEXT,
+    term_months INTEGER,
+    grace_period_days INTEGER DEFAULT 0,
+    first_repayment_date TEXT,
+    principal_disbursed INTEGER DEFAULT 0,
+    principal_outstanding INTEGER DEFAULT 0,
+    principal_paid INTEGER DEFAULT 0,
+    interest_accrued INTEGER DEFAULT 0,
+    interest_paid INTEGER DEFAULT 0,
+    fees_outstanding INTEGER DEFAULT 0,
+    fees_paid INTEGER DEFAULT 0,
+    penalties_outstanding INTEGER DEFAULT 0,
+    penalties_paid INTEGER DEFAULT 0,
+    days_in_arrears INTEGER DEFAULT 0,
+    arrears_since TEXT,
+    approved_at TEXT,
+    approved_by TEXT,
+    disbursed_at TEXT,
+    disbursed_by TEXT,
+    closed_at TEXT,
+    closed_by TEXT,
+    locked_at TEXT,
+    custom_fields TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS loan_transactions (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    encoded_key TEXT NOT NULL UNIQUE,
+    loan_account_id TEXT NOT NULL REFERENCES loan_accounts(id),
+    type TEXT NOT NULL,
+    entry_date TEXT NOT NULL,
+    value_date TEXT NOT NULL,
+    booking_date TEXT,
+    amount INTEGER NOT NULL,
+    principal_amount INTEGER,
+    interest_amount INTEGER,
+    fees_amount INTEGER,
+    penalties_amount INTEGER,
+    balance_principal INTEGER,
+    balance_interest INTEGER,
+    balance_fees INTEGER,
+    balance_total INTEGER,
+    original_transaction_id TEXT,
+    reversed_by_transaction_id TEXT,
+    disbursement_details TEXT,
+    repayment_allocation TEXT,
+    idempotency_key TEXT UNIQUE,
+    actor TEXT NOT NULL,
+    notes TEXT,
+    created_at TEXT NOT NULL
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS repayment_schedule (
+    id TEXT PRIMARY KEY,
+    loan_account_id TEXT NOT NULL REFERENCES loan_accounts(id),
+    installment_number INTEGER NOT NULL,
+    encoded_key TEXT NOT NULL,
+    due_date TEXT NOT NULL,
+    principal_due INTEGER NOT NULL DEFAULT 0,
+    interest_due INTEGER NOT NULL DEFAULT 0,
+    fees_due INTEGER NOT NULL DEFAULT 0,
+    penalties_due INTEGER NOT NULL DEFAULT 0,
+    principal_paid INTEGER NOT NULL DEFAULT 0,
+    interest_paid INTEGER NOT NULL DEFAULT 0,
+    fees_paid INTEGER NOT NULL DEFAULT 0,
+    penalties_paid INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL DEFAULT 'PENDING',
+    last_payment_date TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`);
+
+  // ─── Sandbox Tables ─────────────────────────────────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS sandboxes (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    name TEXT NOT NULL,
+    description TEXT,
+    parent_type TEXT NOT NULL,
+    parent_id TEXT,
+    git_branch TEXT NOT NULL,
+    base_commit TEXT,
+    forked_from_sandbox_id TEXT,
+    forked_from_checkpoint_id TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_by TEXT NOT NULL,
+    assigned_to TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    archived_at TEXT
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS checkpoints (
+    id TEXT PRIMARY KEY,
+    sandbox_id TEXT NOT NULL REFERENCES sandboxes(id),
+    name TEXT NOT NULL,
+    description TEXT,
+    git_commit TEXT NOT NULL,
+    git_tag TEXT,
+    sequence INTEGER NOT NULL,
+    snapshot TEXT,
+    changes_summary TEXT,
+    changed_entities TEXT,
+    metrics TEXT,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    restorable INTEGER NOT NULL DEFAULT 1
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS sandbox_entities (
+    id TEXT PRIMARY KEY,
+    sandbox_id TEXT NOT NULL REFERENCES sandboxes(id),
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    original_entity_id TEXT,
+    state TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT
+  )`);
+
+  // ─── AI Conversation Tables ─────────────────────────────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS ai_conversations (
+    id TEXT PRIMARY KEY,
+    deal_id TEXT NOT NULL REFERENCES deals(id),
+    stage TEXT NOT NULL,
+    permission_mode TEXT NOT NULL DEFAULT 'ask',
+    model TEXT NOT NULL,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    cost_usd REAL DEFAULT 0,
+    summary TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS ai_messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES ai_conversations(id),
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    tool_calls TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    attachments TEXT,
+    created_at TEXT NOT NULL
+  )`);
+
   // ─── Indexes for Performance ─────────────────────────────────────────────────────
 
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_deals_tenant_stage ON deals(tenant_id, stage)`);

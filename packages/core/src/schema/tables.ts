@@ -467,6 +467,25 @@ export const repaymentSchedule = sqliteTable("repayment_schedule", {
   updated_at: text("updated_at"),
 });
 
+// ─── Deposit Account Tables ─────────────────────────────────────────────────────
+
+export const depositAccounts = sqliteTable("deposit_accounts", {
+  id: text("id").primaryKey(),
+  tenant_id: text("tenant_id").notNull().default("default"),
+  account_id: text("account_id").notNull().unique(), // Human-readable (e.g., "DEP-00001")
+  type: text("type").notNull(), // "demand_deposit" | "time_deposit" | "certificate_of_deposit"
+  account_holder: text("account_holder").notNull(),
+  account_holder_id: text("account_holder_id"), // → entities.id (optional)
+  currency: text("currency").notNull().default("USD"),
+  balance: integer("balance").notNull().default(0), // Minor units
+  interest_rate: real("interest_rate"), // Annual rate
+  maturity_date: text("maturity_date"), // For time deposits / CDs
+  status: text("status").notNull().default("ACTIVE"), // "ACTIVE" | "CLOSED" | "DORMANT" | "FROZEN"
+  custom_fields: text("custom_fields", { mode: "json" }),
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at"),
+});
+
 // ─── Sandbox Version Control Tables ─────────────────────────────────────────────
 // Sandboxes are isolated workspaces for experimental/exploratory work.
 // Each sandbox has its own git branch for version control.

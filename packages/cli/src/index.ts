@@ -31,6 +31,7 @@ import { registerMonitoringCommands } from './commands/monitoring.js';
 import { registerAuditCommands } from './commands/audit.js';
 import { registerTemplateCommands } from './commands/templates.js';
 import { registerEmailCommands } from './commands/email.js';
+import { registerDepositCommands } from './commands/deposits.js';
 
 const program = new Command();
 
@@ -71,6 +72,7 @@ registerMonitoringCommands(program);
 registerAuditCommands(program);
 registerTemplateCommands(program);
 registerEmailCommands(program);
+registerDepositCommands(program);
 
 // Parse and execute
 program.parse();

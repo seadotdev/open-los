@@ -20,8 +20,10 @@ import { getCapabilitiesForBusinessModel } from "../capabilities/index.js";
 export interface AgentConfig {
   /** Model to use for generation (if using LLM) */
   model?: string;
-  /** API key for LLM service */
+  /** API key for LLM service (OpenRouter API key) */
   apiKey?: string;
+  /** Base URL for LLM API (defaults to OpenRouter) */
+  baseUrl?: string;
   /** Use rule-based generation instead of LLM */
   useRuleBased: boolean;
   /** Maximum workflow steps to generate */
@@ -90,7 +92,7 @@ const WORKFLOW_TEMPLATES: Record<string, WorkflowStep[]> = {
       description: "Create financial spread",
       action: "create_spread",
       params: {},
-      expectedOutcome: { success: true, statusCode: 201 },
+      expectedOutcome: { success: true, statusCode: 200 },
     },
     {
       id: "define-leverage-covenant",
@@ -107,11 +109,18 @@ const WORKFLOW_TEMPLATES: Record<string, WorkflowStep[]> = {
       expectedOutcome: { success: true },
     },
     {
+      id: "set-origination-outcome",
+      description: "Set origination outcome to proceed",
+      action: "update_deal",
+      params: { origination_outcome: "proceed" },
+      expectedOutcome: { success: true, statusCode: 200 },
+    },
+    {
       id: "transition-to-underwriting",
       description: "Move to underwriting stage",
       action: "transition_stage",
       params: { to_stage: "underwriting" },
-      expectedOutcome: { success: true, statusCode: 201 },
+      expectedOutcome: { success: true, statusCode: 200 },
     },
   ],
 
@@ -130,6 +139,13 @@ const WORKFLOW_TEMPLATES: Record<string, WorkflowStep[]> = {
       action: "create_loan",
       params: {},
       expectedOutcome: { success: true, statusCode: 201 },
+    },
+    {
+      id: "approve-loan",
+      description: "Approve loan account",
+      action: "approve_loan",
+      params: {},
+      expectedOutcome: { success: true, statusCode: 200 },
     },
     {
       id: "disburse-loan",
@@ -239,15 +255,16 @@ function generateSpreadParams(persona: Persona): Record<string, unknown> {
   const scale = persona.typicalDealSize.max / 10_000_000;
 
   return {
+    entity_id: "${entity_id}",
     period: "FY2025",
-    line_items: {
-      revenue: Math.round(20_000_000 * scale),
-      cogs: Math.round(12_000_000 * scale),
-      operating_expense: Math.round(4_000_000 * scale),
-      interest: Math.round(500_000 * scale),
-      tax: Math.round(800_000 * scale),
-      depreciation: Math.round(300_000 * scale),
-    },
+    line_items: [
+      { category: "revenue", label: "Revenue", amount: Math.round(20_000_000 * scale) },
+      { category: "cogs", label: "Cost of Goods Sold", amount: Math.round(12_000_000 * scale) },
+      { category: "operating_expense", label: "Operating Expense", amount: Math.round(4_000_000 * scale) },
+      { category: "interest", label: "Interest Expense", amount: Math.round(500_000 * scale) },
+      { category: "tax", label: "Tax", amount: Math.round(800_000 * scale) },
+      { category: "depreciation", label: "Depreciation", amount: Math.round(300_000 * scale) },
+    ],
   };
 }
 
@@ -263,7 +280,7 @@ function generateCovenantParams(persona: Persona): Record<string, unknown> {
     name: "Leverage Ratio",
     type: "financial",
     metric: "debt_to_ebitda",
-    operator: "lte",
+    operator: "<=",
     threshold: 3.5,
     frequency: "quarterly",
     grace_period_days: 30,
@@ -279,7 +296,7 @@ function generateFacilityParams(persona: Persona): Record<string, unknown> {
   // Determine facility type based on products
   let facilityType = "term_loan";
   if (products.includes("revolving_credit") || products.includes("line_of_credit")) {
-    facilityType = "revolving";
+    facilityType = "revolver";
   }
 
   return {
@@ -357,7 +374,7 @@ function generateTransactionParams(): Record<string, unknown> {
     });
   }
 
-  return { transactions };
+  return { source_type: "bank_transactions", transactions };
 }
 
 /**
@@ -616,7 +633,8 @@ export class RuleBasedAgent {
 }
 
 /**
- * LLM-powered agent that uses Claude to generate realistic lending workflows
+ * LLM-powered agent that uses OpenRouter to generate realistic lending workflows.
+ * OpenRouter provides access to multiple LLM providers via an OpenAI-compatible API.
  */
 export class LLMAgent {
   private ruleAgent: RuleBasedAgent;
@@ -624,7 +642,7 @@ export class LLMAgent {
 
   constructor(private config: AgentConfig) {
     this.ruleAgent = new RuleBasedAgent(config);
-    this.baseUrl = "https://api.anthropic.com";
+    this.baseUrl = config.baseUrl || "https://openrouter.ai/api/v1";
   }
 
   /**
@@ -815,7 +833,7 @@ Return ONLY the JSON, no markdown code blocks or explanation.`;
   }
 
   /**
-   * Generate scenario asynchronously using Claude API
+   * Generate scenario asynchronously using OpenRouter API (OpenAI-compatible)
    */
   async generateScenarioAsync(persona: Persona): Promise<SimulationScenario> {
     if (!this.config.apiKey) {
@@ -824,43 +842,57 @@ Return ONLY the JSON, no markdown code blocks or explanation.`;
     }
 
     try {
+      const model = this.config.model || "anthropic/claude-sonnet-4";
       const body = {
-        model: this.config.model || "claude-sonnet-4-20250514",
+        model,
         max_tokens: 4096,
-        system: this.buildSystemPrompt(),
         messages: [
           {
-            role: "user",
+            role: "system" as const,
+            content: this.buildSystemPrompt(),
+          },
+          {
+            role: "user" as const,
             content: this.buildUserPrompt(persona),
           },
         ],
       };
 
-      const response = await fetch(`${this.baseUrl}/v1/messages`, {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": this.config.apiKey,
-          "anthropic-version": "2023-06-01",
+          "Authorization": `Bearer ${this.config.apiKey}`,
+          "HTTP-Referer": "https://github.com/seadotdev/open-los",
+          "X-Title": "Open LOS Simulation",
         },
         body: JSON.stringify(body),
       });
 
       if (!response.ok) {
         const error = await response.text();
-        console.error(`Anthropic API error: ${response.status} - ${error}`);
+        console.error(`OpenRouter API error: ${response.status} - ${error}`);
         return this.generateScenario(persona);
       }
 
       const data = (await response.json()) as {
-        content: Array<{ type: string; text: string }>;
-        usage: { input_tokens: number; output_tokens: number };
+        choices: Array<{ message: { role: string; content: string } }>;
+        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+        model?: string;
       };
 
-      const content = data.content
-        .filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
+      if (!data.choices || data.choices.length === 0) {
+        console.warn("OpenRouter returned no choices, falling back to rule-based");
+        return this.generateScenario(persona);
+      }
+
+      const content = data.choices[0].message.content;
+
+      if (data.usage) {
+        console.log(
+          `  [LLM] Model: ${data.model || model}, Tokens: ${data.usage.prompt_tokens}in/${data.usage.completion_tokens}out`
+        );
+      }
 
       const scenario = this.parseResponse(content, persona);
 
