@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@open-los/core": "workspace:*"
+    "@open-los/core": "*"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

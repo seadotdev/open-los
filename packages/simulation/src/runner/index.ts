@@ -175,7 +175,18 @@ async function executeStep(
         break;
 
       case "create_relationship":
-        response = await ctx.client.post("/v1/relationships", params);
+        // Link entity to deal via the deal's primary_entity_id field
+        // The relationships endpoint is for entity-to-entity relationships
+        const entityId = ctx.variables.get("entity_id");
+        if (entityId) {
+          response = await ctx.client.patch(
+            `/v1/deals/${ctx.variables.get("deal_id")}`,
+            { primary_entity_id: entityId }
+          );
+        } else {
+          // Fallback for entity-to-entity relationships (owns, guarantees, directs)
+          response = await ctx.client.post("/v1/relationships", params);
+        }
         break;
 
       case "create_spread":
@@ -196,43 +207,64 @@ async function executeStep(
         break;
 
       case "test_covenant":
+        // Test covenants endpoint is at /v1/deals/:dealId/covenants/test
+        // Optionally pass covenant_ids to test specific covenants
+        const covenantId = ctx.variables.get("covenant_id");
         response = await ctx.client.post(
-          `/v1/deals/${ctx.variables.get("deal_id")}/covenants/${ctx.variables.get("covenant_id")}/test`,
-          params
+          `/v1/deals/${ctx.variables.get("deal_id")}/covenants/test`,
+          covenantId ? { covenant_ids: [covenantId], ...params } : params
         );
         break;
 
       case "create_facility":
-        response = await ctx.client.post("/v1/facilities", {
-          ...params,
-          deal_id: ctx.variables.get("deal_id"),
-        });
+        // Facilities are nested under deals: POST /v1/deals/:dealId/facilities
+        response = await ctx.client.post(
+          `/v1/deals/${ctx.variables.get("deal_id")}/facilities`,
+          params
+        );
         if (response.status === 201 && response.data && typeof response.data === "object") {
           ctx.variables.set("facility_id", (response.data as any).id);
         }
         break;
 
       case "create_loan":
-        response = await ctx.client.post("/v1/loans", {
-          ...params,
-          facility_id: ctx.variables.get("facility_id"),
-        });
+        // Create loan from facility: POST /v1/facilities/:facilityId/loans
+        response = await ctx.client.post(
+          `/v1/facilities/${ctx.variables.get("facility_id")}/loans`,
+          {
+            ...params,
+            dealId: ctx.variables.get("deal_id"),
+            accountHolderId: ctx.variables.get("entity_id"),
+          }
+        );
         if (response.status === 201 && response.data && typeof response.data === "object") {
           ctx.variables.set("loan_id", (response.data as any).id);
         }
         break;
 
       case "disburse_loan":
+        // Disbursements use the transactions endpoint with type DISBURSEMENT
         response = await ctx.client.post(
-          `/v1/loans/${ctx.variables.get("loan_id")}/disburse`,
-          params
+          `/v1/loans/${ctx.variables.get("loan_id")}/transactions`,
+          {
+            type: "DISBURSEMENT",
+            amount: params.amount,
+            valueDate: params.value_date || new Date().toISOString().split("T")[0],
+            notes: params.notes,
+          }
         );
         break;
 
       case "record_repayment":
+        // Repayments use the transactions endpoint with type REPAYMENT
         response = await ctx.client.post(
-          `/v1/loans/${ctx.variables.get("loan_id")}/repay`,
-          params
+          `/v1/loans/${ctx.variables.get("loan_id")}/transactions`,
+          {
+            type: "REPAYMENT",
+            amount: params.amount,
+            valueDate: params.value_date || new Date().toISOString().split("T")[0],
+            notes: params.notes,
+          }
         );
         break;
 
