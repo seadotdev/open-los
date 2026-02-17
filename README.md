@@ -4,102 +4,82 @@ Open-source B2B Lending CRM — headless API first.
 
 ## LLM Context Outlines
 
-Copy-paste these into LLM chats to give context about this project.
+Copy-paste these into LLM chats to give context about this project. Three versions at different lengths.
 
 ### One-liner
 
 ```
-Open LOS is an open-source, headless, API-first B2B loan origination system (LOS) built in TypeScript. It manages the full lending lifecycle — from broker intake through underwriting, closing, and post-close monitoring — with immutable audit trails, deterministic financial calculations, and first-class AI/agent support via REST APIs.
+Open LOS is an open-source, AI-native loan origination system for B2B lenders. It replaces legacy platforms like nCino/Salesforce with a headless API that AI agents and humans operate equally — handling the full lending lifecycle from broker intake through monitoring, with deterministic financial calculations and immutable audit trails. MIT licensed, TypeScript, zero external dependencies.
 ```
 
 ### Short summary
 
 ```
-Open LOS is an open-source B2B loan origination system (MIT licensed).
+Open LOS is an open-source B2B loan origination system (MIT licensed, TypeScript).
 
-Tech stack: TypeScript, Hono (HTTP), Drizzle ORM, SQLite/LibSQL, Vitest. Monorepo with npm workspaces.
+The problem it solves: Enterprise lending software (nCino, Mambu, Temenos) was built for humans clicking through forms. These vendors are now restricting API access as AI threatens their moats. Lenders are locked into expensive platforms they can't extend, can't integrate AI into, and can't leave.
 
-Key packages:
-- packages/core — domain logic, services, database schema (28 tables via Drizzle)
-- packages/api — Hono REST API server (v1 endpoints)
-- packages/conformance — YAML-driven integration tests (161+ cases)
-- packages/agent — AI agent orchestration layer
-- openapi/v1.yaml — OpenAPI 3.1 spec
-- schemas/ — JSON Schema definitions
+What Open LOS does: Provides the complete lending lifecycle as a headless REST API that AI agents and humans consume equally:
+- Broker intake and deal triage
+- Multi-entity underwriting with financial spreading and ratio computation
+- Covenant structuring, automated testing, grace periods, and waivers
+- Facility setup, loan accounts, disbursements, repayments, arrears tracking
+- Post-close monitoring via bank transaction ingestion, liquidity analysis, and alerts
 
-Deal lifecycle stages: Broker → Origination → Underwriting → Closing → Monitoring
+Key design decisions:
+- AI is a first-class citizen, not an afterthought — same APIs, same audit trails, same permissions as humans
+- Financial calculations are deterministic and computed by the system, never by AI — the AI explains, the system computes
+- Immutable audit trail on every mutation — who did it (human or AI), when, and what changed
+- Data sovereignty — you host it, you own the data, no vendor lock-in
+- Zero external dependencies — runs on SQLite in-memory by default
 
-Core features: deal management, stage machine with guards, entity graph (companies/people/relationships), document management, financial spreading & ratios, covenants (tests/grace periods/waivers), facilities & loan accounts (Mambu-compatible ledger), bank transaction monitoring, liquidity alerts, email ingestion, approval workflows, sandboxes for AI analysis, immutable audit trail, multi-tenancy.
+Who it's for: Fintechs, credit unions, and emerging lenders who need modern lending infrastructure but can't afford or don't want enterprise vendor lock-in. The "next JPMorgan" — too small for incumbents to care about, too ambitious to stay small.
 
-Design principles: headless API-first, AI and humans as equal API consumers, deterministic financial computations (never delegated to AI), immutable audit trails, zero external dependencies by default (runs on SQLite in-memory).
+Tech: TypeScript, Hono, Drizzle ORM, SQLite/LibSQL. Monorepo. 161+ conformance tests. OpenAPI 3.1 spec.
 ```
 
-### Detailed technical summary
+### Detailed summary
 
 ````
-Open LOS — Open-source B2B Loan Origination System
+Open LOS — Open-source AI-native Loan Origination System
 
-## What it is
-A headless, API-first loan origination platform. MIT licensed. Designed so AI agents and humans are equal consumers of the same REST API. All financial calculations are deterministic (computed by the system, never by AI). Every mutation is logged in an immutable audit trail.
+## Why it exists
+Enterprise lending software (nCino on Salesforce, Mambu, Temenos) was built for a world where humans typed data into forms. These platforms are now actively restricting API access as AI threatens to make their UIs irrelevant. Open LOS asks: what would lending software look like if built for the AI era from day one?
 
-## Tech stack
-- Language: TypeScript (strict mode)
-- HTTP framework: Hono
-- ORM: Drizzle (type-safe, SQLite/LibSQL)
-- Database: SQLite in-memory (default) or file-based SQLite / LibSQL (Turso) in production
-- Tests: Vitest + YAML-driven conformance tests (161+ cases)
-- Monorepo: npm workspaces
+## What it does
+Complete B2B lending lifecycle as a headless REST API:
 
-## Project structure
-```
-packages/
-  core/           # Domain services (20+), DB schema (28 tables via Drizzle)
-  api/            # Hono HTTP server, REST routes (15 route files)
-  conformance/    # YAML-driven integration test runner
-  agent/          # AI agent orchestration layer (outcome-oriented interface)
-  cli/            # Command-line interface
-  simulation/     # Business scenario testing
-  experiments/    # LLM model comparison harness
-frontend/         # Two static UI prototypes (experimental feed-based + traditional)
-schemas/          # JSON Schema definitions
-openapi/          # OpenAPI 3.1 spec (v1.yaml)
-conformance/      # YAML test cases and fixtures
-docs/             # SPEC.md, MANIFESTO.md, AGENTS.md, architecture docs
-```
+1. Broker — Inbound deal intake, document upload, initial data capture
+2. Origination — Deal triage, qualification, early risk assessment, entity graph modeling
+3. Underwriting — Financial spreading (P&L, balance sheet → computed ratios like DSCR, leverage, margins), multi-entity analysis, covenant structuring, scenario analysis via sandboxes
+4. Closing — Facility setup (loan terms, rates, schedules), approval workflows, loan account creation, disbursement
+5. Monitoring — Bank transaction ingestion, liquidity/runway analysis, automated covenant testing, breach detection, alerts, arrears tracking
 
-## Deal lifecycle (stage machine)
-Broker → Origination → Underwriting → Closing → Monitoring
-Each transition has guards (required fields, documents, outcomes) and is logged with actor + rationale.
+## Core architecture principles
+- Humans and AI are equal actors — same REST API, same permissions, same audit trail
+- The AI explains; the system computes — financial calculations (ratios, covenant tests, liquidity) are deterministic code, never delegated to AI. Eliminates hallucination risk for numbers that matter
+- Immutable audit trail — every mutation logs the actor (human or AI, including model and session), timestamp, and field-level diffs. When a regulator asks "why was this loan approved?", there's an answer
+- Headless by design — no UI opinions. Use any frontend, AI agent, CLI, or MCP client
+- Data sovereignty — self-hosted, MIT licensed. Your data never leaves your infrastructure. Switch AI providers at will
 
-## Core domain services
-- Deals — create, update, list with stage tracking and custom fields
-- Entities — companies and people with identifiers (LEI, registration numbers)
-- Relationships — ownership (with %), guarantees, directorships as a graph
-- Documents — upload, version, classify; email attachment extraction
-- Spreads — financial statement line items with computed ratios (EBITDA, DSCR, Debt/EBITDA, ROE)
-- Covenants — financial/reporting/information covenants; test against metrics; grace periods and waivers
-- Facilities — structured loan products with terms (amount, rate, tenure, repayment type)
-- Loan accounts — full lifecycle (APPROVED → ACTIVE → ARREARS → CLOSED), disbursements, repayments, fees, repayment schedule
-- Monitoring — bank transaction ingestion, liquidity/runway calculation, covenant breach detection, alerts
-- Email — parse inbound emails, extract attachments, link to deals
-- Approvals — approval requests with decisions and rationale
-- Sandboxes — isolated version-controlled environments for AI analysis
-- Audit — immutable event log of every mutation (actor, timestamp, object_type, changes)
+## Who it's for
+- Fintechs needing loan origination without Salesforce pricing
+- Credit unions wanting modern software with a small IT team
+- Emerging lenders building competitive advantage through AI-native operations
+- Anyone told "you need enterprise software to do serious lending" who suspects that's no longer true
 
-## API shape (REST, JSON, base path /v1)
-- Headers: X-Actor (required for audit), X-Tenant-Id (multi-tenancy)
-- Pagination: limit + cursor
-- Amounts: stored in minor units (cents/pence)
-- Errors: { error: { code, message, details, retryable } }
-- Key endpoints: /deals, /entities, /documents, /facilities, /loans, /covenants, /monitoring, /sandboxes, /audit, /email/intake, /templates
+## Strategic position
+Exploits five moats being destroyed at incumbents (learned interfaces, hardcoded workflows, talent scarcity, bundling lock-in, data access barriers) while building on five moats that hold (regulatory compliance, transaction embedding, system of record status, network effects, proprietary customer data enablement).
 
-## Running it
-npm install && npm test                              # install + run 161 conformance tests
-npm run start --workspace=packages/api               # start on :3000 (in-memory DB)
-DB_PATH=./data.db npm run start --workspace=packages/api  # persistent SQLite
+Passes the vertical software durability test: proprietary data (enables customer's data sovereignty), regulatory lock-in (immutable audit trails satisfy examiner requirements), transaction embedded (loan ledger sits in the actual flow of money from lender to borrower).
 
-## Environment variables
-PORT (default 3000), DB_PATH (default :memory:), CORS_ORIGINS
+## Technical shape
+- Stack: TypeScript (strict), Hono HTTP framework, Drizzle ORM, SQLite/LibSQL
+- Monorepo: packages/core (domain services, 28-table schema), packages/api (REST routes), packages/conformance (YAML-driven tests), packages/agent (AI orchestration)
+- API: REST JSON, OpenAPI 3.1 spec, X-Actor header for audit, X-Tenant-Id for multi-tenancy
+- Tests: 161+ YAML conformance tests covering the full deal lifecycle
+- Run: npm install && npm test && npm run start --workspace=packages/api
+- Zero external dependencies by default — runs on SQLite in-memory, no Docker/Postgres/Redis required
 ````
 
 ## Purpose
