@@ -286,7 +286,114 @@ Based on what blocks the most user journeys:
 
 ---
 
-## 6. Current Architecture Strengths
+## 6. Gap Validation Against System Intentions
+
+Each gap from sections 3-4 was cross-referenced against three sources of truth:
+- **SPEC.md** — the original product vision and explicit design choices
+- **README.md** — the stated architecture principles ("headless by design", "AI-first", "zero external dependencies")
+- **The actual implementations** (stage guards, services, schema)
+
+Gaps fall into three categories:
+
+### 6.1 TRUE GAPS — Spec says it should be there, but it isn't
+
+These are features the SPEC explicitly describes or strongly implies, that do not exist in the codebase.
+
+| # | Gap | Spec Reference | Severity |
+|---|-----|----------------|----------|
+| T1 | **No closing document package** | SPEC §4 Closing: "Term sheet → doc set generation (from Markdown templates)" | P0 |
+| T2 | **No closing checklist / conditions precedent** | SPEC §4 Closing: "Closing checklist: CPs, KYC/AML, legal review, board approvals, filings" | P0 |
+| T3 | **No deal search or deduplication** | SPEC §Broker: "soft dedupe warnings (same legal entity + reg number + similar amount within N days)" | P0 |
+| T4 | **No notification / alert dispatch** | SPEC §Monitoring: "In-app + email, with Slack later" — alerts are generated and stored but never dispatched | P0 |
+| T5 | **No task / work queue** | SPEC §Data Model recommends "Task/ChecklistItem" as a core object | P0 |
+| T6 | **No information request workflow** | SPEC §Origination: "4 outcomes: Reject, **Need Info**, Pre-Approve, Refer" — "Need Info" has no backing workflow | P1 |
+| T7 | **No outbound email** | SPEC §Data: "**Send**/receive emails using inbound and loops" — only ingest exists | P1 |
+| T8 | **No document signing integration** | SPEC §4 Closing: "Doc signing integration (DocuSign or pluggable)" | P1 |
+| T9 | **No Open Banking abstraction** | SPEC §5 Monitoring: "Data refresh pipelines (open banking + accounting)" and §Data: "Open banking gocardless" — the interface/abstraction layer is missing, though the actual connector is designed to be optional | P1 |
+| T10 | **No "signed" confirmation step** | SPEC §4 Closing: "Final closing record: signed PDFs + final terms + covenant schedule" — no mechanism to mark documents as signed | P1 |
+| T11 | **No SLA timers / "needs attention" flags** | SPEC §Origination: "Pipeline views: Kanban by stage, lists with filters, **SLA timers**" | P1 |
+| T12 | **No automated scheduler / batch jobs** | SPEC implies "scheduled tests" for covenant monitoring and "data refresh pipelines" — all operations are manual API calls | P1 |
+| T13 | **No portfolio-level aggregate API** | Implied by "Pipeline views" and monitoring dashboards — `loans:search` exists but cross-account aggregation returns 501 | P2 |
+| T14 | **No collateral management** | SPEC §Data Model: "Model **guarantees and collateral as first-class objects**" — guarantees exist, collateral does not | P2 |
+| T15 | **Closing stage guards are trivially thin** | Closing guard only checks `deal_in_underwriting`. No guard verifies CP completion, signed docs, or facility approval — which the spec envisions as closing prerequisites | P1 |
+
+### 6.2 NOT GAPS — Intentional design decisions documented in the SPEC
+
+These items were flagged as gaps in Section 3-4 but are actually explicit design choices.
+
+| # | Claimed Gap | Why It's Not a Gap | Spec Reference |
+|---|-------------|-------------------|----------------|
+| N1 | **No IC stage in pipeline** | SPEC explicitly chose "Simple thresholds + roles (Analyst → Manager → Credit Lead)" over committee engines. "Lean teams don't want committee engines." The existing `ApprovalService` with `stage_transition` type at the underwriting→closing boundary serves this purpose. | SPEC §Underwriting: Approval chain design |
+| N2 | **No committee voting / quorum** | Same decision — single-approver by design. Multi-approver is the "top alternative" that was explicitly rejected. | SPEC §Underwriting: "Simple thresholds + roles" |
+| N3 | **No frontend** | System is explicitly **"headless by design — no UI opinions."** This is an architectural principle, not a gap. | README §Core architecture principles |
+| N4 | **No user/auth system** | The X-Actor header is intentional. SPEC chose "Magic-link + broker orgs" for auth but explicitly ships single-tenant self-hosted first. Auth is a deployment-layer concern for a headless API. | SPEC §Multi-tenant model, §Broker auth |
+| N5 | **No disbursement authorization workflow** | SPEC explicitly says: "Funds flow: **Out of scope v1**, but include a simple disbursement record object stub." The stub (loan transaction DISBURSEMENT type) exists. | SPEC §Closing: Funds flow |
+| N6 | **No payment integration (banking rails)** | Same as N5 — out of scope v1. The system records ledger entries, not bank payments. | SPEC §Closing: Funds flow |
+| N7 | **No borrower-facing portal** | SPEC explicitly says: "**Not in v1** (internal-only), but design APIs so it can be added." | SPEC §Monitoring: Borrower-facing portal |
+| N8 | **No multi-tenancy enforcement middleware** | SPEC chose "logical multi-tenancy in schema but **ship single-tenant deploys first**." Enforcement is a deployment concern. | SPEC §Multi-tenant model |
+| N9 | **No file storage (S3/GCS)** | System is designed for "zero external dependencies — runs on SQLite in-memory by default." BLOB storage is the intended simplification. | README §Tech |
+| N10 | **No affordability / eligibility engine** | SPEC chose "Manual checklist + lightweight rule flags, **add scoring later**." | SPEC §Origination: Triage approach |
+| N11 | **No underwriting decision model / risk scoring** | SPEC chose manual triage. "Simple, explainable, and adaptable; avoids building a scoring model prematurely." | SPEC §Origination: Triage approach |
+| N12 | **No committee scheduling** | Not in scope for lean teams. | — |
+| N13 | **No counterparty document exchange** | Borrower portal deferred to post-v1. | SPEC §Monitoring: Borrower-facing portal |
+
+### 6.3 ENHANCEMENTS — Beyond v1 scope, not promised by the SPEC
+
+These are reasonable future features but were never part of the stated v1 system design. They should not be treated as gaps or blockers.
+
+| # | Item | Why It's an Enhancement |
+|---|------|------------------------|
+| E1 | **Delinquency classification ladder (30/60/90)** | Not in SPEC. Building blocks exist (`days_in_arrears`). Classification is a business rule layer on top. |
+| E2 | **Collections workflow** | Not in SPEC. Beyond "lean teams" scope. Arrears tracking exists as the foundation. |
+| E3 | **Prepayment / early redemption penalties** | SPEC deferred funds flow to post-v1. Type definitions exist from Mambu twin. |
+| E4 | **Bankruptcy / insolvency handling** | Not in SPEC. Loan sub-states (`WRITTEN_OFF`, `LOCKED`) provide basic coverage. Beyond loan origination scope. |
+| E5 | **Workout / restructuring flow** | Not in SPEC. `RESCHEDULED` sub-state exists but no workflow. Servicing concern. |
+| E6 | **Recovery tracking post write-off** | Not in SPEC. Terminal state handling. |
+| E7 | **Regulatory reporting (FCA/PRA)** | Not in SPEC. Deployment-specific. |
+| E8 | **Payment matching / auto-reconciliation** | Not in SPEC. Integration concern. |
+| E9 | **Credit bureau integration** | SPEC mentions "S&P data model, fraud pep checks" but as optional connectors, not core. |
+| E10 | **Entity resolution / fuzzy matching** | SPEC mentions "soft dedupe" (T3 above) but sophisticated entity resolution is an enhancement. |
+| E11 | **Event bus / webhooks** | SPEC chose "Daily scheduled sync + manual refresh" for v1. Webhooks listed as "top alternative." |
+| E12 | **Reporting / analytics dashboard** | Not in SPEC v1. |
+
+---
+
+## 7. Revised Implementation Priorities
+
+Based on the validation above, the implementation order should focus on **true gaps (T1-T15)** and skip items that are intentional design decisions (N1-N13) or post-v1 enhancements (E1-E12).
+
+### Phase 1: Core Deal Flow (True Gaps T3, T5, T6, T11)
+
+1. **Deal search and deduplication (T3)** — Add borrower name/registration search, soft dedupe warnings.
+2. **Task / work queue (T5)** — Lightweight task abstraction: "show me what needs my attention."
+3. **Information request workflow (T6)** — Track "Need Info" requests and whether they've been fulfilled.
+4. **SLA timers (T11)** — Flag deals sitting too long in a stage.
+
+### Phase 2: Closing Execution (True Gaps T1, T2, T8, T10, T15)
+
+5. **Closing document package (T1)** — Templates for term sheets, covenant schedules, closing packets.
+6. **Conditions precedent / closing checklist (T2)** — CP/CS tracking table, service, and API.
+7. **Strengthen closing stage guards (T15)** — Guards should verify CP completion and facility approval, not just `deal_in_underwriting`.
+8. **Document signing integration (T8)** — Pluggable e-signature adapter.
+9. **"Signed" confirmation step (T10)** — Mechanism to record that all docs are executed.
+
+### Phase 3: Operations (True Gaps T4, T7, T9, T12, T13)
+
+10. **Notification dispatch (T4)** — Send alerts via email/webhook instead of just storing them.
+11. **Outbound email (T7)** — SMTP integration for sending info requests, notifications, etc.
+12. **Automated scheduler (T12)** — Batch arrears sweep, covenant testing, data refresh.
+13. **Open Banking abstraction (T9)** — Interface for bank account linking; actual connectors remain optional.
+14. **Portfolio aggregate API (T13)** — Total outstanding, overdue, repayments due across accounts.
+
+### Phase 4: Extensions (selected enhancements when needed)
+
+15. **Collateral management (T14)** — First-class collateral objects as promised in SPEC.
+16. **Delinquency classification (E1)** — Business rule layer on top of existing arrears tracking.
+17. **Event bus (E11)** — Domain event publishing when async workflows are needed.
+
+---
+
+## 8. Current Architecture Strengths
 
 The existing codebase provides a solid foundation:
 
@@ -301,6 +408,14 @@ The existing codebase provides a solid foundation:
 
 ---
 
-## 7. Summary
+## 9. Summary
 
-The system covers the **middle** of the deal lifecycle well — the plumbing for stage transitions, underwriting spreads, facility management, loan servicing, and covenant monitoring is solid. The primary gaps are at the **edges**: intake/triage (how deals enter the system), collaboration (how people request and share information), decision governance (IC review and multi-party approvals), closing execution (document generation and signing), and terminal outcomes (delinquency classification, restructuring, bankruptcy). Addressing these gaps in the order described above would progressively unlock complete end-to-end deal workflows.
+The original gap analysis identified ~40 items across 9 lifecycle stages. After validation against the SPEC and design documents:
+
+- **15 are true gaps** (T1-T15) — features the system was designed to have but doesn't yet
+- **13 are not gaps** (N1-N13) — intentional design decisions for a lean, headless, v1 system
+- **12 are enhancements** (E1-E12) — reasonable future features that were never in the v1 scope
+
+The most significant finding is that **IC committee voting (claimed P0) is not a gap** — the SPEC explicitly chose simple role-based approval over committee engines. The existing `ApprovalService` at the underwriting→closing boundary serves the intended purpose.
+
+The true high-priority gaps cluster around **closing execution** (T1, T2, T8, T10, T15) and **deal intake/search** (T3, T5). The system's middle — underwriting, loan ledger, covenant monitoring — is solid and matches the SPEC well. The edges need work, but less than the original analysis suggested.
