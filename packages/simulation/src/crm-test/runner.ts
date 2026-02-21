@@ -11,6 +11,7 @@
  *   schemas and calls them with structured arguments
  */
 
+import { execSync } from "node:child_process";
 import type {
   TestTask,
   TaskResult,
@@ -83,7 +84,10 @@ interface ChatCompletionResponse {
 }
 
 /**
- * Call an LLM via OpenRouter's chat completion API
+ * Call an LLM via OpenRouter's chat completion API.
+ *
+ * Uses curl subprocess to ensure proxy environment variables (HTTPS_PROXY)
+ * are respected. Node.js native fetch does not honor proxy env vars.
  */
 async function callModel(
   config: TestRunnerConfig,
@@ -115,32 +119,43 @@ async function callModel(
     body.tool_choice = "auto";
   }
 
+  const jsonBody = JSON.stringify(body);
+  const timeoutSec = Math.ceil(config.timeoutMs / 1000);
+
   for (let attempt = 0; attempt <= config.retries; attempt++) {
     try {
-      const response = await fetch(`${config.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.apiKey}`,
-          "HTTP-Referer": "https://github.com/seadotdev/open-los",
-          "X-Title": "Open LOS CRM Model Test",
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(config.timeoutMs),
-      });
+      // Use curl to make the request (respects HTTPS_PROXY env var)
+      const curlResult = execSync(
+        `curl -s --max-time ${timeoutSec} -w "\\n__HTTP_STATUS__%{http_code}" ` +
+        `"${config.baseUrl}/chat/completions" ` +
+        `-H "Content-Type: application/json" ` +
+        `-H "Authorization: Bearer ${config.apiKey}" ` +
+        `-H "HTTP-Referer: https://github.com/seadotdev/open-los" ` +
+        `-H "X-Title: Open LOS CRM Model Test" ` +
+        `--data-binary @-`,
+        {
+          input: jsonBody,
+          encoding: "utf-8",
+          timeout: config.timeoutMs + 5000,
+          maxBuffer: 10 * 1024 * 1024,
+        }
+      );
 
-      if (!response.ok) {
-        const errText = await response.text();
+      // Parse status code from curl output
+      const statusMatch = curlResult.match(/__HTTP_STATUS__(\d+)$/);
+      const httpStatus = statusMatch ? parseInt(statusMatch[1]) : 0;
+      const responseBody = curlResult.replace(/__HTTP_STATUS__\d+$/, "").trim();
 
+      if (httpStatus >= 400) {
         // Rate limited or provider error — wait and retry
         if (
-          (response.status === 429 || response.status === 502 || response.status === 503) &&
+          (httpStatus === 429 || httpStatus === 502 || httpStatus === 503) &&
           attempt < config.retries
         ) {
           const waitMs = Math.pow(2, attempt + 1) * 1000;
           if (config.verbose) {
             console.log(
-              `  ${response.status} for ${model.name}, waiting ${waitMs}ms...`
+              `\n  ${httpStatus} for ${model.name}, waiting ${waitMs}ms...`
             );
           }
           await sleep(waitMs);
@@ -150,11 +165,11 @@ async function callModel(
         return {
           content: "",
           latencyMs: Date.now() - start,
-          error: `HTTP ${response.status}: ${errText.slice(0, 200)}`,
+          error: `HTTP ${httpStatus}: ${responseBody.slice(0, 200)}`,
         };
       }
 
-      const data = (await response.json()) as ChatCompletionResponse;
+      const data = JSON.parse(responseBody) as ChatCompletionResponse;
 
       const message = data.choices?.[0]?.message;
       let content = message?.content || "";
