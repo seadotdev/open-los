@@ -16,30 +16,30 @@ export function registerLoanCommands(program: Command): void {
 
   // Create loan
   loan
-    .command('create')
-    .description('Create a new loan account')
-    .requiredOption('-d, --deal <id>', 'Deal ID')
+    .command('create <dealId>')
+    .description('Create a new loan account for a deal')
     .requiredOption('-a, --amount <amount>', 'Loan amount (supports k/m/b suffixes)')
     .option('-f, --facility <id>', 'Facility ID')
     .option('--rate <value>', 'Interest rate (as decimal)')
     .option('--term <months>', 'Term in months')
     .option('--holder <id>', 'Account holder entity ID')
-    .action(async (opts, cmd) => {
+    .option('--entity <id>', 'Account holder entity ID (alias for --holder)')
+    .action(async (dealId, opts, cmd) => {
       try {
         const globals = getGlobalOptions(cmd.optsWithGlobals() as GlobalOptions);
         const client = getClient({ baseUrl: globals.apiUrl, actor: globals.actor, tenantId: globals.tenantId });
 
+        const accountHolderId = opts.entity ?? opts.holder;
         const data: Record<string, unknown> = {
-          deal_id: opts.deal,
           loan_amount: parseAmount(opts.amount),
         };
 
         if (opts.facility) data.facility_id = opts.facility;
         if (opts.rate) data.interest_rate = parseFloat(opts.rate);
         if (opts.term) data.term_months = parseInt(opts.term);
-        if (opts.holder) data.account_holder_id = opts.holder;
+        if (accountHolderId) data.account_holder_id = accountHolderId;
 
-        const result = await client.createLoan(data as Parameters<typeof client.createLoan>[0]);
+        const result = await client.createLoanForDeal(dealId, data as Parameters<typeof client.createLoanForDeal>[1]);
 
         if (globals.format === 'table') {
           success(`Created loan ${result.id}`);

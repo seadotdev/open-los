@@ -34,16 +34,49 @@ import { registerEmailCommands } from './commands/email.js';
 import { registerDepositCommands } from './commands/deposits.js';
 import { registerShadowCommands } from '@open-los/shadow-cli';
 
+type CommandRegistrar = (program: Command) => void;
+
+const foundationalCommandRegistrars: CommandRegistrar[] = [
+  registerDealCommands,
+  registerEntityCommands,
+  registerRelationshipCommands,
+  registerDocumentCommands,
+  registerAuditCommands,
+];
+
+const underwritingCommandRegistrars: CommandRegistrar[] = [
+  registerCovenantCommands,
+  registerSpreadCommands,
+  registerTemplateCommands,
+];
+
+const servicingCommandRegistrars: CommandRegistrar[] = [
+  registerFacilityCommands,
+  registerLoanCommands,
+  registerMonitoringCommands,
+  registerEmailCommands,
+  registerDepositCommands,
+];
+
+const integrationCommandRegistrars: CommandRegistrar[] = [registerShadowCommands];
+
+const allCommandRegistrars: CommandRegistrar[] = [
+  ...foundationalCommandRegistrars,
+  ...underwritingCommandRegistrars,
+  ...servicingCommandRegistrars,
+  ...integrationCommandRegistrars,
+];
+
 const program = new Command();
 
 program
   .name('los')
   .description('Open LOS CLI - Command-line interface for B2B lending operations')
   .version('0.1.0')
-  .option('-u, --api-url <url>', 'API base URL', process.env.LOS_API_URL || 'http://localhost:3000')
-  .option('-a, --actor <id>', 'Actor ID for audit trail', process.env.LOS_ACTOR || 'cli')
-  .option('-t, --tenant-id <id>', 'Tenant ID', process.env.LOS_TENANT_ID || 'default')
-  .option('-f, --format <format>', 'Output format (json/table/compact)', process.env.LOS_FORMAT || 'json');
+  .option('--api-url <url>', 'API base URL', process.env.LOS_API_URL || 'http://localhost:3000')
+  .option('--actor <id>', 'Actor ID for audit trail', process.env.LOS_ACTOR || 'cli')
+  .option('--tenant-id <id>', 'Tenant ID', process.env.LOS_TENANT_ID || 'default')
+  .option('--format <format>', 'Output format (json/table/compact)', process.env.LOS_FORMAT || 'json');
 
 // Health check command
 program
@@ -61,20 +94,9 @@ program
   });
 
 // Register all command groups
-registerDealCommands(program);
-registerEntityCommands(program);
-registerRelationshipCommands(program);
-registerDocumentCommands(program);
-registerCovenantCommands(program);
-registerFacilityCommands(program);
-registerLoanCommands(program);
-registerSpreadCommands(program);
-registerMonitoringCommands(program);
-registerAuditCommands(program);
-registerTemplateCommands(program);
-registerEmailCommands(program);
-registerDepositCommands(program);
-registerShadowCommands(program);
+for (const register of allCommandRegistrars) {
+  register(program);
+}
 
 // Parse and execute
 program.parse();

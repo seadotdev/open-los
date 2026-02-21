@@ -144,6 +144,10 @@ export function registerDealCommands(program: Command): void {
     .option('--override-rationale <text>', 'Rationale for override')
     .action(async (id, opts, cmd) => {
       try {
+        if (opts.override && !opts.overrideRationale) {
+          throw new Error('--override-rationale is required when using --override');
+        }
+
         const globals = getGlobalOptions(cmd.optsWithGlobals() as GlobalOptions);
         const client = getClient({ baseUrl: globals.apiUrl, actor: globals.actor, tenantId: globals.tenantId });
 
@@ -156,6 +160,28 @@ export function registerDealCommands(program: Command): void {
 
         if (globals.format === 'table') {
           success(`Advanced deal to ${opts.to}`);
+        }
+        console.log(formatOutput(result, globals.format));
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
+  // Link entity to deal
+  deal
+    .command('link-entity <dealId> <entityId>')
+    .description('Link an entity to a deal as the primary entity')
+    .action(async (dealId, entityId, opts, cmd) => {
+      try {
+        const globals = getGlobalOptions(cmd.optsWithGlobals() as GlobalOptions);
+        const client = getClient({ baseUrl: globals.apiUrl, actor: globals.actor, tenantId: globals.tenantId });
+
+        const result = await client.updateDeal(dealId, {
+          primary_entity_id: entityId,
+        });
+
+        if (globals.format === 'table') {
+          success(`Linked entity ${entityId} to deal ${dealId}`);
         }
         console.log(formatOutput(result, globals.format));
       } catch (err) {
