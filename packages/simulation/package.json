@@ -11,7 +11,10 @@
     "dev": "tsx watch src/cli.ts",
     "simulate": "tsx src/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "crm-test": "tsx src/crm-test/cli.ts run",
+    "crm-test:list": "tsx src/crm-test/cli.ts list-tasks",
+    "crm-test:verbose": "tsx src/crm-test/cli.ts run --verbose"
   },
   "dependencies": {
     "@open-los/core": "*",

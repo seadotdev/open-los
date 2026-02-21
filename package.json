@@ -16,6 +16,8 @@
     "simulate": "npm run simulate --workspace=packages/simulation",
     "simulate:quick": "npm run simulate --workspace=packages/simulation -- quick",
     "simulate:all": "npm run simulate --workspace=packages/simulation -- run --all",
+    "test:crm-models": "npm run crm-test --workspace=packages/simulation",
+    "test:crm-models:verbose": "npm run crm-test:verbose --workspace=packages/simulation",
     "docs:generate": "npx tsx docs/auto-docs/scripts/generate-docs.ts --all",
     "docs:release-log": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type release",
     "docs:blog": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type blog",
