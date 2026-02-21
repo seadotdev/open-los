@@ -121,7 +121,8 @@ program
   .option("--output <file>", "Write JSON report to file")
   .option("--detailed <file>", "Write detailed per-task report to file")
   .option("--concurrency <n>", "Max concurrent requests", "1")
-  .option("--timeout <ms>", "Timeout per request in ms", "30000")
+  .option("--timeout <ms>", "Timeout per request in ms", "60000")
+  .option("--tool-calling", "Enable tool calling mode (send CLI commands as tool schemas)", false)
   .option(
     "--api-key <key>",
     "OpenRouter API key (or use OPENROUTER_API_KEY env var)"
@@ -160,6 +161,7 @@ program
       retries: DEFAULT_RUNNER_CONFIG.retries,
       concurrency: parseInt(opts.concurrency),
       verbose: opts.verbose,
+      toolCalling: opts.toolCalling,
       taskFilter: opts.task,
       categoryFilter: opts.category as TaskCategory[] | undefined,
     };

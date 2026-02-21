@@ -4,6 +4,11 @@
  * Runs test scenarios against multiple LLMs via OpenRouter and collects results.
  * Each model gets the same system prompt + user prompt and its response is
  * validated and scored.
+ *
+ * Supports two modes:
+ * - Text mode (default): model generates CLI commands as text
+ * - Tool calling mode (--tool-calling): model receives CLI commands as tool
+ *   schemas and calls them with structured arguments
  */
 
 import type {
@@ -15,40 +20,36 @@ import type {
   ModelConfig,
   FailurePattern,
   TaskCategory,
+  ToolCall,
 } from "./types.js";
 import { ALL_TASKS } from "./scenarios.js";
 import { runAllValidators } from "./validators.js";
+import { CLI_TOOLS, toolCallsToCli } from "./tools.js";
 
-/** Default small models to test via OpenRouter (free tier, Feb 2026) */
+/** ZDR-compatible models with tool calling support (verified Feb 2026) */
 export const DEFAULT_MODELS: ModelConfig[] = [
   {
-    id: "nvidia/llama-3.1-nemotron-nano-8b-v1:free",
-    name: "Nemotron Nano 8B",
-    maxTokens: 1024,
+    id: "nvidia/nemotron-nano-9b-v2:free",
+    name: "Nemotron Nano 9B v2",
+    maxTokens: 2048,
     temperature: 0.1,
   },
   {
-    id: "nousresearch/deephermes-3-llama-3-8b-preview:free",
-    name: "DeepHermes 3 8B",
-    maxTokens: 1024,
+    id: "arcee-ai/trinity-mini:free",
+    name: "Trinity Mini",
+    maxTokens: 2048,
     temperature: 0.1,
   },
   {
-    id: "qwen/qwen2.5-vl-3b-instruct:free",
-    name: "Qwen 2.5 VL 3B",
-    maxTokens: 1024,
+    id: "upstage/solar-pro-3:free",
+    name: "Solar Pro 3",
+    maxTokens: 2048,
     temperature: 0.1,
   },
   {
-    id: "mistralai/mistral-small-3.1-24b-instruct:free",
-    name: "Mistral Small 3.1 24B",
-    maxTokens: 1024,
-    temperature: 0.1,
-  },
-  {
-    id: "meta-llama/llama-4-scout:free",
-    name: "Llama 4 Scout",
-    maxTokens: 1024,
+    id: "z-ai/glm-4.5-air:free",
+    name: "GLM 4.5 Air",
+    maxTokens: 2048,
     temperature: 0.1,
   },
 ];
@@ -57,11 +58,29 @@ export const DEFAULT_MODELS: ModelConfig[] = [
 export const DEFAULT_RUNNER_CONFIG: Omit<TestRunnerConfig, "apiKey"> = {
   models: DEFAULT_MODELS,
   baseUrl: "https://openrouter.ai/api/v1",
-  timeoutMs: 30_000,
+  timeoutMs: 60_000,
   retries: 2,
   concurrency: 1,
   verbose: false,
+  toolCalling: false,
 };
+
+/** Shape of the OpenRouter chat completion response */
+interface ChatCompletionResponse {
+  choices: Array<{
+    message: {
+      content: string | null;
+      reasoning?: string | null;
+      reasoning_details?: Array<{ text: string }>;
+      tool_calls?: ToolCall[];
+    };
+  }>;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
 
 /**
  * Call an LLM via OpenRouter's chat completion API
@@ -73,13 +92,14 @@ async function callModel(
   userPrompt: string
 ): Promise<{
   content: string;
+  toolCalls?: ToolCall[];
   tokens?: { prompt: number; completion: number; total: number };
   latencyMs: number;
   error?: string;
 }> {
   const start = Date.now();
 
-  const body = {
+  const body: Record<string, unknown> = {
     model: model.id,
     max_tokens: model.maxTokens,
     temperature: model.temperature,
@@ -88,6 +108,12 @@ async function callModel(
       { role: "user" as const, content: userPrompt },
     ],
   };
+
+  // Add tool definitions when tool calling is enabled
+  if (config.toolCalling) {
+    body.tools = CLI_TOOLS;
+    body.tool_choice = "auto";
+  }
 
   for (let attempt = 0; attempt <= config.retries; attempt++) {
     try {
@@ -106,12 +132,15 @@ async function callModel(
       if (!response.ok) {
         const errText = await response.text();
 
-        // Rate limited — wait and retry
-        if (response.status === 429 && attempt < config.retries) {
+        // Rate limited or provider error — wait and retry
+        if (
+          (response.status === 429 || response.status === 502 || response.status === 503) &&
+          attempt < config.retries
+        ) {
           const waitMs = Math.pow(2, attempt + 1) * 1000;
           if (config.verbose) {
             console.log(
-              `  Rate limited for ${model.name}, waiting ${waitMs}ms...`
+              `  ${response.status} for ${model.name}, waiting ${waitMs}ms...`
             );
           }
           await sleep(waitMs);
@@ -125,16 +154,21 @@ async function callModel(
         };
       }
 
-      const data = (await response.json()) as {
-        choices: Array<{ message: { content: string } }>;
-        usage?: {
-          prompt_tokens: number;
-          completion_tokens: number;
-          total_tokens: number;
-        };
-      };
+      const data = (await response.json()) as ChatCompletionResponse;
 
-      const content = data.choices?.[0]?.message?.content || "";
+      const message = data.choices?.[0]?.message;
+      let content = message?.content || "";
+
+      // For reasoning models: extract from reasoning field when content is empty
+      if (!content.trim() && message?.reasoning) {
+        content = message.reasoning;
+      }
+      if (!content.trim() && message?.reasoning_details?.length) {
+        content = message.reasoning_details.map((d) => d.text).join("\n");
+      }
+
+      const toolCalls = message?.tool_calls;
+
       const tokens = data.usage
         ? {
             prompt: data.usage.prompt_tokens,
@@ -145,6 +179,7 @@ async function callModel(
 
       return {
         content,
+        toolCalls,
         tokens,
         latencyMs: Date.now() - start,
       };
@@ -186,6 +221,15 @@ async function runTask(
     task.prompt
   );
 
+  // In tool calling mode, convert tool calls to CLI text for validation
+  let validationContent = response.content;
+  if (config.toolCalling && response.toolCalls && response.toolCalls.length > 0) {
+    validationContent = toolCallsToCli(response.toolCalls);
+    if (config.verbose) {
+      console.log(`\n    Tool calls -> CLI: ${validationContent.replace(/\n/g, " | ")}`);
+    }
+  }
+
   // Determine response type
   let responseType: TaskResult["responseType"] = "success";
   if (response.error) {
@@ -194,21 +238,29 @@ async function runTask(
     } else {
       responseType = "error";
     }
-  } else if (!response.content || response.content.trim().length === 0) {
+  } else if (
+    (!validationContent || validationContent.trim().length === 0) &&
+    (!response.toolCalls || response.toolCalls.length === 0)
+  ) {
     responseType = "empty";
   } else if (
-    response.content.toLowerCase().includes("i cannot") ||
-    response.content.toLowerCase().includes("i can't") ||
-    response.content.toLowerCase().includes("sorry, i")
+    validationContent.toLowerCase().includes("i cannot") ||
+    validationContent.toLowerCase().includes("i can't") ||
+    validationContent.toLowerCase().includes("sorry, i")
   ) {
     responseType = "refusal";
   }
 
-  // Run validators
+  // Run validators against the CLI text (whether generated directly or from tool calls)
   const { results: validatorResults, weightedScore } = runAllValidators(
     task.validators,
-    response.content
+    validationContent
   );
+
+  // Build raw response for reporting
+  const rawResponse = config.toolCalling && response.toolCalls?.length
+    ? `[TOOL CALLS]\n${JSON.stringify(response.toolCalls, null, 2)}\n\n[RECONSTRUCTED CLI]\n${validationContent}`
+    : validationContent;
 
   return {
     taskId: task.id,
@@ -216,7 +268,7 @@ async function runTask(
     category: task.category,
     difficulty: task.difficulty,
     modelId: model.id,
-    rawResponse: response.content,
+    rawResponse,
     validatorResults,
     score: responseType === "success" ? weightedScore : 0,
     latencyMs: response.latencyMs,
@@ -505,7 +557,8 @@ export async function runTestSuite(
     tasks = tasks.filter((t) => config.categoryFilter!.includes(t.category));
   }
 
-  console.log(`\nCRM Model Test Suite`);
+  const mode = config.toolCalling ? "TOOL CALLING" : "TEXT";
+  console.log(`\nCRM Model Test Suite [${mode} mode]`);
   console.log(`${"=".repeat(50)}`);
   console.log(`Tasks: ${tasks.length}`);
   console.log(`Models: ${config.models.length}`);

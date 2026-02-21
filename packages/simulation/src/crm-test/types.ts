@@ -189,6 +189,8 @@ export interface TestRunnerConfig {
   concurrency: number;
   /** Whether to print verbose output */
   verbose: boolean;
+  /** Enable tool calling mode (send CLI commands as tool schemas) */
+  toolCalling?: boolean;
 }
 
 /** Configuration for a model to test */
@@ -201,4 +203,32 @@ export interface ModelConfig {
   maxTokens: number;
   /** Temperature */
   temperature: number;
+}
+
+/** OpenAI-compatible tool definition for function calling */
+export interface ToolDefinition {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, {
+        type: string;
+        description?: string;
+        enum?: string[];
+      }>;
+      required?: string[];
+    };
+  };
+}
+
+/** A tool call returned by the model */
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
 }
