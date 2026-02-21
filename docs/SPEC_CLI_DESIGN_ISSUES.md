@@ -6,7 +6,23 @@
 
 This document catalogs design issues in the `los` CLI that were surfaced by running the CRM model test suite against multiple LLMs. Each issue is grounded in specific test failures with score data. The intent is to document **what went wrong and why**, not to prescribe solutions.
 
+
+
+## Implemented fixes (2026-02-21)
+
+The following low-risk fixes have now been applied in the CLI implementation:
+
+1. **Explicit deal/entity linking command** — Added `los deal link-entity <dealId> <entityId>` as a semantic alias for linking a primary entity, instead of requiring users to discover `deal update --primary-entity`.
+2. **Stage override rationale enforcement** — `los deal advance` now errors if `--override` is passed without `--override-rationale`, aligning CLI behavior with workflow expectations.
+3. **Loan parent ID consistency** — `los loan create` now uses positional parent syntax: `los loan create <dealId> --amount ...` (matching other `create` commands), while still sending the same API payload.
+4. **`--holder` ambiguity reduction** — Added `--entity <id>` as an explicit alias for loan account holder ID.
+5. **Global short-flag collisions removed** — Global options now use long-form flags (`--actor`, `--tenant-id`, `--api-url`, `--format`) to avoid overlap with command-level short flags like `-a`.
+6. **Layered command registration refactor** — CLI command registration is now grouped into layered arrays (foundational, underwriting, servicing, integration) to support future modular composition.
+
+These changes intentionally target the most consistent model/operator failure points while avoiding high-risk API changes.
+
 ---
+
 
 ## 1. Missing `deal delete` causes universal hallucination
 

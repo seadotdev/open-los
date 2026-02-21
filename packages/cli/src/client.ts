@@ -301,6 +301,22 @@ export class LosClient {
     return this.request('POST', '/v1/loans', { body: data });
   }
 
+  async createLoanForDeal(
+    dealId: string,
+    data: {
+      facility_id?: string;
+      loan_amount: number;
+      interest_rate?: number;
+      term_months?: number;
+      account_holder_id?: string;
+    }
+  ): Promise<{ id: string; [key: string]: unknown }> {
+    return this.createLoan({
+      ...data,
+      deal_id: dealId,
+    });
+  }
+
   async createLoanFromFacility(
     facilityId: string,
     data?: { loan_amount?: number }
