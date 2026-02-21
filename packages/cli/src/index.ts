@@ -32,6 +32,7 @@ import { registerAuditCommands } from './commands/audit.js';
 import { registerTemplateCommands } from './commands/templates.js';
 import { registerEmailCommands } from './commands/email.js';
 import { registerDepositCommands } from './commands/deposits.js';
+import { registerShadowCommands } from '@open-los/shadow-cli';
 
 const program = new Command();
 
@@ -73,6 +74,7 @@ registerAuditCommands(program);
 registerTemplateCommands(program);
 registerEmailCommands(program);
 registerDepositCommands(program);
+registerShadowCommands(program);
 
 // Parse and execute
 program.parse();
