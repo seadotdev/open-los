@@ -654,7 +654,8 @@ export function toolCallsToCli(toolCalls: ToolCall[]): string {
 
       let args: Record<string, string>;
       try {
-        args = JSON.parse(tc.function.arguments);
+        const parsed = JSON.parse(tc.function.arguments || "{}");
+        args = parsed && typeof parsed === "object" ? parsed : {};
       } catch {
         return command;
       }
