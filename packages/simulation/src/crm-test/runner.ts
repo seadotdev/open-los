@@ -19,35 +19,35 @@ import type {
 import { ALL_TASKS } from "./scenarios.js";
 import { runAllValidators } from "./validators.js";
 
-/** Default small models to test via OpenRouter */
+/** Default small models to test via OpenRouter (free tier, Feb 2026) */
 export const DEFAULT_MODELS: ModelConfig[] = [
   {
-    id: "google/gemma-2-9b-it:free",
-    name: "Gemma 2 9B",
+    id: "nvidia/llama-3.1-nemotron-nano-8b-v1:free",
+    name: "Nemotron Nano 8B",
     maxTokens: 1024,
     temperature: 0.1,
   },
   {
-    id: "meta-llama/llama-3.1-8b-instruct:free",
-    name: "Llama 3.1 8B",
+    id: "nousresearch/deephermes-3-llama-3-8b-preview:free",
+    name: "DeepHermes 3 8B",
     maxTokens: 1024,
     temperature: 0.1,
   },
   {
-    id: "mistralai/mistral-7b-instruct:free",
-    name: "Mistral 7B",
+    id: "qwen/qwen2.5-vl-3b-instruct:free",
+    name: "Qwen 2.5 VL 3B",
     maxTokens: 1024,
     temperature: 0.1,
   },
   {
-    id: "qwen/qwen-2.5-7b-instruct:free",
-    name: "Qwen 2.5 7B",
+    id: "mistralai/mistral-small-3.1-24b-instruct:free",
+    name: "Mistral Small 3.1 24B",
     maxTokens: 1024,
     temperature: 0.1,
   },
   {
-    id: "microsoft/phi-3-mini-128k-instruct:free",
-    name: "Phi-3 Mini",
+    id: "meta-llama/llama-4-scout:free",
+    name: "Llama 4 Scout",
     maxTokens: 1024,
     temperature: 0.1,
   },
