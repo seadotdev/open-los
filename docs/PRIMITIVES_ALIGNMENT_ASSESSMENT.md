@@ -1,199 +1,323 @@
 # Primitives Alignment Assessment
 
-## Bettina Warburg's "New Primitives" Theory — Applied to Open LOS
+## Warburg's "New Primitives" Theory — Applied to Open LOS
 
-> This assessment maps Bettina Warburg's framework for understanding emerging technology primitives against the Open LOS architecture, identifies areas of alignment and gaps, and proposes concrete changes to strengthen the project's position.
-
----
-
-## The Theory (Reconstructed)
-
-Bettina Warburg's "New Primitives" thesis builds on decades of work in institutional economics, blockchain, and decentralized infrastructure. The core argument:
-
-**Throughout history, humans have built institutions (banks, governments, legal systems) to lower uncertainty and enable trade.** The Nobel economist Douglass North showed that these institutions—formal rules and informal constraints—are the machinery that makes economies function. We pay "trust taxes" to these institutions: bank fees, audit costs, compliance overhead, platform commissions.
-
-**New technology primitives are emerging that can collapse these institutional trust functions into software**, fundamentally shifting the business model of the internet and enabling new types of products. These primitives include:
-
-1. **Decentralized Identity** — Portable, self-sovereign identity controlled by the individual but verifiable by many parties. Reduces onboarding friction and eliminates identity silos.
-
-2. **Provenance & Verification** — Shared, immutable records that establish the history and authenticity of assets, documents, and transactions across non-trusting entities. Creates "shared reality" without requiring shared infrastructure.
-
-3. **Smart Contracts / Programmable Rules** — Business logic encoded as verifiable, deterministic code rather than opaque institutional processes. Outcomes are predictable and automatic.
-
-4. **Machine Trust** — A paradigm where trust is established through code and shared ledgers rather than institutional intermediaries. The cost of coordinating economic activity drops dramatically.
-
-5. **Neutral Rails** — Open, decentralized infrastructure that doesn't privilege any single party. "The world computer, true decentralization, and neutral rails."
-
-The historical arc: `1980s proprietary local → 1990s open-source local → 2000s proprietary cloud → 2020s+ open massively-multi-user on neutral rails`
-
-The key insight is not about blockchain per se—it's about **what happens when trust functions become primitives**: composable, open, verifiable building blocks rather than proprietary institutional services.
+> This assessment maps Bettina Warburg's four primitives of the Agentic Economy against the Open LOS architecture, identifies areas of alignment and gaps, and proposes concrete changes to position Open LOS as infrastructure for the new digital economy.
 
 ---
 
-## Where Open LOS Already Aligns
+## The Theory
 
-### Strong alignment with the primitives theory:
+Warburg identifies four fundamental building blocks for a new digital economy — an "Agentic Economy" in which value flows not from clicks or impressions but from **verifiable actions**. Each primitive rests on a different type of graph: networked data structures that connect, verify, and trace digital activity in ways the current web cannot.
 
-**1. Open, Neutral Rails (Excellent)**
+### The Four Primitives
 
-The manifesto's core thesis—"data sovereignty," MIT license, no vendor lock-in, headless API—maps directly to Warburg's "neutral rails" primitive. Open LOS explicitly positions itself as the anti-Salesforce: infrastructure you own, control, and can fork.
+**1. Intention** — Systems for expressing and broadcasting what users want. Not imperative commands ("create a deal") but declarative goals ("I need $2M in working capital by Q3, secured against receivables"). Intention graphs connect wants to capabilities, enabling discovery and matching.
 
-The specification-as-tests philosophy (any implementation that passes the conformance suite is valid) is particularly well-aligned. This is a protocol-level primitive, not a product. Anyone can rewrite in Rust, Go, or Python and remain conformant.
+**2. Context** — Verified memory and decisions that agents can draw upon. Not just chat history, but structured, trustworthy knowledge: "this borrower's DSCR has been above 1.25 for 8 consecutive quarters, verified by audited financials." Context must be portable, verifiable, and composable across agents and sessions.
 
-**2. Immutable Audit Trail (Excellent)**
+**3. Attribution** — Cryptographic proof of who contributed what. When an agent spreads a financial statement, an underwriter approves a covenant waiver, and a model recommends approval — each contribution must be independently verifiable. Attribution enables accountability, compensation, and trust in multi-agent systems.
 
-The append-only audit log with monotonic sequencing, actor tracking, and full change diffs is one of the strongest alignments with the provenance primitive. Every mutation is traceable. Every decision has a paper trail. The "Ledger Style" document explicitly draws from centuries of accounting practice.
+**4. Simulation** — Environments for testing agent behavior before deployment. Before an AI agent processes real loans, it should prove competence in sandboxed environments with realistic scenarios. Simulation enables trust calibration: "this agent succeeded on 847/850 test scenarios for SBA lending."
 
-This IS a provenance system for lending decisions.
-
-**3. Deterministic Computation (Excellent)**
-
-Warburg's smart-contract primitive is about encoding rules as verifiable, reproducible code. Open LOS does this for financial computations: ratios, covenant tests, stage guards, loan state machine transitions. Time injection, integer arithmetic, and explicit division strategies make every computation auditable and reproducible.
-
-**4. Identity & Entity Graph (Good)**
-
-The multi-entity model with typed relationships (owns, guarantees, directs), multi-identifier support (LEI, registration number, CUSIP), and jurisdiction tracking lays groundwork for the identity primitive. The entity graph can represent complex corporate structures with ownership chains.
-
-**5. Machine-Readable Everything (Good)**
-
-The "humans and AI are equal actors" principle, MCP tools, and rich API responses with available-actions and blockers align with Warburg's vision of machine trust. The system is already designed for machine consumption.
+Together, these primitives create the underpinnings of an economy where **AI agents are first-class economic actors** — expressing intentions, drawing on verified context, having their contributions attributed, and proving their capabilities through simulation.
 
 ---
 
-## Where Open LOS Diverges or Has Gaps
+## Primitive 1: Intention
 
-### Gap 1: Identity Is Institutional, Not Self-Sovereign
+### What Open LOS Has
 
-**The problem:** Warburg's identity primitive is about *portable, self-sovereign identity* controlled by the subject. Open LOS models entities as objects the *lender* manages. The borrower has no agency over their own identity within the system. There's no concept of the borrower presenting verifiable credentials, controlling their own data, or sharing attestations selectively.
+The system is fundamentally **imperative**. Users and agents issue commands:
 
-**Current state:** Entities are rows in a database that the lender creates and updates. The `identifiers` JSON array stores scheme/value pairs, but these are lender-asserted, not borrower-presented or cryptographically verified.
+- `POST /v1/deals` — create a deal
+- `POST /v1/deals/:id/stage-transitions` — advance a stage
+- `POST /v1/spreads` — create a spread
 
-**What alignment would look like:**
-- Support for Verifiable Credentials (W3C VC standard) — borrowers present claims about themselves
-- Selective disclosure — borrowers can prove revenue > $1M without revealing exact figures
-- Credential verification status tracking — not just "we have their registration number" but "this was verified by X authority on Y date with Z confidence"
-- Portable entity profiles — an entity's Open LOS identity could be shared across lender instances without re-creating from scratch
-- Consent management — the borrower controls what data the lender retains
+The **agent layer** (`packages/agent`) shows emergent intention patterns:
+- `submitDeal()` — a customer expresses a high-level outcome ("originate this loan")
+- The AI Native Workflow doc describes "Jobs" with goals: *"Process this deal: spread the financials, analyze the business, prepare a credit memo"*
 
-### Gap 2: Provenance Stops at the System Boundary
+The **stage machine** encodes a linear intention (broker → origination → underwriting → closing → monitoring), and stage guards represent preconditions for advancing toward the goal.
 
-**The problem:** Warburg's provenance primitive creates "shared reality across non-trusting entities." Open LOS has excellent *internal* provenance (audit trail), but no mechanism to establish provenance of *incoming* data or share provenance *outwardly*.
+### What's Missing
 
-**Current state:** When a financial statement is uploaded, we track who uploaded it and when. But we don't track: where it originally came from, whether it's been tampered with, whether a third party has attested to it, or how it relates to the borrower's canonical records.
+**No intention graph.** Intentions are ephemeral — they exist as prompts passed to AI agents, not as persistent, queryable objects in the system. There's no way to ask: "What are the active intentions for this deal?" or "Which deals have a stated goal of closing by March?"
 
-**What alignment would look like:**
-- Document attestation / notarization — cryptographic proof that a document existed at a point in time, signed by the uploader
-- Cross-institutional provenance — when a deal is syndicated or transferred, the full decision history travels with it in a verifiable format
-- Data lineage for financial spreads — "this DSCR of 1.35 was computed from these line items, which were extracted from this document, which was uploaded by this entity, who received it from this auditor"
-- Provenance anchoring — hash-based anchoring of audit events to an external immutable store (IPFS, blockchain, or even a Merkle tree published periodically)
+**No goal decomposition.** When an agent receives "originate this loan," it must figure out the sub-steps itself every time. The system doesn't maintain a structured plan that tracks progress toward a declared outcome.
 
-### Gap 3: No Programmable Rules Primitive (Smart Contracts)
+**No broadcasting or matching.** A borrower can't broadcast "I need equipment financing, $500K, manufacturing sector" and have the system match it against lender appetites. Intentions flow one direction: lender creates deal, lender drives process.
 
-**The problem:** Warburg's smart-contract primitive is about encoding business agreements as verifiable, deterministic, self-executing code. Open LOS has deterministic computations, but the loan *agreements themselves* are not programmable.
+**No desired-state declarations.** The system can't express: "The desired state for this deal is: DSCR ≥ 1.25, all covenants passing, facility approved, documents complete." It can test each of these individually, but there's no unified goal object that the system works toward.
 
-**Current state:** Covenants, facilities, and stage guards are defined in the system, but the actual loan agreement terms live in Word documents outside the system. The system tests covenants, but the covenant definitions are human-entered, not derived from the agreement itself.
+### Alignment Score: 2/10
 
-**What alignment would look like:**
-- Machine-readable loan agreements — structured representations of loan terms (not just covenant tests, but drawdown conditions, collateral requirements, event-of-default triggers, cure provisions)
-- Agreement-as-code — the loan agreement is a first-class object that the system can execute against, not just reference
-- Automated compliance — the system can automatically determine if the borrower is in compliance with *all* agreement terms, not just the covenants someone manually entered
-- Template → Agreement → Execution pipeline — from template rendering to signed agreement to automated enforcement
-
-### Gap 4: No Interoperability Primitive
-
-**The problem:** Warburg's thesis centers on *lowering coordination costs between non-trusting entities*. Open LOS is a single-institution system. There's no mechanism for lenders, borrowers, lawyers, auditors, and regulators to share a common view of a deal.
-
-**Current state:** Multi-tenancy exists, but tenants are isolated silos. There's no cross-tenant data sharing, no federated queries, no syndication protocol.
-
-**What alignment would look like:**
-- Syndication protocol — when a loan is syndicated, participating lenders get a shared, verified view of the deal
-- Borrower portal primitive — borrowers can see their own deals, upload documents, and track covenant compliance without going through the lender
-- Regulatory reporting as a primitive — not as an afterthought, but as a core data flow. The regulator gets a real-time, verifiable view of the portfolio
-- Open Banking integration — connecting to borrower bank accounts with consent, rather than CSV upload of transaction files
-- Cross-institution entity resolution — "is this the same Acme Corp that another lender is also evaluating?"
-
-### Gap 5: Trust Is Centralized, Not Distributed
-
-**The problem:** Warburg's deepest insight is that technology can *replace* institutional trust functions, not just digitize them. Open LOS digitizes the lender's existing trust model but doesn't fundamentally challenge it.
-
-**Current state:** The system assumes a traditional lender-borrower power dynamic. The lender creates deals, evaluates borrowers, makes decisions. The audit trail is for the lender's benefit. The borrower has no visibility or agency.
-
-**What alignment would look like:**
-- Mutual visibility — both parties see the same state, same audit trail, same decision rationale
-- Algorithmic credit decisions — not replacing human judgment, but making the decision *framework* transparent and testable. "If you improve your DSCR to 1.3, you qualify" — and the borrower can verify this themselves
-- Decentralized identity verification — instead of the lender running KYC, the borrower presents verified credentials
-- Outcome transparency — public (anonymized) data on approval rates, decision patterns, and bias metrics
-
----
-
-## Concrete Recommendations (Ordered by Impact)
-
-### Tier 1: High Impact, Aligns with Existing Architecture
-
-**1. Add a Verifiable Data Lineage Layer**
-
-Extend the audit trail to become a provenance chain. Every piece of data should have a `lineage` object tracking its origin, transformations, and attestations. This is an extension of what you already do well.
+### What Would Close the Gap
 
 ```
-document uploaded → extracted by AI → spread created → ratio computed → covenant tested → decision made
+intentions table:
+  id, deal_id, declared_by, type ("origination_goal" | "borrower_need" | "portfolio_target"),
+  desired_state (JSON: conditions that define success),
+  deadline, priority, status ("active" | "achieved" | "abandoned"),
+  decomposition (JSON: sub-intentions with completion tracking)
 ```
 
-Each link in this chain should be independently verifiable. This transforms the audit trail from "what happened inside our system" to "a verifiable proof of how this decision was made."
-
-**2. Make Entities Bidirectional**
-
-Add the concept of entity-controlled profiles. An entity (borrower) should be able to:
-- Have a canonical profile with verified attributes
-- Present credentials to lenders (rather than lenders looking them up)
-- Track which lenders have their data and what data they have
-
-This doesn't require blockchain — it requires treating the entity as a *participant*, not an *object*.
-
-**3. Machine-Readable Agreements**
-
-Extend the covenant and facility models into a full "agreement-as-data" primitive. A loan agreement should be a structured object in the system, not a PDF attachment. The conformance test suite already proves you can specify behavior declaratively (YAML). Apply the same philosophy to loan agreements.
-
-### Tier 2: Medium Impact, Extends Architecture
-
-**4. Cross-Institutional Syndication Protocol**
-
-Define a standard format for sharing deal data between Open LOS instances (or any conformant implementation). This is where the specification-as-tests philosophy pays off — if multiple institutions run conformant implementations, they can share data in a standard format.
-
-**5. Borrower-Facing API Surface**
-
-Add a borrower-scoped API that gives borrowers visibility into their own deals, documents, and covenant status. This doesn't require a separate system — it's a permission layer on the existing API.
-
-**6. External Provenance Anchoring**
-
-Periodically publish a Merkle root of audit events to an external store. This proves that the audit trail hasn't been retroactively modified. This is the lightest-weight version of Warburg's blockchain primitive that still delivers the trust benefit.
-
-### Tier 3: Longer-Term, Architectural Shifts
-
-**7. Verifiable Credentials Integration**
-
-Support W3C Verifiable Credentials for entity identity. Borrowers present credentials; the system verifies them against trusted issuers.
-
-**8. Open Banking / Account Connectivity**
-
-Replace CSV-based bank transaction ingestion with real-time, consent-based account connectivity. The borrower authorizes access; the system monitors automatically.
-
-**9. Regulatory Reporting Primitive**
-
-Build regulatory reporting as a first-class data flow, not a reporting add-on. The regulator gets a verifiable, real-time view of portfolio health.
+- **Borrower-declared intentions**: "I need $2M working capital" becomes a first-class object
+- **Lender-declared intentions**: "Close this deal by Q2 with DSCR ≥ 1.25" becomes trackable
+- **Agent plans as intention graphs**: When an agent plans work, the plan is persisted as a decomposed intention tree — not just executed and forgotten
+- **Matching primitive**: Borrower intentions matched against lender appetite criteria
 
 ---
 
-## Summary Assessment
+## Primitive 2: Context
 
-| Warburg Primitive | Open LOS Alignment | Gap Severity |
-|---|---|---|
-| Neutral Rails / Open Infrastructure | **Strong** — MIT, headless, spec-as-tests | Low |
-| Provenance / Immutable Records | **Strong** internally, **Weak** across boundaries | Medium |
-| Deterministic Computation / Smart Contracts | **Strong** for calculations, **Weak** for agreements | Medium |
-| Self-Sovereign Identity | **Weak** — entities are lender-controlled objects | High |
-| Machine Trust / Equal Actors | **Good** for AI, **Missing** for borrowers | High |
-| Interoperability / Shared Reality | **Missing** — single-institution design | High |
+### What Open LOS Has
 
-**The bottom line:** Open LOS has built excellent *internal* primitives — audit trail, deterministic computation, entity graph, state machines. These are real, valuable, and well-executed. But Warburg's theory is about primitives that work *across* institutional boundaries, lowering the cost of coordination between non-trusting parties. The biggest opportunity is to extend these internal primitives outward: making the audit trail verifiable by external parties, making entities self-sovereign, and making deals shareable across institutions.
+This is the project's **second-strongest primitive**. Significant context infrastructure exists:
 
-The project's existing strengths — open source, spec-as-tests, headless API, AI-native design — are the *perfect foundation* for this evolution. No proprietary LOS could make this shift. An open, protocol-level primitive for lending *can*.
+**Audit trail as decision memory.** The append-only audit log (`audit_events`) with monotonic sequencing captures every mutation with actor, timestamp, changes, and metadata. This is a rich decision record — you can reconstruct the entire history of any deal.
+
+**AI conversation persistence.** The `ai_conversations` and `ai_messages` tables store full conversation history per deal/stage, including tool calls, token counts, and model selection. Agents can reference prior sessions.
+
+**Structured financial context.** Spreads with computed ratios, covenant test results with pass/fail/warning status, monitoring alerts with severity — these are structured, queryable context that agents draw upon.
+
+**Entity graph as relationship context.** The entity-relationship model (companies, people, ownership, guarantees, directorships) provides structural context for underwriting decisions.
+
+**Sandbox checkpoints as temporal context.** The sandbox system captures full snapshots at decision points, enabling "at this point in time, here's what we knew and what we decided."
+
+### What's Missing
+
+**Context is not verified.** The audit trail is append-only within the application, but there's no cryptographic proof. An operator with database access could modify historical records. There's no way for an external party (auditor, regulator, borrower) to verify that the context hasn't been tampered with.
+
+**Context is not portable.** Each Open LOS instance is a silo. When a loan is syndicated, participanting lenders can't share verified context. When a borrower applies to multiple lenders, they start from zero each time. Context doesn't travel.
+
+**No "verified vs. asserted" distinction.** Entity data, financial statements, and covenant inputs are all treated as equally trustworthy. There's no metadata tracking: "this revenue figure was extracted by AI from an audited financial statement uploaded by the borrower's accountant" vs. "this was manually entered by an analyst."
+
+**Decision lineage is implicit.** You can reconstruct the chain (document uploaded → spread created → ratio computed → covenant tested → decision made) by querying the audit trail, but there's no explicit decision lineage graph linking inputs to reasoning to outputs.
+
+**Agent context loading is ad-hoc.** The agent's `getStatus()` method loads deal state, documents, and audit history — but this is hardcoded, not a standardized context schema. Different agents would build context differently, with no guarantee of consistency.
+
+### Alignment Score: 7/10
+
+### What Would Close the Gap
+
+- **Cryptographic context commitment**: Hash-chain audit events (each event includes hash of prior event). Periodically publish Merkle roots. External parties can verify: "this context existed at time T and hasn't been modified."
+- **Verification metadata**: Every data point gets a `provenance` object: `{ source, source_type ("audited_financial" | "self_reported" | "ai_extracted"), verified_by, confidence, timestamp }`
+- **Decision lineage graph**: Explicit links between inputs → reasoning → outputs → approvals. Not just "what changed" but "why it changed and based on what."
+- **Portable context format**: Standard serialization of deal context that can be shared across instances, verified by recipients, and used as input to other systems.
+
+---
+
+## Primitive 3: Attribution
+
+### What Open LOS Has
+
+This is the project's **strongest existing primitive**:
+
+**Actor tracking on everything.** Every audit event records `actor` (user ID, agent ID, or "system"). Every document records `created_by`. Every conversation records `created_by`. Every sandbox checkpoint records who created it.
+
+**Immutable, sequenced event log.** Audit events have monotonic sequence numbers, preventing gaps or reordering. The append-only design means historical attribution can't be erased.
+
+**AI session attribution.** When an AI agent operates the system, the full session is logged: which model, what tool calls, what decisions, how many tokens. The Ledger Style document mandates: "Humans and AI get the same audit treatment. No second-class actors."
+
+**Stage transition attribution with rationale.** Every stage transition records who triggered it, what rationale was given, whether it was an override, and the full guard checklist snapshot at that moment.
+
+**Multi-actor attribution.** The system tracks the difference between "system computed this ratio" and "analyst created this spread" and "credit lead approved this waiver." Different actors contribute different things, and each contribution is separately recorded.
+
+### What's Missing
+
+**No cryptographic signatures.** Attribution is based on database records, not cryptographic proof. The `actor` field is a string set by the API caller — it's not a signed assertion. There's no way to prove: "analyst_001 actually approved this, and this approval hasn't been forged."
+
+**No contribution hashing.** When a document is uploaded, the `checksum` field exists in the schema but isn't consistently computed or validated. You can't prove: "this is the exact same document that was uploaded on January 15th."
+
+**No decision signatures.** Approvals, waivers, and stage transitions are database records, not signed commitments. In a legal dispute, the attribution is only as trustworthy as the database operator.
+
+**Weak multi-step attribution chains.** When an agent runs a multi-step workflow (spread financials → test covenants → generate memo → recommend approval), each step is individually attributed, but the causal chain between steps isn't explicitly modeled. You can reconstruct it from timestamps, but there's no explicit "this recommendation was based on these specific inputs."
+
+### Alignment Score: 8/10
+
+### What Would Close the Gap
+
+```typescript
+// Signed audit events
+interface SignedAuditEvent {
+  // ... existing fields ...
+  content_hash: string;           // SHA-256 of event content
+  previous_hash: string;          // Hash of prior event (chain integrity)
+  actor_signature: string;        // Ed25519 signature by the actor
+  actor_public_key: string;       // For independent verification
+}
+
+// Document integrity
+interface DocumentAttestation {
+  document_id: string;
+  content_hash: string;           // SHA-256 of document bytes
+  attested_by: string;
+  attested_at: string;
+  signature: string;
+}
+
+// Decision attribution chain
+interface DecisionLineage {
+  decision_id: string;
+  decision_type: "approval" | "waiver" | "stage_transition" | "recommendation";
+  inputs: Array<{
+    type: "document" | "spread" | "covenant_test" | "prior_decision";
+    id: string;
+    content_hash: string;         // Prove these specific inputs were used
+  }>;
+  reasoning: string;
+  decided_by: string;
+  decision_signature: string;
+}
+```
+
+- **Ed25519 key pairs per actor**: Each user/agent gets a signing key. Critical actions are signed.
+- **Hash-chained audit events**: Each event references the hash of the prior event. Tampering with any event breaks the chain.
+- **Document content hashing**: Compute and store SHA-256 on upload. Validate on retrieval.
+- **Explicit decision lineage**: Link decisions to their specific inputs, not just timestamps.
+
+---
+
+## Primitive 4: Simulation
+
+### What Open LOS Has
+
+This is the most **architecturally interesting** primitive — the pieces exist but aren't connected:
+
+**Sandbox system with version control.** The core sandbox service provides isolated, forkable environments with Git-style branching:
+- Create a sandbox forked from a deal's current state
+- Make experimental changes without affecting production data
+- Checkpoint at decision points (full JSON snapshot)
+- Compare outcomes between branches
+- Restore to any prior checkpoint
+
+**Simulation framework.** `packages/simulation` contains a sophisticated testing infrastructure:
+- 200+ lending personas (commercial banks, SBA lenders, equipment finance, etc.)
+- Scenario definitions with step-by-step workflows
+- Capability gap detection: which features does each persona need?
+- Suite-level reporting: success rates by business model, priority improvements
+
+**Digital twin (Mambu).** `packages/twins/mambu-twin` faithfully replicates the Mambu loan accounting API surface, enabling testing of loan lifecycle operations against a known reference implementation.
+
+**Conformance test suite.** 180+ YAML-driven tests that verify API behavior against specification. Any implementation that passes the suite is conformant.
+
+### What's Missing
+
+**Sandbox and simulation are disconnected.** The sandbox system (core) and the simulation framework (packages/simulation) don't talk to each other. An agent can't say: "Run this scenario in a sandbox and show me what happens." These are two halves of the same primitive that haven't been joined.
+
+**No agent competence testing.** The simulation framework tests the *system's* capabilities, not the *agent's* capabilities. There's no mechanism for: "Before this AI agent handles real deals, prove it can succeed on 95% of test scenarios for SBA lending." Agent trust calibration is missing.
+
+**No "what-if" analysis as a first-class operation.** A credit analyst can't ask: "What happens to covenant compliance if revenue drops 20%?" and get a simulated answer. The sandbox infrastructure *could* support this, but there's no API or workflow for it.
+
+**No simulation-based onboarding.** New lender instances don't start with a simulated portfolio to prove the system handles their use case. Personas exist in the simulation framework but aren't used as onboarding templates.
+
+**No continuous agent evaluation.** Agents aren't re-tested as the system evolves. There's no regression testing for agent behavior — only for API behavior (conformance tests).
+
+### Alignment Score: 6/10
+
+### What Would Close the Gap
+
+**1. Wire sandbox into agent workflow:**
+```
+Agent receives task → creates sandbox fork → executes plan in sandbox →
+user reviews simulated outcome → approves → agent applies to production
+```
+
+**2. Agent competence certification:**
+```
+Agent registers → runs persona-specific test suite → receives certification:
+  "Agent X: certified for SBA_7a_lending, 847/850 scenarios passed,
+   last tested 2026-02-20, weaknesses: [multi-collateral facilities]"
+```
+
+**3. What-if API:**
+```
+POST /v1/deals/:id/simulate
+{
+  "scenario": "revenue_stress",
+  "parameters": { "revenue_change_pct": -20 },
+  "evaluate": ["covenant_compliance", "dscr", "liquidity_runway"]
+}
+→ Returns simulated outcomes without modifying real data
+```
+
+**4. Continuous agent evaluation loop:**
+```
+On every system update → re-run agent test suites →
+flag regressions → block deployment if critical scenarios fail
+```
+
+---
+
+## Synthesis: The Agentic Economy and Lending
+
+Warburg's four primitives describe the infrastructure for an economy where AI agents are first-class economic actors. Applied to lending, this vision looks like:
+
+| Primitive | Agentic Lending Vision |
+|---|---|
+| **Intention** | A borrower's agent broadcasts: "Need $2M equipment financing, manufacturing, Northeast US." Lender agents with matching appetite discover and respond. Deal formation happens through intention matching, not cold outreach. |
+| **Context** | Every decision in the deal carries verified context: audited financials with provenance, prior lending history with attestations, covenant compliance over time. Any agent entering the deal can trust the context because it's cryptographically verified, not just asserted. |
+| **Attribution** | When the deal closes, every contribution is provably attributed: which agent extracted the financials, which model scored the risk, which human approved the exception. Attribution enables accountability and fair compensation in multi-agent workflows. |
+| **Simulation** | Before any agent touches a real deal, it's been certified against hundreds of lending scenarios. The lender knows: "This agent handles covenant-heavy deals with 98% accuracy." The borrower knows: "This system has been tested against my exact business model." |
+
+---
+
+## Current Alignment Summary
+
+| Primitive | Score | Open LOS Strength | Critical Gap |
+|---|---|---|---|
+| **Intention** | 2/10 | Stage machine implies linear intention | No goal graph, no broadcasting, no matching |
+| **Context** | 7/10 | Excellent audit trail + AI conversations | Not verified, not portable, no provenance metadata |
+| **Attribution** | 8/10 | Strong actor tracking, immutable log | No cryptographic proof, no decision lineage |
+| **Simulation** | 6/10 | Sandbox + simulation framework exist | Disconnected from each other and from agents |
+
+---
+
+## Recommendations (Ordered by Impact and Feasibility)
+
+### Tier 1: Connect What Already Exists (Weeks)
+
+**1. Wire Sandbox ↔ Simulation ↔ Agent together.**
+This is the single highest-leverage change. All three pieces exist independently. Connecting them creates the Simulation primitive immediately:
+- Agent creates sandbox before executing multi-step plans
+- Simulation scenarios can run inside sandboxes
+- Users review simulated outcomes before committing to production
+
+**2. Add decision lineage to the audit trail.**
+Extend audit events with `input_refs` — explicit references to the data that informed each decision. This transforms the audit trail from a flat log into an attribution graph. Minimal schema change, massive increase in Attribution strength.
+
+**3. Compute and validate document checksums.**
+The `checksum` field already exists on the documents table. Actually compute SHA-256 on upload and validate on retrieval. Instant cryptographic attribution for documents.
+
+### Tier 2: Build the Missing Primitive (1-2 Months)
+
+**4. Introduce first-class Intentions.**
+Add an `intentions` table. Let both borrowers and lenders declare desired outcomes. Let agents decompose intentions into plans. Track progress toward stated goals. This is the biggest architectural gap and the biggest differentiator if built.
+
+**5. Add verification metadata to context.**
+Every data point gets provenance: where it came from, who asserted it, what confidence level, whether it's been independently verified. This transforms context from "data in a database" to "verified memory."
+
+**6. Agent competence certification.**
+Use the simulation framework to test agents, not just system capabilities. Produce certifications: "Agent X is certified for persona Y with Z% success rate." This is the trust layer that makes the Agentic Economy work.
+
+### Tier 3: Extend Across Boundaries (2-4 Months)
+
+**7. Hash-chained audit events with external anchoring.**
+Make the audit trail cryptographically verifiable by external parties. Each event hashes to the prior event; Merkle roots are periodically published. This makes Context and Attribution trustworthy across institutional boundaries.
+
+**8. Portable context format for syndication.**
+Define a standard serialization of deal context (with provenance and attribution) that can be shared between Open LOS instances or any conformant system. This makes Context portable.
+
+**9. Intention broadcasting protocol.**
+Let borrower agents broadcast intentions to a network of lender instances. This turns Open LOS from a single-institution tool into infrastructure for an intention-matching network.
+
+---
+
+## The Bottom Line
+
+Open LOS has built strong internal infrastructure for two of the four primitives (Context and Attribution) and has the raw components for a third (Simulation). The most critical gap is **Intention** — the system has no way to represent, track, or match what participants actually want.
+
+The deepest insight from Warburg's framework is that these primitives work **together as a system**: Intentions are matched based on verified Context, executed by agents with proven Simulation track records, and every contribution is recorded through Attribution. Open LOS's existing strengths — open source, API-first, AI-native, spec-as-tests — make it the ideal foundation for this architecture. No proprietary LOS could expose these primitives. An open lending protocol can.
+
+The single most impactful near-term action is **connecting the sandbox, simulation, and agent systems** — turning three disconnected components into a unified Simulation primitive. This alone would differentiate Open LOS from every incumbent in the market.
