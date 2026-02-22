@@ -486,6 +486,97 @@ export const depositAccounts = sqliteTable("deposit_accounts", {
   updated_at: text("updated_at"),
 });
 
+// ─── Approval Gate Tables ─────────────────────────────────────────────────────
+// Configurable approval gates that add friction to one-way-door operations.
+// Gates can require human approval, dual approval (maker-checker), or model review.
+// Configurable per tenant (org) and per loan line (facility type).
+
+export const approvalGatePolicies = sqliteTable("approval_gate_policies", {
+  id: text("id").primaryKey(),
+  tenant_id: text("tenant_id").notNull().default("default"),
+
+  // Scope: which loan lines / facility types this policy applies to.
+  // null = org-wide default; "term_loan", "revolver", "letter_of_credit" for product-specific
+  loan_line: text("loan_line"), // null = all
+
+  // The action this gate guards (one-way-door identifier)
+  action: text("action").notNull(),
+  // Valid actions:
+  //   "deal.stage_advance"       - advancing deal to next stage
+  //   "deal.stage_override"      - overriding stage guards
+  //   "loan.approve"             - approving a loan account
+  //   "loan.disburse"            - disbursing loan funds
+  //   "loan.write_off"           - writing off a loan
+  //   "loan.close"               - closing a loan account
+  //   "facility.approve"         - changing facility status to approved
+  //   "facility.delete"          - deleting a facility
+  //   "covenant.waive"           - creating a covenant waiver
+
+  // Gate mode determines the level of friction
+  mode: text("mode").notNull().default("human"),
+  // "auto"   - no approval needed (action proceeds immediately)
+  // "human"  - requires one human approval before action proceeds
+  // "dual"   - requires two separate approvers (maker-checker pattern)
+
+  // Optional: only gate when amount exceeds this threshold (minor units)
+  min_amount: integer("min_amount"),
+
+  // Optional: restrict which deal stages this gate applies to
+  stages: text("stages", { mode: "json" }), // e.g., ["underwriting", "closing"]
+
+  // Who can approve (role names)
+  approver_roles: text("approver_roles", { mode: "json" }), // e.g., ["credit_lead", "risk_manager"]
+
+  // Priority for resolving conflicts (higher = takes precedence)
+  priority: integer("priority").notNull().default(0),
+
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at"),
+});
+
+// Records of gate checks — every time a gate is evaluated, the result is logged
+export const approvalGateRecords = sqliteTable("approval_gate_records", {
+  id: text("id").primaryKey(),
+  tenant_id: text("tenant_id").notNull().default("default"),
+
+  // Which policy triggered this gate
+  policy_id: text("policy_id").notNull().references(() => approvalGatePolicies.id),
+
+  // Context
+  deal_id: text("deal_id").references(() => deals.id),
+  action: text("action").notNull(),
+  actor: text("actor").notNull(), // who initiated the action
+
+  // Gate resolution
+  status: text("status").notNull().default("pending"),
+  // "pending"  - waiting for approval
+  // "approved" - gate passed, action may proceed
+  // "rejected" - gate denied, action blocked
+  // "expired"  - timed out without decision
+  // "bypassed" - gate was bypassed (e.g., emergency override)
+
+  // The data snapshot at the time of the gate check
+  context_snapshot: text("context_snapshot", { mode: "json" }),
+  // e.g., { deal_stage: "closing", loan_amount: 500000, facility_type: "term_loan" }
+
+  // Approval chain (for dual mode, tracks both approvers)
+  approvals: text("approvals", { mode: "json" }),
+  // e.g., [{ actor: "alice", decision: "approved", rationale: "...", at: "..." }]
+
+  // Final decision metadata
+  decided_by: text("decided_by"),
+  decided_at: text("decided_at"),
+  decision_rationale: text("decision_rationale"),
+
+  // Expiry for time-bound gates
+  expires_at: text("expires_at"),
+
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at"),
+});
+
 // ─── Sandbox Version Control Tables ─────────────────────────────────────────────
 // Sandboxes are isolated workspaces for experimental/exploratory work.
 // Each sandbox has its own git branch for version control.

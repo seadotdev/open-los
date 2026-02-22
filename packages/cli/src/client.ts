@@ -469,6 +469,63 @@ export class LosClient {
   async listCommunications(dealId: string): Promise<{ communications: unknown[] }> {
     return this.request('GET', `/v1/deals/${dealId}/communications`);
   }
+
+  // === APPROVAL GATES ===
+
+  async createGatePolicy(data: Record<string, unknown>): Promise<{ id: string; [key: string]: unknown }> {
+    return this.request('POST', '/v1/gates/policies', { body: data });
+  }
+
+  async listGatePolicies(filters?: {
+    action?: string;
+    loan_line?: string;
+    enabled?: boolean;
+  }): Promise<{ policies: unknown[] }> {
+    const query: Record<string, string | undefined> = {};
+    if (filters?.action) query.action = filters.action;
+    if (filters?.loan_line) query.loan_line = filters.loan_line;
+    if (filters?.enabled !== undefined) query.enabled = String(filters.enabled);
+    return this.request('GET', '/v1/gates/policies', { query });
+  }
+
+  async getGatePolicy(policyId: string): Promise<unknown> {
+    return this.request('GET', `/v1/gates/policies/${policyId}`);
+  }
+
+  async updateGatePolicy(policyId: string, data: Record<string, unknown>): Promise<unknown> {
+    return this.request('PATCH', `/v1/gates/policies/${policyId}`, { body: data });
+  }
+
+  async deleteGatePolicy(policyId: string): Promise<void> {
+    return this.request('DELETE', `/v1/gates/policies/${policyId}`);
+  }
+
+  async listGateRecords(filters?: {
+    status?: string;
+    deal_id?: string;
+    action?: string;
+  }): Promise<{ records: unknown[] }> {
+    return this.request('GET', '/v1/gates/records', { query: filters });
+  }
+
+  async getGateRecord(recordId: string): Promise<unknown> {
+    return this.request('GET', `/v1/gates/records/${recordId}`);
+  }
+
+  async decideGate(recordId: string, data: {
+    decision: 'approved' | 'rejected';
+    rationale?: string;
+  }): Promise<unknown> {
+    return this.request('POST', `/v1/gates/records/${recordId}/decide`, { body: data });
+  }
+
+  async bypassGate(recordId: string, rationale: string): Promise<unknown> {
+    return this.request('POST', `/v1/gates/records/${recordId}/bypass`, { body: { rationale } });
+  }
+
+  async checkGate(action: string, context?: Record<string, unknown>): Promise<unknown> {
+    return this.request('POST', '/v1/gates/check', { body: { action, context: context || {} } });
+  }
 }
 
 // Singleton for convenience

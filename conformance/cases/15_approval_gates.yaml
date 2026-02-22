@@ -1,0 +1,666 @@
+version: "0.1.0"
+suite: approval_gates
+description: >
+  Approval gate specification tests. Gates add configurable friction to
+  one-way-door operations in the lending workflow. They support three modes:
+  "auto" (no friction), "human" (single approver), and "dual" (maker-checker).
+  Gates are configurable per org (tenant) and per loan line (facility type).
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 1: Gate Policy CRUD
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: gate_policy_create
+meta:
+  name: "Create a gate policy for loan disbursement"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_admin", role: "admin" }
+
+steps:
+  - id: create_policy
+    http:
+      actor: "u_admin"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "loan.disburse"
+        mode: "human"
+        min_amount: 10000000
+        approver_roles: ["credit_lead", "risk_manager"]
+    expect:
+      status: 201
+      json_path_assertions:
+        - { path: "$.action", eq: "loan.disburse" }
+        - { path: "$.mode", eq: "human" }
+        - { path: "$.min_amount", eq: 10000000 }
+        - { path: "$.enabled", eq: true }
+      save:
+        policy_id: "$.id"
+
+  - id: list_policies
+    http:
+      actor: "u_admin"
+      method: GET
+      path: /v1/gates/policies
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.policies.length", eq: 1 }
+        - { path: "$.policies[0].action", eq: "loan.disburse" }
+
+  - id: get_policy
+    http:
+      actor: "u_admin"
+      method: GET
+      path: /v1/gates/policies/${policy_id}
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.action", eq: "loan.disburse" }
+        - { path: "$.mode", eq: "human" }
+
+---
+test: gate_policy_per_loan_line
+meta:
+  name: "Create loan-line-specific gate policies"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_admin", role: "admin" }
+
+steps:
+  # Org-wide default: auto (no gate)
+  - id: create_org_default
+    http:
+      actor: "u_admin"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "loan.approve"
+        mode: "auto"
+        priority: 0
+    expect:
+      status: 201
+      save:
+        org_policy_id: "$.id"
+
+  # Term loan specific: dual approval required
+  - id: create_term_loan_policy
+    http:
+      actor: "u_admin"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "loan.approve"
+        mode: "dual"
+        loan_line: "term_loan"
+        priority: 10
+        approver_roles: ["credit_committee"]
+    expect:
+      status: 201
+      save:
+        term_policy_id: "$.id"
+
+  # Revolver: human approval
+  - id: create_revolver_policy
+    http:
+      actor: "u_admin"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "loan.approve"
+        mode: "human"
+        loan_line: "revolver"
+        priority: 10
+    expect:
+      status: 201
+
+  - id: list_all
+    http:
+      actor: "u_admin"
+      method: GET
+      path: /v1/gates/policies?action=loan.approve
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.policies.length", eq: 3 }
+
+---
+test: gate_policy_update_and_disable
+meta:
+  name: "Update and disable a gate policy"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_admin", role: "admin" }
+
+steps:
+  - id: create_policy
+    http:
+      actor: "u_admin"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "facility.delete"
+        mode: "human"
+    expect:
+      status: 201
+      save:
+        policy_id: "$.id"
+
+  - id: update_to_dual
+    http:
+      actor: "u_admin"
+      method: PATCH
+      path: /v1/gates/policies/${policy_id}
+      json:
+        mode: "dual"
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.mode", eq: "dual" }
+
+  - id: disable_policy
+    http:
+      actor: "u_admin"
+      method: DELETE
+      path: /v1/gates/policies/${policy_id}
+    expect:
+      status: 204
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 2: Gate Enforcement - Human Approval Flow
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: gate_blocks_stage_advance
+meta:
+  name: "Gate blocks stage advance until approved"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+      - { id: "u_manager", role: "credit_lead" }
+
+steps:
+  # Create a deal
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "GateCo Ltd"
+        jurisdiction: "US"
+        requested_amount: 50000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  # Set up a gate for stage advances
+  - id: create_gate
+    http:
+      actor: "u_manager"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "deal.stage_advance"
+        mode: "human"
+        approver_roles: ["credit_lead"]
+    expect:
+      status: 201
+
+  # Attempt to advance stage — should be blocked (428)
+  - id: attempt_advance
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+        rationale: "Ready for origination"
+    expect:
+      status: 428
+      json_path_assertions:
+        - { path: "$.error.code", eq: "GATE_REQUIRED" }
+        - { path: "$.error.details.action", eq: "deal.stage_advance" }
+        - { path: "$.error.details.mode", eq: "human" }
+      save:
+        gate_record_id: "$.error.details.gate_record_id"
+
+  # List pending gates
+  - id: list_pending
+    http:
+      actor: "u_manager"
+      method: GET
+      path: /v1/gates/records?status=pending
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.records.length", eq: 1 }
+        - { path: "$.records[0].action", eq: "deal.stage_advance" }
+
+  # Manager approves the gate
+  - id: approve_gate
+    http:
+      actor: "u_manager"
+      method: POST
+      path: /v1/gates/records/${gate_record_id}/decide
+      json:
+        decision: "approved"
+        rationale: "Deal meets origination criteria"
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.status", eq: "approved" }
+
+  # Now retry with the approved gate record ID
+  - id: advance_with_approval
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      headers:
+        X-Gate-Record-Id: "${gate_record_id}"
+      json:
+        to_stage: "origination"
+        rationale: "Ready for origination"
+    expect:
+      status: 200
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3: Maker-Checker (Dual Approval)
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: gate_dual_approval
+meta:
+  name: "Dual approval requires two separate approvers"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_officer", role: "loan_officer" }
+      - { id: "u_manager1", role: "credit_lead" }
+      - { id: "u_manager2", role: "risk_manager" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_officer"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "DualCo"
+        requested_amount: 100000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  # Set up dual approval gate for stage advances
+  - id: create_dual_gate
+    http:
+      actor: "u_manager1"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "deal.stage_advance"
+        mode: "dual"
+    expect:
+      status: 201
+
+  # Attempt advance — blocked
+  - id: attempt_advance
+    http:
+      actor: "u_officer"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 428
+      save:
+        gate_record_id: "$.error.details.gate_record_id"
+
+  # First approver
+  - id: first_approval
+    http:
+      actor: "u_manager1"
+      method: POST
+      path: /v1/gates/records/${gate_record_id}/decide
+      json:
+        decision: "approved"
+        rationale: "First approval"
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.status", eq: "pending" }
+
+  # Second approver
+  - id: second_approval
+    http:
+      actor: "u_manager2"
+      method: POST
+      path: /v1/gates/records/${gate_record_id}/decide
+      json:
+        decision: "approved"
+        rationale: "Second approval"
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.status", eq: "approved" }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 4: Gate Rejection and Self-Approval Prevention
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: gate_rejection_blocks_action
+meta:
+  name: "Rejected gate prevents action"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+      - { id: "u_manager", role: "credit_lead" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "RejectCo"
+        requested_amount: 25000000
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_gate
+    http:
+      actor: "u_manager"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "deal.stage_advance"
+        mode: "human"
+    expect:
+      status: 201
+
+  - id: trigger_gate
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 428
+      save:
+        gate_record_id: "$.error.details.gate_record_id"
+
+  - id: reject_gate
+    http:
+      actor: "u_manager"
+      method: POST
+      path: /v1/gates/records/${gate_record_id}/decide
+      json:
+        decision: "rejected"
+        rationale: "Missing financial statements"
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.status", eq: "rejected" }
+
+---
+test: gate_self_approval_prevented
+meta:
+  name: "Cannot approve your own gate request"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+      - { id: "u_manager", role: "credit_lead" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "SelfApproveCo"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_gate
+    http:
+      actor: "u_manager"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "deal.stage_advance"
+        mode: "human"
+    expect:
+      status: 201
+
+  - id: trigger_gate
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 428
+      save:
+        gate_record_id: "$.error.details.gate_record_id"
+
+  # Analyst tries to approve their own request — should fail
+  - id: self_approve_attempt
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/gates/records/${gate_record_id}/decide
+      json:
+        decision: "approved"
+        rationale: "I approve myself"
+    expect:
+      status: 403
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 5: Auto Mode and Amount Thresholds
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: gate_auto_mode_no_friction
+meta:
+  name: "Auto mode gate allows action without approval"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "AutoCo"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  # Create auto-mode gate — should add no friction
+  - id: create_auto_gate
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "deal.stage_advance"
+        mode: "auto"
+    expect:
+      status: 201
+
+  # Advance should succeed immediately
+  - id: advance_stage
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 6: Emergency Bypass
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+test: gate_emergency_bypass
+meta:
+  name: "Emergency bypass with required rationale"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+      - { id: "u_cro", role: "chief_risk_officer" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "BypassCo"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_gate
+    http:
+      actor: "u_cro"
+      method: POST
+      path: /v1/gates/policies
+      json:
+        action: "deal.stage_advance"
+        mode: "human"
+    expect:
+      status: 201
+
+  - id: trigger_gate
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 428
+      save:
+        gate_record_id: "$.error.details.gate_record_id"
+
+  # CRO bypasses the gate with rationale
+  - id: bypass_gate
+    http:
+      actor: "u_cro"
+      method: POST
+      path: /v1/gates/records/${gate_record_id}/bypass
+      json:
+        rationale: "Emergency: client deadline tomorrow, all docs verified offline"
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.status", eq: "bypassed" }
+
+  # Now the advance should work with the bypassed gate
+  - id: advance_with_bypass
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      headers:
+        X-Gate-Record-Id: "${gate_record_id}"
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+---
+test: gate_check_preflight
+meta:
+  name: "Pre-flight check reports whether gate applies"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_analyst", role: "analyst" }
+
+steps:
+  - id: check_no_policy
+    http:
+      actor: "u_analyst"
+      method: POST
+      path: /v1/gates/check
+      json:
+        action: "loan.disburse"
+        context: {}
+    expect:
+      status: 200
+      json_path_assertions:
+        - { path: "$.allowed", eq: true }
+        - { path: "$.mode", eq: "auto" }

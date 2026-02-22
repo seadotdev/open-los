@@ -349,6 +349,45 @@ export async function migrateDatabase(db: Database) {
     updated_at TEXT
   )`);
 
+  // ─── Approval Gate Tables ─────────────────────────────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS approval_gate_policies (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    loan_line TEXT,
+    action TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'human',
+    min_amount INTEGER,
+    stages TEXT,
+    approver_roles TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS approval_gate_records (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    policy_id TEXT NOT NULL REFERENCES approval_gate_policies(id),
+    deal_id TEXT REFERENCES deals(id),
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    context_snapshot TEXT,
+    approvals TEXT,
+    decided_by TEXT,
+    decided_at TEXT,
+    decision_rationale TEXT,
+    expires_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`);
+
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_gate_policies_tenant_action ON approval_gate_policies(tenant_id, action)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_gate_records_tenant_status ON approval_gate_records(tenant_id, status)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_gate_records_deal ON approval_gate_records(deal_id)`);
+
   // ─── Sandbox Tables ─────────────────────────────────────────────────────────
 
   await db.run(sql`CREATE TABLE IF NOT EXISTS sandboxes (

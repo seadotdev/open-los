@@ -38,7 +38,20 @@ export function covenantRoutes(ctx: AppContext) {
   app.post("/covenants/:covenantId/waivers", async (c) => {
     const covenantId = c.req.param("covenantId");
     const actor = c.req.header("X-Actor") ?? "system";
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
+    const gateRecordId = c.req.header("X-Gate-Record-Id");
     const body = await c.req.json();
+
+    // Gate check: covenant.waive — waivers are a one-way door risk decision
+    const gateContext = { deal_id: body.deal_id };
+    await ctx.approvalGateService.check(
+      "covenant.waive",
+      gateContext,
+      actor,
+      gateRecordId ?? undefined,
+      tenantId
+    );
+
     const result = await ctx.covenantService.createWaiver(covenantId, body, actor);
     return c.json(stripNulls(result), 201);
   });

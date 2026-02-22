@@ -25,6 +25,8 @@ export {
   sandboxes,
   checkpoints,
   sandboxEntities,
+  approvalGatePolicies,
+  approvalGateRecords,
 } from "./schema/tables.js";
 export { DealService } from "./services/deal.js";
 export type { CreateDealInput, UpdateDealInput } from "./services/deal.js";
@@ -86,7 +88,19 @@ export {
   ForbiddenError,
   OverrideRequiredError,
   ConflictError,
+  GateRequiredError,
 } from "./services/errors.js";
+export { ApprovalGateService, GATE_ACTIONS, GATE_MODES } from "./services/approval-gate.js";
+export type {
+  GateAction,
+  GateMode,
+  GateRecordStatus,
+  CreateGatePolicyInput,
+  UpdateGatePolicyInput,
+  GateCheckContext,
+  GateCheckResult,
+  ApprovalDecision,
+} from "./services/approval-gate.js";
 export { SandboxService, InMemoryGitProvider } from "./services/sandbox.js";
 export type {
   CreateSandboxInput,
