@@ -145,7 +145,7 @@ program
       models = (opts.model as string[]).map((id: string) => ({
         id,
         name: id.split("/").pop()?.replace(/:.*$/, "") || id,
-        maxTokens: 1024,
+        maxTokens: 4096,
         temperature: 0.1,
       }));
     } else {

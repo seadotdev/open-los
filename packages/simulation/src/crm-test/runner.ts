@@ -263,7 +263,14 @@ async function runTask(
     validationContent.toLowerCase().includes("i can't") ||
     validationContent.toLowerCase().includes("sorry, i")
   ) {
-    responseType = "refusal";
+    // Only classify as refusal if the response is short and lacks CLI commands.
+    // Longer responses that mention "cannot" in the context of gap identification
+    // (e.g., "the CLI cannot model vendor loans") are not refusals.
+    const hasCliCommands = /\blos\s+\w+/i.test(validationContent);
+    const isShort = validationContent.trim().length < 300;
+    if (!hasCliCommands || isShort) {
+      responseType = "refusal";
+    }
   }
 
   // Run validators against the CLI text (whether generated directly or from tool calls)
