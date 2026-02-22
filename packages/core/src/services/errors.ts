@@ -52,3 +52,9 @@ export class ConflictError extends AppError {
     super("CONFLICT", message, 409, details);
   }
 }
+
+export class GateRequiredError extends AppError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super("GATE_REQUIRED", message, 428, details);
+  }
+}

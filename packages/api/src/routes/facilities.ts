@@ -35,7 +35,22 @@ export function facilityRoutes(ctx: AppContext & { facilityService: FacilityServ
     const dealId = c.req.param("dealId");
     const facilityId = c.req.param("facilityId");
     const actor = c.req.header("X-Actor") ?? "system";
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
+    const gateRecordId = c.req.header("X-Gate-Record-Id");
     const body = await c.req.json();
+
+    // Gate check: if status is being changed to "approved", check facility.approve gate
+    if (body.status === "approved") {
+      const gateContext = await ctx.approvalGateService.buildFacilityContext(dealId, facilityId);
+      await ctx.approvalGateService.check(
+        "facility.approve",
+        gateContext,
+        actor,
+        gateRecordId ?? undefined,
+        tenantId
+      );
+    }
+
     const result = await ctx.facilityService.update(dealId, facilityId, body, actor);
     return c.json(stripNulls(result), 200);
   });
@@ -45,6 +60,19 @@ export function facilityRoutes(ctx: AppContext & { facilityService: FacilityServ
     const dealId = c.req.param("dealId");
     const facilityId = c.req.param("facilityId");
     const actor = c.req.header("X-Actor") ?? "system";
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
+    const gateRecordId = c.req.header("X-Gate-Record-Id");
+
+    // Gate check: facility.delete
+    const gateContext = await ctx.approvalGateService.buildFacilityContext(dealId, facilityId);
+    await ctx.approvalGateService.check(
+      "facility.delete",
+      gateContext,
+      actor,
+      gateRecordId ?? undefined,
+      tenantId
+    );
+
     const result = await ctx.facilityService.delete(dealId, facilityId, actor);
     return c.json(stripNulls(result), 200);
   });

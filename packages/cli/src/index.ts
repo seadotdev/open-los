@@ -32,6 +32,7 @@ import { registerAuditCommands } from './commands/audit.js';
 import { registerTemplateCommands } from './commands/templates.js';
 import { registerEmailCommands } from './commands/email.js';
 import { registerDepositCommands } from './commands/deposits.js';
+import { registerGateCommands } from './commands/gates.js';
 import { registerShadowCommands } from '@open-los/shadow-cli';
 
 type CommandRegistrar = (program: Command) => void;
@@ -42,6 +43,7 @@ const foundationalCommandRegistrars: CommandRegistrar[] = [
   registerRelationshipCommands,
   registerDocumentCommands,
   registerAuditCommands,
+  registerGateCommands,
 ];
 
 const underwritingCommandRegistrars: CommandRegistrar[] = [

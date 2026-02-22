@@ -88,7 +88,28 @@ export function loanRoutes(ctx: AppContext) {
     const actor = c.req.header("X-Actor") ?? "system";
     const tenantId = c.req.header("X-Tenant-Id") ?? "default";
     const idempotencyKey = c.req.header("Idempotency-Key");
+    const gateRecordId = c.req.header("X-Gate-Record-Id");
     const body = await c.req.json();
+
+    // ─── Gate checks for one-way-door transaction types ─────────────────
+    const GATED_TYPES: Record<string, string> = {
+      APPROVAL: "loan.approve",
+      DISBURSEMENT: "loan.disburse",
+      WRITE_OFF: "loan.write_off",
+      CLOSE: "loan.close",
+    };
+
+    const gateAction = GATED_TYPES[body.type];
+    if (gateAction) {
+      const gateContext = await ctx.approvalGateService.buildLoanContext(loanId, tenantId);
+      await ctx.approvalGateService.check(
+        gateAction,
+        gateContext,
+        actor,
+        gateRecordId ?? undefined,
+        tenantId
+      );
+    }
 
     let result;
 
