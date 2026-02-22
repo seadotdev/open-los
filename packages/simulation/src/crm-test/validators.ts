@@ -44,6 +44,16 @@ export function runValidator(
       return { ...base, ...validateIdReference(response, validator.config) };
     case "regex_match":
       return { ...base, ...validateRegexMatch(response, validator.config) };
+    case "identifies_gap":
+      return { ...base, ...validateIdentifiesGap(response, validator.config) };
+    case "creative_solution":
+      return { ...base, ...validateCreativeSolution(response, validator.config) };
+    case "multi_entity_graph":
+      return { ...base, ...validateMultiEntityGraph(response, validator.config) };
+    case "risk_awareness":
+      return { ...base, ...validateRiskAwareness(response, validator.config) };
+    case "scratchpad_quality":
+      return { ...base, ...validateScratchpadQuality(response, validator.config) };
     default:
       return {
         ...base,
@@ -502,6 +512,280 @@ function normalizeResponse(response: string): string {
       .map((line) => line.trim())
       .join("\n")
   );
+}
+
+/**
+ * Check that the response identifies a gap/limitation in the CLI
+ */
+function validateIdentifiesGap(
+  response: string,
+  config: Record<string, unknown>
+): ValidatorReturn {
+  const gapKeywords = (config.gapKeywords as string[]) || [];
+  const normalized = normalizeResponse(response);
+  const lower = normalized.toLowerCase();
+
+  // Look for explicit gap markers
+  const hasGapMarker =
+    lower.includes("# gap:") ||
+    lower.includes("[gap]") ||
+    lower.includes("not supported") ||
+    lower.includes("no command for") ||
+    lower.includes("doesn't support") ||
+    lower.includes("does not support") ||
+    lower.includes("no way to") ||
+    lower.includes("limitation") ||
+    lower.includes("workaround") ||
+    lower.includes("not available") ||
+    lower.includes("missing feature") ||
+    lower.includes("cli cannot") ||
+    lower.includes("cli doesn't") ||
+    lower.includes("manually");
+
+  // Check for specific gap keywords
+  const foundKeywords = gapKeywords.filter((kw) =>
+    lower.includes(kw.toLowerCase())
+  );
+
+  if (gapKeywords.length > 0) {
+    const ratio = foundKeywords.length / gapKeywords.length;
+    if (ratio >= 0.5 || hasGapMarker) {
+      return {
+        passed: true,
+        score: Math.min(1.0, ratio + (hasGapMarker ? 0.3 : 0)),
+        details: `Identified gaps: ${foundKeywords.join(", ")}${hasGapMarker ? " (with explicit marker)" : ""}`,
+      };
+    }
+    if (ratio > 0) {
+      return {
+        passed: false,
+        score: ratio * 0.7,
+        details: `Partial gap identification: ${foundKeywords.join(", ")}`,
+      };
+    }
+  } else if (hasGapMarker) {
+    return {
+      passed: true,
+      score: 1.0,
+      details: "Identified CLI limitation",
+    };
+  }
+
+  return {
+    passed: false,
+    score: 0,
+    details: "Did not identify any CLI limitations or gaps",
+  };
+}
+
+/**
+ * Check that the response provides a creative workaround (script, manual step, etc.)
+ */
+function validateCreativeSolution(
+  response: string,
+  config: Record<string, unknown>
+): ValidatorReturn {
+  const solutionPatterns = (config.solutionPatterns as string[]) || [];
+  const normalized = normalizeResponse(response);
+  const lower = normalized.toLowerCase();
+
+  // Look for script blocks or creative output
+  const hasScript =
+    /\[SCRIPT\][\s\S]*?\[\/SCRIPT\]/i.test(normalized) ||
+    /```(bash|sh|python|js|javascript|jq|typescript)[\s\S]*?```/i.test(response) ||
+    /\b(curl|jq|python|node|bash|awk|sed)\b.*\|/i.test(normalized) ||
+    /\bfor\b.*\bdo\b/i.test(normalized) ||
+    /\bwhile\b.*\bdo\b/i.test(normalized);
+
+  const hasWorkaround =
+    lower.includes("workaround") ||
+    lower.includes("alternative") ||
+    lower.includes("instead") ||
+    lower.includes("custom") ||
+    lower.includes("script") ||
+    lower.includes("manual") ||
+    lower.includes("pipe") ||
+    lower.includes("combine") ||
+    lower.includes("chain");
+
+  // Check specific solution patterns
+  const foundPatterns = solutionPatterns.filter((p) =>
+    new RegExp(p, "i").test(normalized)
+  );
+
+  const score =
+    (hasScript ? 0.5 : 0) +
+    (hasWorkaround ? 0.2 : 0) +
+    (foundPatterns.length > 0
+      ? 0.3 * (foundPatterns.length / Math.max(solutionPatterns.length, 1))
+      : 0);
+
+  if (score >= 0.5) {
+    return {
+      passed: true,
+      score: Math.min(1.0, score),
+      details: `Creative solution found: ${[
+        hasScript ? "script" : null,
+        hasWorkaround ? "workaround described" : null,
+        foundPatterns.length > 0 ? `patterns: ${foundPatterns.join(", ")}` : null,
+      ]
+        .filter(Boolean)
+        .join("; ")}`,
+    };
+  }
+
+  return {
+    passed: false,
+    score,
+    details: hasWorkaround
+      ? "Mentions workaround but no concrete solution provided"
+      : "No creative solution or workaround provided",
+  };
+}
+
+/**
+ * Check that the response correctly models a multi-entity corporate graph
+ */
+function validateMultiEntityGraph(
+  response: string,
+  config: Record<string, unknown>
+): ValidatorReturn {
+  const expectedEntities = (config.expectedEntities as string[]) || [];
+  const expectedRelationships = (config.expectedRelationships as string[]) || [];
+  const normalized = normalizeResponse(response);
+
+  // Count entity create commands
+  const entityCreates = (normalized.match(/los entity create/g) || []).length;
+
+  // Count relationship create commands
+  const relCreates = (normalized.match(/los relationship create/g) || []).length;
+
+  // Check for expected entities by name/type
+  const foundEntities = expectedEntities.filter((e) =>
+    normalized.toLowerCase().includes(e.toLowerCase())
+  );
+
+  // Check for expected relationship types
+  const foundRels = expectedRelationships.filter((r) =>
+    normalized.toLowerCase().includes(r.toLowerCase())
+  );
+
+  const entityScore =
+    expectedEntities.length > 0
+      ? foundEntities.length / expectedEntities.length
+      : entityCreates >= 2
+        ? 1.0
+        : 0;
+
+  const relScore =
+    expectedRelationships.length > 0
+      ? foundRels.length / expectedRelationships.length
+      : relCreates >= 1
+        ? 1.0
+        : 0;
+
+  const score = entityScore * 0.5 + relScore * 0.5;
+
+  return {
+    passed: score >= 0.6,
+    score,
+    details: `Entities: ${foundEntities.length}/${expectedEntities.length || entityCreates} | ` +
+      `Relationships: ${foundRels.length}/${expectedRelationships.length || relCreates}`,
+  };
+}
+
+/**
+ * Check that the response flags risks and concerns
+ */
+function validateRiskAwareness(
+  response: string,
+  config: Record<string, unknown>
+): ValidatorReturn {
+  const riskKeywords = (config.riskKeywords as string[]) || [];
+  const lower = normalizeResponse(response).toLowerCase();
+
+  // General risk-awareness signals
+  const generalSignals = [
+    "risk", "caution", "warning", "note:", "important:", "careful",
+    "conflict of interest", "due diligence", "compliance", "regulatory",
+    "aml", "kyc", "sanctions", "fraud", "exposure", "concentration",
+    "collateral", "security", "guarantee", "covenant", "breach",
+    "default", "cross-default", "material adverse", "change of control",
+  ];
+
+  const foundGeneral = generalSignals.filter((s) => lower.includes(s));
+  const foundSpecific = riskKeywords.filter((kw) =>
+    lower.includes(kw.toLowerCase())
+  );
+
+  if (riskKeywords.length > 0) {
+    const specificRatio = foundSpecific.length / riskKeywords.length;
+    const score = specificRatio * 0.7 + (foundGeneral.length > 0 ? 0.3 : 0);
+    return {
+      passed: score >= 0.5,
+      score: Math.min(1.0, score),
+      details: `Risk flags: ${foundSpecific.join(", ") || "none"} | General signals: ${foundGeneral.length}`,
+    };
+  }
+
+  const score = Math.min(1.0, foundGeneral.length * 0.2);
+  return {
+    passed: score >= 0.4,
+    score,
+    details: `General risk signals: ${foundGeneral.join(", ") || "none"}`,
+  };
+}
+
+/**
+ * Check that the response uses scratchpad/notes to reason through complexity
+ */
+function validateScratchpadQuality(
+  response: string,
+  config: Record<string, unknown>
+): ValidatorReturn {
+  const expectedTopics = (config.expectedTopics as string[]) || [];
+  const normalized = normalizeResponse(response);
+  const lower = normalized.toLowerCase();
+
+  // Look for scratchpad markers
+  const hasScratchpad =
+    /\[SCRATCHPAD\][\s\S]*?\[\/SCRATCHPAD\]/i.test(normalized) ||
+    /^# NOTE:/m.test(normalized) ||
+    /^## /m.test(normalized) ||
+    /^- /m.test(normalized) ||
+    /^Step \d/m.test(normalized) ||
+    /^Phase \d/m.test(normalized);
+
+  // Look for structured reasoning
+  const hasStructure =
+    /\d+\.\s/m.test(normalized) || // numbered list
+    /^- /m.test(normalized) || // bullet points
+    /first.*then|before.*after|step \d/i.test(lower); // sequencing words
+
+  // Check for expected analysis topics
+  const foundTopics = expectedTopics.filter((t) =>
+    lower.includes(t.toLowerCase())
+  );
+  const topicRatio =
+    expectedTopics.length > 0 ? foundTopics.length / expectedTopics.length : 0;
+
+  // Check for analysis depth — looking for multi-line reasoning
+  const lines = normalized.split("\n").filter((l) => l.trim().length > 0);
+  const nonCommandLines = lines.filter((l) => !l.trim().startsWith("los "));
+  const depthScore = Math.min(1.0, nonCommandLines.length / 5); // 5+ lines of reasoning = full marks
+
+  const score =
+    (hasScratchpad ? 0.2 : 0) +
+    (hasStructure ? 0.1 : 0) +
+    topicRatio * 0.4 +
+    depthScore * 0.3;
+
+  return {
+    passed: score >= 0.5,
+    score: Math.min(1.0, score),
+    details: `Scratchpad: ${hasScratchpad ? "yes" : "no"} | Structure: ${hasStructure ? "yes" : "no"} | ` +
+      `Topics: ${foundTopics.length}/${expectedTopics.length} | Depth: ${nonCommandLines.length} lines`,
+  };
 }
 
 /**

@@ -42,7 +42,11 @@ export type TaskCategory =
   | "monitoring"
   | "multi_step_workflow"
   | "error_recovery"
-  | "defaults_understanding";
+  | "defaults_understanding"
+  | "complex_deal_structure"
+  | "refinancing"
+  | "lender_buyout"
+  | "gap_bridging";
 
 /** Validator that checks a specific aspect of the LLM's response */
 export interface Validator {
@@ -66,7 +70,12 @@ export type ValidatorType =
   | "uses_defaults"          // Correctly relies on defaults rather than specifying everything
   | "error_handling"         // Correctly handles/suggests error recovery
   | "id_reference"           // Correctly references IDs from previous outputs
-  | "regex_match";           // Custom regex match
+  | "regex_match"            // Custom regex match
+  | "identifies_gap"         // Recognises when the CLI can't handle something
+  | "creative_solution"      // Provides a workaround (script, manual step, etc.)
+  | "multi_entity_graph"     // Entity relationships are properly modelled
+  | "risk_awareness"         // Flags risks, conflicts, or missing safeguards
+  | "scratchpad_quality";    // Uses scratchpad notes to reason through complexity
 
 /** Result of running a single validator */
 export interface ValidatorResult {

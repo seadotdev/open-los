@@ -24,6 +24,10 @@ const CATEGORY_LABELS: Record<TaskCategory, string> = {
   multi_step_workflow: "Multi-Step Workflows",
   error_recovery: "Error Recovery",
   defaults_understanding: "Defaults Understanding",
+  complex_deal_structure: "Complex Structures",
+  refinancing: "Refinancing",
+  lender_buyout: "Lender Buyout",
+  gap_bridging: "Gap Bridging",
 };
 
 /**
