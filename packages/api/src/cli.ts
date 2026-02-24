@@ -20,6 +20,7 @@ import {
   SandboxService,
   InMemoryGitProvider,
   DepositAccountService,
+  ApprovalGateService,
 } from "@open-los/core";
 import { createApp } from "./server.js";
 import type { AppContext } from "./server.js";
@@ -54,6 +55,7 @@ async function main() {
   const loanAccountService = new LoanAccountService(db, auditService, clock);
   const facilityService = new FacilityService(db, auditService, clock);
   const depositAccountService = new DepositAccountService(db, clock);
+  const approvalGateService = new ApprovalGateService(db, auditService, clock);
   const gitProvider = new InMemoryGitProvider();
   const sandboxService = new SandboxService(db, auditService, gitProvider, clock);
 
@@ -75,6 +77,7 @@ async function main() {
     facilityService,
     sandboxService,
     depositAccountService,
+    approvalGateService,
     getNow: clock,
     users: new Map(),
   };
