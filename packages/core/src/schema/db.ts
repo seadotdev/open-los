@@ -5,8 +5,23 @@ import * as schema from "./tables.js";
 
 export type Database = ReturnType<typeof createDatabase>;
 
+function normalizeDatabaseUrl(url: string) {
+  const normalized = url.trim();
+  if (
+    normalized === ":memory:" ||
+    normalized === "file::memory:" ||
+    normalized === "file::memory:?cache=shared"
+  ) {
+    // libsql can isolate in-memory state per connection in this runtime, which
+    // causes migrated tables to disappear during request handling. Use a local
+    // file-backed database for the default path so all handlers share one schema.
+    return "file:./openlos-default.db";
+  }
+  return normalized;
+}
+
 export function createDatabase(url = ":memory:") {
-  const client = createClient({ url });
+  const client = createClient({ url: normalizeDatabaseUrl(url) });
   const db = drizzle(client, { schema });
   return db;
 }
