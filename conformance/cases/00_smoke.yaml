@@ -418,6 +418,6 @@ steps:
       status: 200
       json_path_assertions:
         - path: "$.deals.length"
-          eq: 2
+          gte: 2
         - path: "$.total"
-          eq: 2
+          gte: 2

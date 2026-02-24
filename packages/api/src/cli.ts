@@ -58,7 +58,6 @@ async function main() {
   const approvalGateService = new ApprovalGateService(db, auditService, clock);
   const gitProvider = new InMemoryGitProvider();
   const sandboxService = new SandboxService(db, auditService, gitProvider, clock);
-  const approvalGateService = new ApprovalGateService(db, auditService, clock);
 
   const ctx: AppContext = {
     db,
