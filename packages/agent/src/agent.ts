@@ -39,6 +39,7 @@ interface OpenLOSServices {
   loans: LoanService
   monitoring: MonitoringService
   audit: AuditService
+  approvals: ApprovalsService
 }
 
 interface LLMClient {
@@ -527,7 +528,7 @@ export class LoanOriginationAgent {
       }
     `
 
-    const recommendation = await this.llm.structured<DealStatus['recommendation']>(prompt, {
+    const recommendation = await this.llm.structured<NonNullable<DealStatus['recommendation']>>(prompt, {
       type: 'object',
       properties: {
         type: { type: 'string' },

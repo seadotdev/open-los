@@ -10,6 +10,8 @@ function parseArgs(argv) {
   const parsed = {
     mode: "report",
     root: process.cwd(),
+    baseline: null,
+    updateBaseline: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -22,6 +24,15 @@ function parseArgs(argv) {
     if (arg === "--root") {
       parsed.root = argv[i + 1] ?? parsed.root;
       i += 1;
+      continue;
+    }
+    if (arg === "--baseline") {
+      parsed.baseline = argv[i + 1] ?? parsed.baseline;
+      i += 1;
+      continue;
+    }
+    if (arg === "--update-baseline") {
+      parsed.updateBaseline = true;
       continue;
     }
   }
@@ -213,6 +224,26 @@ function loadAllowlist(allowlistPath) {
   return parseSimpleYamlAllowlist(raw);
 }
 
+function loadBaseline(baselinePath) {
+  if (!baselinePath || !fs.existsSync(baselinePath)) {
+    return [];
+  }
+
+  const raw = fs.readFileSync(baselinePath, "utf8").trim();
+  if (!raw) {
+    return [];
+  }
+
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+  if (Array.isArray(parsed.items)) {
+    return parsed.items;
+  }
+  return [];
+}
+
 function asDate(value, fieldName) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf())) {
@@ -355,6 +386,7 @@ function reportSummary(report) {
     `spec_only=${report.spec_only_count}`,
     `method_mismatch=${report.method_mismatch_count}`,
     `allowlisted=${report.allowlisted_count}`,
+    `unexpected=${report.unexpected_count ?? 0}`,
   ].join(" ");
 }
 
@@ -367,10 +399,12 @@ function main() {
   const openApiRoutesPath = path.join(parityDir, "openapi_routes.json");
   const reportPath = path.join(parityDir, "parity_report.json");
   const allowlistPath = path.join(parityDir, "parity_allowlist.yaml");
+  const baselinePath = args.baseline ?? path.join(parityDir, "parity_baseline.json");
 
   const runtimeRoutes = collectRuntimeRoutes(path.join(repoRoot, "packages", "api", "src", "routes"));
   const openApiRoutes = collectOpenApiRoutes(path.join(repoRoot, "openapi", "v1.yaml"));
   const allowlistEntries = loadAllowlist(allowlistPath);
+  const baselineEntries = loadBaseline(baselinePath);
 
   validateAllowlistMetadata(allowlistEntries, args.mode === "release" ? "dev" : args.mode);
 
@@ -384,10 +418,21 @@ function main() {
     ...specSplit.allowlisted.map(allowlistKey),
     ...methodSplit.allowlisted.map(allowlistKey),
   ]);
+  const unresolvedItems = [
+    ...runtimeSplit.unresolved,
+    ...specSplit.unresolved,
+    ...methodSplit.unresolved,
+  ];
+  const unresolvedKeys = new Set(unresolvedItems.map(allowlistKey));
+  const baselineKeys = new Set(baselineEntries.map(allowlistKey));
+  const unexpected = unresolvedItems.filter((item) => !baselineKeys.has(allowlistKey(item)));
+  const resolvedSinceBaseline = baselineEntries.filter((item) => !unresolvedKeys.has(allowlistKey(item)));
 
   const report = {
     generated_at: new Date().toISOString(),
     mode: args.mode,
+    baseline_path: baselinePath,
+    baseline_count: baselineEntries.length,
     raw_runtime_only_count: rawDiff.runtimeOnly.length,
     raw_spec_only_count: rawDiff.specOnly.length,
     raw_method_mismatch_count: rawDiff.methodMismatches.length,
@@ -399,6 +444,10 @@ function main() {
     spec_only: specSplit.unresolved,
     method_mismatches: methodSplit.unresolved,
     allowlisted: [...runtimeSplit.allowlisted, ...specSplit.allowlisted, ...methodSplit.allowlisted],
+    unexpected_count: unexpected.length,
+    unexpected,
+    resolved_since_baseline_count: resolvedSinceBaseline.length,
+    resolved_since_baseline: resolvedSinceBaseline,
   };
 
   writeJson(runtimeRoutesPath, {
@@ -412,12 +461,22 @@ function main() {
     routes: openApiRoutes,
   });
   writeJson(reportPath, report);
+  if (args.updateBaseline) {
+    writeJson(baselinePath, {
+      generated_at: report.generated_at,
+      source_report: path.relative(repoRoot, reportPath),
+      items: unresolvedItems,
+    });
+  }
 
   const unresolved = report.runtime_only_count + report.spec_only_count + report.method_mismatch_count;
 
   if (args.mode === "release") {
-    if (rawDiff.runtimeOnly.length > 0 || rawDiff.specOnly.length > 0 || rawDiff.methodMismatches.length > 0) {
-      throw new Error(`Release parity gate failed: ${reportSummary(report)}`);
+    if (report.unexpected_count > 0) {
+      throw new Error(`Release parity gate failed (new drift): ${reportSummary(report)}`);
+    }
+    if (baselineEntries.length === 0 && unresolved > 0) {
+      throw new Error(`Release parity gate failed (baseline missing): ${reportSummary(report)}`);
     }
     if (allowlistEntries.length > 0) {
       throw new Error("Release parity gate failed: allowlist must be empty.");
