@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-02-23T20:24:19.010Z",
-  "total_routes": 31,
+  "generated_at": "2026-02-24T08:40:56.424Z",
+  "total_routes": 32,
   "routes": [
     {
       "method": "POST",
@@ -61,6 +61,10 @@
     {
       "method": "POST",
       "path": "/v1/deals/{dealId}/documents"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/evaluate"
     },
     {
       "method": "POST",
