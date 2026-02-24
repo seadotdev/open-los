@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/underwriting-run.schema.json",
+  "title": "UnderwritingRun",
+  "description": "The canonical evaluation artifact produced by an underwriting run. Benchmark produces case + labels.gold, LOS produces inputs/trace/decision, Simulator consumes decision + policy and writes labels.outcome + scores.",
+  "type": "object",
+  "required": ["run_id", "timestamp_utc", "case", "policy", "decision"],
+  "properties": {
+    "run_id": { "type": "string", "format": "uuid" },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "case": { "$ref": "#/$defs/RunCase" },
+    "policy": { "$ref": "#/$defs/RunPolicy" },
+    "inputs": { "$ref": "#/$defs/RunInputs" },
+    "trace": { "$ref": "#/$defs/RunTrace" },
+    "decision": { "$ref": "#/$defs/RunDecision" },
+    "labels": { "$ref": "#/$defs/RunLabels" },
+    "scores": { "$ref": "#/$defs/RunScores" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "RunCase": {
+      "type": "object",
+      "description": "What is being underwritten.",
+      "required": ["case_id", "source", "segment"],
+      "properties": {
+        "case_id": { "type": "string" },
+        "source": {
+          "type": "string",
+          "enum": ["benchmark", "simulator", "production"]
+        },
+        "segment": { "type": "string", "description": "e.g. smb_term_loan" },
+        "jurisdiction": { "type": "string", "default": "US" },
+        "currency": { "type": "string", "default": "USD", "pattern": "^[A-Z]{3}$" },
+        "requested_amount": { "type": "number", "minimum": 0 },
+        "requested_tenor_months": { "type": "integer", "minimum": 1, "maximum": 360 },
+        "requested_purpose": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "RunPolicy": {
+      "type": "object",
+      "description": "The underwriting policy/config used for this evaluation.",
+      "required": ["policy_id", "model"],
+      "properties": {
+        "policy_id": { "type": "string" },
+        "model": { "type": "string", "description": "LLM model identifier" },
+        "prompt_hash": { "type": "string" },
+        "tools_version": { "type": "string" },
+        "params": {
+          "type": "object",
+          "description": "Policy parameters (target yield, max loan, sector limits, persona, etc.)",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExtractedFinancials": {
+      "type": "object",
+      "description": "Key financials extracted from documents.",
+      "properties": {
+        "revenue_ttm": { "type": "number" },
+        "gross_margin": { "type": "number", "description": "Decimal fraction (0.25 = 25%)" },
+        "ebitda_ttm": { "type": "number" },
+        "net_income": { "type": "number" },
+        "annual_expenses": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ExtractedBanking": {
+      "type": "object",
+      "description": "Key banking metrics extracted from statements.",
+      "properties": {
+        "avg_daily_balance_90d": { "type": "number" },
+        "nsf_12m": { "type": "integer", "minimum": 0, "description": "Non-sufficient funds events in 12 months" },
+        "total_deposits_12m": { "type": "number" },
+        "total_withdrawals_12m": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ExtractedBusiness": {
+      "type": "object",
+      "description": "Key business attributes.",
+      "properties": {
+        "industry": { "type": "string" },
+        "years_trading": { "type": "integer", "minimum": 0 },
+        "employee_count": { "type": "integer", "minimum": 0 },
+        "company_name": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "RunInputs": {
+      "type": "object",
+      "description": "What the underwriter saw — documents and extracted data.",
+      "properties": {
+        "raw_documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["doc_id", "type"],
+            "properties": {
+              "doc_id": { "type": "string" },
+              "type": { "type": "string" },
+              "bytes_sha": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "financials": { "$ref": "#/$defs/ExtractedFinancials" },
+        "banking": { "$ref": "#/$defs/ExtractedBanking" },
+        "business": { "$ref": "#/$defs/ExtractedBusiness" },
+        "missing_info": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "TraceStep": {
+      "type": "object",
+      "description": "A single step in the underwriting trace.",
+      "required": ["t", "type"],
+      "properties": {
+        "t": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp" },
+        "type": {
+          "type": "string",
+          "enum": ["tool_call", "note", "reasoning", "doc_request"]
+        },
+        "name": { "type": "string" },
+        "args": { "type": "object", "additionalProperties": true },
+        "result": { "type": "object", "additionalProperties": true },
+        "content": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "TraceCost": {
+      "type": "object",
+      "description": "Token and cost metrics for the trace.",
+      "properties": {
+        "tokens_in": { "type": "integer", "minimum": 0 },
+        "tokens_out": { "type": "integer", "minimum": 0 },
+        "estimated_cost_usd": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "RunTrace": {
+      "type": "object",
+      "description": "Full execution trace of the underwriting run.",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TraceStep" }
+        },
+        "latency_ms": { "type": "integer", "minimum": 0 },
+        "cost": { "$ref": "#/$defs/TraceCost" }
+      },
+      "additionalProperties": false
+    },
+    "DecisionTerms": {
+      "type": "object",
+      "description": "Proposed loan terms. APR is expressed as a decimal (0.095 = 9.5%).",
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "apr": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.55,
+          "description": "Annual percentage rate as decimal. 0.095 = 9.5%. Max 55%."
+        },
+        "tenor_months": { "type": "integer", "minimum": 1, "maximum": 360 },
+        "fees": { "type": "object", "additionalProperties": { "type": "number" } }
+      },
+      "additionalProperties": false
+    },
+    "DecisionRationale": {
+      "type": "object",
+      "description": "Structured rationale for the underwriting decision.",
+      "properties": {
+        "summary": { "type": "string" },
+        "key_factors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "what_would_change": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "RunDecision": {
+      "type": "object",
+      "description": "The underwriting decision.",
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["approve", "decline", "counter", "refer", "pending"]
+        },
+        "risk_grade": { "type": "string" },
+        "prob_default_12m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Predicted probability of default within 12 months"
+        },
+        "terms": { "$ref": "#/$defs/DecisionTerms" },
+        "conditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "covenants": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "rationale": { "$ref": "#/$defs/DecisionRationale" },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "RunLabels": {
+      "type": "object",
+      "description": "Ground truth labels — filled by benchmark or by real outcome data.",
+      "properties": {
+        "available": { "type": "boolean", "default": false },
+        "gold": {
+          "type": ["object", "null"],
+          "description": "Benchmark gold label (true_outcome, correct_action, months_before_default)",
+          "properties": {
+            "true_outcome": { "type": "string", "enum": ["good", "bad", "fraud"] },
+            "correct_action": { "type": "string", "enum": ["approve", "decline"] },
+            "months_before_default": { "type": ["integer", "null"] }
+          },
+          "additionalProperties": true
+        },
+        "outcome": {
+          "type": ["object", "null"],
+          "description": "Real or simulated loan outcome",
+          "properties": {
+            "defaulted": { "type": "boolean" },
+            "was_fraud": { "type": "boolean" },
+            "months_paid": { "type": "integer", "minimum": 0 },
+            "interest_paid": { "type": "number" },
+            "principal_lost": { "type": "number", "minimum": 0 },
+            "principal_recovered": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "RunScores": {
+      "type": "object",
+      "description": "Scorecard results — filled by the evaluation harness.",
+      "properties": {
+        "gates": { "type": ["object", "null"], "additionalProperties": true },
+        "uw_quality": { "type": ["object", "null"], "additionalProperties": true },
+        "business": { "type": ["object", "null"], "additionalProperties": true },
+        "overall": { "type": ["object", "null"], "additionalProperties": true }
+      },
+      "additionalProperties": false
+    }
+  }
+}

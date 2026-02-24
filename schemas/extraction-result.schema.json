@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/extraction-result.schema.json",
+  "title": "ExtractionResult",
+  "description": "Structured financial extraction output from document analysis. Contains 8 core fields aligned with UW Bench ground truth.",
+  "type": "object",
+  "required": ["extraction_id", "company_name", "period"],
+  "properties": {
+    "extraction_id": { "type": "string", "format": "uuid" },
+    "deal_id": { "type": "string", "format": "uuid" },
+    "company_name": { "type": "string", "minLength": 1 },
+    "period": { "type": "string", "description": "Financial period e.g. 2025-03, FY2024" },
+    "source_document_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "References to source documents used for extraction"
+    },
+    "fields": { "$ref": "#/$defs/ExtractionFields" },
+    "evidence": { "$ref": "#/$defs/ExtractionEvidence" },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string", "description": "LLM model used for extraction" },
+        "latency_ms": { "type": "integer", "minimum": 0 },
+        "tokens_used": { "type": "integer", "minimum": 0 },
+        "case_id": { "type": "string", "description": "SIM case ID for cross-referencing" },
+        "policy_id": { "type": "string", "description": "SIM policy ID for cross-referencing" },
+        "run_id": { "type": "string", "description": "SIM run ID for cross-referencing" }
+      },
+      "additionalProperties": true
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ExtractionFields": {
+      "type": "object",
+      "description": "The 8 core extraction fields matching UW Bench ground truth. All values in the company's reporting currency (typically GBP). Null means the field was not extracted.",
+      "properties": {
+        "Revenue": { "type": ["number", "null"], "description": "Total revenue / turnover" },
+        "Cogs": { "type": ["number", "null"], "description": "Cost of goods sold" },
+        "Ebitda": { "type": ["number", "null"], "description": "Earnings before interest, taxes, depreciation and amortization (may be analyst-adjusted)" },
+        "NetIncome": { "type": ["number", "null"], "description": "Net income / profit after tax" },
+        "CashAtBank": { "type": ["number", "null"], "description": "Cash and bank balances" },
+        "TradeDebtors": { "type": ["number", "null"], "description": "Trade debtors / accounts receivable" },
+        "TradeCreditors": { "type": ["number", "null"], "description": "Trade creditors / accounts payable" },
+        "Stock": { "type": ["number", "null"], "description": "Inventory / stock" }
+      },
+      "additionalProperties": false
+    },
+    "FieldEvidence": {
+      "type": "object",
+      "description": "Evidence for a single extracted field value.",
+      "properties": {
+        "period_column": { "type": "string", "description": "Which column/period was used" },
+        "unit_scale": {
+          "type": "string",
+          "enum": ["full", "thousands", "millions"],
+          "description": "Unit scale of the source value"
+        },
+        "source_sheet": { "type": "string" },
+        "source_row": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "ExtractionEvidence": {
+      "type": "object",
+      "description": "Per-field evidence for the extraction.",
+      "properties": {
+        "Revenue": { "$ref": "#/$defs/FieldEvidence" },
+        "Cogs": { "$ref": "#/$defs/FieldEvidence" },
+        "Ebitda": { "$ref": "#/$defs/FieldEvidence" },
+        "NetIncome": { "$ref": "#/$defs/FieldEvidence" },
+        "CashAtBank": { "$ref": "#/$defs/FieldEvidence" },
+        "TradeDebtors": { "$ref": "#/$defs/FieldEvidence" },
+        "TradeCreditors": { "$ref": "#/$defs/FieldEvidence" },
+        "Stock": { "$ref": "#/$defs/FieldEvidence" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "run_id": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp_utc": "2026-02-23T14:30:00Z",
+  "case": {
+    "case_id": "borrower_001",
+    "source": "simulator",
+    "segment": "technology_term_loan",
+    "jurisdiction": "US",
+    "currency": "USD",
+    "requested_amount": 250000,
+    "requested_tenor_months": 24,
+    "requested_purpose": "Equipment purchase and working capital"
+  },
+  "policy": {
+    "policy_id": "p_velocity_deepseek_chat",
+    "model": "deepseek/deepseek-chat-v3-0324",
+    "prompt_hash": "a1b2c3d4",
+    "tools_version": "1.0.0",
+    "params": {
+      "target_yield_pct": 12.0,
+      "max_single_loan": 500000,
+      "total_capital": 2000000,
+      "sector_limits": { "Technology": 0.25, "Healthcare": 0.20 },
+      "persona": "aggressive growth lender"
+    }
+  },
+  "inputs": {
+    "raw_documents": [
+      { "doc_id": "bank_statements_12m", "type": "bank_statement", "bytes_sha": "a1b2c3d4e5f6" },
+      { "doc_id": "quarterly_income", "type": "pnl", "bytes_sha": "f6e5d4c3b2a1" }
+    ],
+    "financials": {
+      "revenue_ttm": 1200000,
+      "gross_margin": 0.35,
+      "ebitda_ttm": 180000,
+      "net_income": 120000,
+      "annual_expenses": 1080000
+    },
+    "banking": {
+      "avg_daily_balance_90d": 85000,
+      "nsf_12m": 0,
+      "total_deposits_12m": 1250000,
+      "total_withdrawals_12m": 1100000
+    },
+    "business": {
+      "industry": "Technology",
+      "years_trading": 5,
+      "employee_count": 25,
+      "company_name": "TechCorp Solutions"
+    },
+    "missing_info": []
+  },
+  "trace": {
+    "steps": [
+      {
+        "t": "2026-02-23T14:30:01Z",
+        "type": "tool_call",
+        "name": "run_bash",
+        "args": { "command": "jq 'length' /data/bank_statements.json" },
+        "result": { "stdout": "12" },
+        "content": ""
+      },
+      {
+        "t": "2026-02-23T14:30:03Z",
+        "type": "reasoning",
+        "name": "",
+        "args": {},
+        "result": {},
+        "content": "Revenue trend is stable, margins healthy, no anomalies detected"
+      }
+    ],
+    "latency_ms": 4200,
+    "cost": {
+      "tokens_in": 15000,
+      "tokens_out": 800,
+      "estimated_cost_usd": 0.0045
+    }
+  },
+  "decision": {
+    "action": "approve",
+    "risk_grade": "B",
+    "prob_default_12m": 0.05,
+    "terms": {
+      "amount": 250000,
+      "apr": 0.095,
+      "tenor_months": 24,
+      "fees": { "origination": 2500 }
+    },
+    "conditions": ["Quarterly financial reporting required"],
+    "covenants": ["DSCR >= 1.2x"],
+    "rationale": {
+      "summary": "Strong revenue trajectory with healthy margins supports the loan request. Business has 5 years of operating history and stable bank balances.",
+      "key_factors": [
+        "Stable quarterly revenue around $300K",
+        "35% gross margin with positive trend",
+        "No NSF events in 12 months",
+        "Technology sector within concentration limits"
+      ],
+      "what_would_change": [
+        "Declining revenue in next quarter",
+        "Loss of major customer (>30% revenue)",
+        "Sector concentration breach"
+      ]
+    },
+    "confidence": 0.85
+  },
+  "labels": {
+    "available": true,
+    "gold": {
+      "true_outcome": "good",
+      "correct_action": "approve",
+      "months_before_default": null
+    },
+    "outcome": {
+      "defaulted": false,
+      "was_fraud": false,
+      "months_paid": 24,
+      "interest_paid": 24750,
+      "principal_lost": 0,
+      "principal_recovered": 250000
+    }
+  },
+  "scores": {
+    "gates": {
+      "passed": true,
+      "failures": [],
+      "results": [
+        { "gate_id": "compliance_action", "passed": true, "detail": "" },
+        { "gate_id": "sanity_apr", "passed": true, "detail": "" }
+      ]
+    },
+    "uw_quality": {
+      "decision_correct": true,
+      "decision_acc": 1.0,
+      "terms_mae": {},
+      "calibration": {},
+      "explainability": 1.0
+    },
+    "business": {
+      "exp_profit": 24750,
+      "loss_rate": 0,
+      "approval_rate": 1.0,
+      "ops": { "latency_ms": 4200, "tokens_in": 15000, "tokens_out": 800 }
+    },
+    "overall": {
+      "score": 82.5,
+      "weights": { "gates": "hard", "uw": 0.55, "biz": 0.35, "ops": 0.10 }
+    }
+  }
+}
