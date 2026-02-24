@@ -7,7 +7,7 @@ import { handleDealCreate, handleDealGet, handleDealUpdate, handleDealList } fro
 import { handleStageTransition, handleStageHistory } from "./tools/stages.js";
 import { handleDocumentUpload, handleDocumentList } from "./tools/documents.js";
 import { handleSpreadCreate, handleSpreadGetRatios } from "./tools/spreads.js";
-import { handleEvaluate } from "./tools/underwriting.js";
+import { handleEvaluate, handleUnderwrite } from "./tools/underwriting.js";
 import { handleRelationshipCreate } from "./tools/relationships.js";
 import { handleCovenantCreate, handleCovenantList, handleCovenantTest } from "./tools/covenants.js";
 import { handleFacilityCreate, handleFacilityList } from "./tools/facilities.js";
@@ -307,6 +307,62 @@ export async function startCli(args: string[]) {
           provider: opts.provider,
           target_yield_pct: opts.targetYield,
           max_single_loan: opts.maxLoan,
+          actor: g.actor,
+          tenant_id: g.tenant_id,
+        }),
+        g.format
+      );
+    });
+
+  // --- Standalone underwrite (no deal required) ---
+  program
+    .command("underwrite")
+    .description("Run standalone underwriting — no deal/entity/spread required")
+    .requiredOption("--dossier <json>", "Financial dossier as JSON string or @file path")
+    .option("--policy <json>", "Policy as JSON string or @file path")
+    .option("--provider <provider>", "anthropic or openrouter")
+    .option("--model <model>", "LLM model to use")
+    .option("--persona <text>", "Lender persona")
+    .option("--target-yield <pct>", "Target yield %", parseFloat)
+    .option("--max-loan <amount>", "Max single loan $", parseFloat)
+    .action(async (opts) => {
+      const g = globals();
+
+      // Parse dossier — supports inline JSON or @filepath
+      let dossierJson: string;
+      if (opts.dossier.startsWith("@")) {
+        const fs = await import("node:fs");
+        dossierJson = fs.readFileSync(opts.dossier.slice(1), "utf-8");
+      } else {
+        dossierJson = opts.dossier;
+      }
+      const dossier = JSON.parse(dossierJson);
+
+      // Parse optional policy
+      let policyData: Record<string, unknown> = {};
+      if (opts.policy) {
+        let policyJson: string;
+        if (opts.policy.startsWith("@")) {
+          const fs = await import("node:fs");
+          policyJson = fs.readFileSync(opts.policy.slice(1), "utf-8");
+        } else {
+          policyJson = opts.policy;
+        }
+        policyData = JSON.parse(policyJson);
+      }
+
+      output(
+        await handleUnderwrite(ctx, {
+          dossier,
+          provider: opts.provider,
+          model: opts.model,
+          persona: opts.persona ?? (policyData.persona as string),
+          target_yield_pct: opts.targetYield ?? (policyData.target_yield_pct as number),
+          max_single_loan: opts.maxLoan ?? (policyData.max_single_loan as number),
+          total_capital: policyData.total_capital as number,
+          sector_limits: policyData.sector_limits as Record<string, number>,
+          existing_portfolio: policyData.existing_portfolio as any,
+          policy_id: policyData.policy_id as string,
           actor: g.actor,
           tenant_id: g.tenant_id,
         }),

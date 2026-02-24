@@ -7,7 +7,10 @@ import {
   LoanOriginationAgent,
   createLLMClient,
   createAgentServices,
+  buildUnderwritingPrompt,
+  evaluateStandalone,
 } from "@open-los/agent";
+import type { UnderwritePolicy, ModelConfig } from "@open-los/agent";
 import type {
   UnderwritingRun,
   RunCase,
@@ -16,9 +19,56 @@ import type {
   DecisionTerms,
   DecisionRationale,
   RunTrace,
+  FinancialDossier,
 } from "@open-los/core";
 
-// Schema
+// Re-export for CLI
+export { buildUnderwritingPrompt, evaluateStandalone } from "@open-los/agent";
+export type { UnderwritePolicy, ModelConfig } from "@open-los/agent";
+
+// Schema for dossier (used in both evaluate and standalone underwrite)
+const quarterlyIncomeSchema = z.object({
+  quarter: z.string(),
+  revenue: z.number(),
+  expenses: z.number(),
+  gross_profit: z.number().optional(),
+  gross_margin_pct: z.number().optional(),
+  net_income: z.number(),
+  net_margin_pct: z.number().optional(),
+});
+
+const transactionSchema = z.object({
+  date: z.string(),
+  description: z.string(),
+  amount: z.number(),
+});
+
+const monthlyStatementSchema = z.object({
+  month: z.string(),
+  opening_balance: z.number(),
+  ending_balance: z.number(),
+  deposits: z.array(transactionSchema).optional(),
+  withdrawals: z.array(transactionSchema).optional(),
+  total_deposits: z.number().optional(),
+  total_withdrawals: z.number().optional(),
+});
+
+const dossierSchema = z.object({
+  company_name: z.string(),
+  sector: z.string(),
+  years_in_business: z.number().optional(),
+  annual_revenue: z.number(),
+  annual_expenses: z.number().optional(),
+  net_income: z.number().optional(),
+  employee_count: z.number().optional(),
+  bank_statements: z.array(monthlyStatementSchema).optional(),
+  quarterly_income: z.array(quarterlyIncomeSchema).optional(),
+  narrative: z.string().optional(),
+  loan_request_amount: z.number(),
+  loan_purpose: z.string().optional(),
+});
+
+// Schema — evaluate (deal-scoped, with optional dossier)
 
 export const evaluateSchema = {
   deal_id: z.string(),
@@ -38,11 +88,34 @@ export const evaluateSchema = {
   max_single_loan: z.number().optional().default(500000),
   total_capital: z.number().optional(),
   sector_limits: z.record(z.number()).optional(),
+  dossier: dossierSchema.optional().describe("Inline financial dossier — when provided, uses rich prompt builder instead of fetching from spreads/docs"),
   tenant_id: z.string().optional().default("default"),
   actor: z.string().optional().default("mcp-agent"),
 };
 
-// Handler
+// Schema — standalone underwrite (no deal required)
+
+export const underwriteSchema = {
+  dossier: dossierSchema.describe("Full borrower financial dossier"),
+  policy_id: z.string().optional(),
+  model: z.string().optional(),
+  persona: z.string().optional(),
+  target_yield_pct: z.number().optional().default(10.0),
+  max_single_loan: z.number().optional().default(500000),
+  total_capital: z.number().optional(),
+  sector_limits: z.record(z.number()).optional(),
+  existing_portfolio: z.array(z.object({
+    borrower_name: z.string(),
+    sector: z.string(),
+    remaining_balance: z.number(),
+    interest_rate: z.number(),
+  })).optional(),
+  provider: z.enum(["anthropic", "openrouter"]).optional(),
+  tenant_id: z.string().optional().default("default"),
+  actor: z.string().optional().default("mcp-agent"),
+};
+
+// Handler — evaluate (deal-scoped)
 
 export async function handleEvaluate(
   ctx: ServiceContext,
@@ -57,6 +130,7 @@ export async function handleEvaluate(
     max_single_loan?: number;
     total_capital?: number;
     sector_limits?: Record<string, number>;
+    dossier?: FinancialDossier;
     tenant_id?: string;
     actor?: string;
   }
@@ -66,12 +140,13 @@ export async function handleEvaluate(
     mode = "rules_only",
     tenant_id: tenantId = "default",
     actor = "mcp-agent",
+    dossier,
     ...policyParams
   } = params;
 
   const startTime = Date.now();
 
-  const policy = {
+  const policy: UnderwritePolicy = {
     policy_id: policyParams.policy_id,
     model: policyParams.model,
     persona: policyParams.persona,
@@ -80,6 +155,40 @@ export async function handleEvaluate(
     total_capital: policyParams.total_capital,
     sector_limits: policyParams.sector_limits,
   };
+
+  // --- Full Mode with inline dossier: use rich prompt builder ---
+  if (mode === "full" && dossier) {
+    const provider = (params.provider ??
+      ctx.llmConfig?.defaultProvider ??
+      "anthropic") as "anthropic" | "openrouter";
+    const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+
+    if (apiKey) {
+      const response = await evaluateStandalone(ctx as any, policy, dossier, provider);
+      response.case.case_id = dealId;
+
+      await ctx.auditService.record({
+        deal_id: dealId,
+        type: "DEAL_UPDATED",
+        actor,
+        timestamp: new Date().toISOString(),
+        changes: [
+          {
+            field: "evaluation",
+            before: null,
+            after: {
+              run_id: response.run_id,
+              action: response.decision.action,
+              risk_grade: response.decision.risk_grade,
+              mode: "full_dossier",
+            },
+          },
+        ],
+      });
+
+      return response;
+    }
+  }
 
   // --- Full Agent Mode ---
   if (mode === "full") {
@@ -354,6 +463,48 @@ export async function handleEvaluate(
   return response;
 }
 
+// Handler — standalone underwrite (no deal)
+
+export async function handleUnderwrite(
+  ctx: ServiceContext,
+  params: {
+    dossier: FinancialDossier;
+    policy_id?: string;
+    model?: string;
+    persona?: string;
+    target_yield_pct?: number;
+    max_single_loan?: number;
+    total_capital?: number;
+    sector_limits?: Record<string, number>;
+    existing_portfolio?: Array<{
+      borrower_name: string;
+      sector: string;
+      remaining_balance: number;
+      interest_rate: number;
+    }>;
+    provider?: string;
+    tenant_id?: string;
+    actor?: string;
+  }
+): Promise<UnderwritingRun> {
+  const provider = (params.provider ??
+    ctx.llmConfig?.defaultProvider ??
+    "anthropic") as "anthropic" | "openrouter";
+
+  const policy: UnderwritePolicy = {
+    policy_id: params.policy_id,
+    model: params.model,
+    persona: params.persona,
+    target_yield_pct: params.target_yield_pct ?? 10.0,
+    max_single_loan: params.max_single_loan ?? 500000,
+    total_capital: params.total_capital,
+    sector_limits: params.sector_limits,
+    existing_portfolio: params.existing_portfolio,
+  };
+
+  return evaluateStandalone(ctx as any, policy, params.dossier, provider);
+}
+
 // MCP registration
 
 export function registerUnderwritingTools(
@@ -362,11 +513,24 @@ export function registerUnderwritingTools(
 ) {
   server.tool(
     "evaluate",
-    "Run underwriting evaluation on a deal. Returns decision (approve/decline/refer/counter), risk grade, terms, and rationale. mode=rules_only is deterministic; mode=full uses LLM agent.",
+    "Run underwriting evaluation on a deal. Returns decision (approve/decline/refer/counter), risk grade, terms, and rationale. mode=rules_only is deterministic; mode=full uses LLM agent. Optionally accepts inline dossier for rich prompt-based evaluation.",
     evaluateSchema,
     async (params) => {
       try {
         return toolResult(await handleEvaluate(ctx, params));
+      } catch (err) {
+        return toolError(err);
+      }
+    }
+  );
+
+  server.tool(
+    "underwrite",
+    "Standalone underwriting — no deal/entity/spread required. Accepts a financial dossier + policy inline, builds a rich prompt, calls the LLM, and returns an UnderwritingRun with decision.",
+    underwriteSchema,
+    async (params) => {
+      try {
+        return toolResult(await handleUnderwrite(ctx, params));
       } catch (err) {
         return toolError(err);
       }

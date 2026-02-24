@@ -2,7 +2,14 @@ import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import type { AppContext } from "../server.js";
 import { stripNulls } from "../utils.js";
-import { LoanOriginationAgent, createLLMClient, createAgentServices } from "@open-los/agent";
+import {
+  LoanOriginationAgent,
+  createLLMClient,
+  createAgentServices,
+  buildUnderwritingPrompt,
+  evaluateStandalone,
+} from "@open-los/agent";
+import type { UnderwritePolicy, ModelConfig } from "@open-los/agent";
 import type {
   LineItem,
   CreateSpreadInput,
@@ -15,6 +22,7 @@ import type {
   DecisionRationale,
   RunTrace,
   TraceCost,
+  FinancialDossier,
 } from "@open-los/core";
 
 interface CreateSpreadJsonBody {
@@ -27,6 +35,11 @@ interface CreateSpreadJsonBody {
 interface ParsedLineItem extends LineItem {
   period?: string;
 }
+
+
+// ---------------------------------------------------------------------------
+// CSV parsing
+// ---------------------------------------------------------------------------
 
 function parseCSV(csvContent: string, filterPeriod?: string): LineItem[] {
   const lines = csvContent.trim().split("\n");
@@ -67,6 +80,10 @@ function parseCSV(csvContent: string, filterPeriod?: string): LineItem[] {
   // Remove period field from results
   return items.map(({ period, ...rest }) => rest);
 }
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
 
 export function underwritingRoutes(ctx: AppContext) {
   const app = new Hono();
@@ -144,10 +161,9 @@ export function underwritingRoutes(ctx: AppContext) {
 
   // POST /v1/deals/:dealId/evaluate - trigger underwriting evaluation
   //
-  // This is the key integration endpoint for the SIM → LOS loop.
-  // Currently implements the "thin agent" (rules-based) path.
-  // The full LLM agent path will be wired when agent.ts service
-  // interfaces are connected to real implementations.
+  // When dossier is provided AND mode=full, uses the rich prompt builder
+  // (buildUnderwritingPrompt) for LLM-quality underwriting.
+  // Otherwise falls through to agent evaluate or rules-only as before.
   app.post("/deals/:dealId/evaluate", async (c) => {
     const dealId = c.req.param("dealId");
     const actor = c.req.header("X-Actor") ?? "system";
@@ -155,24 +171,46 @@ export function underwritingRoutes(ctx: AppContext) {
     const startTime = Date.now();
 
     const body = await c.req.json() as {
-      policy?: {
-        policy_id?: string;
-        model?: string;
-        persona?: string;
-        target_yield_pct?: number;
-        max_single_loan?: number;
-        total_capital?: number;
-        sector_limits?: Record<string, number>;
-        params?: Record<string, unknown>;
-      };
+      policy?: UnderwritePolicy;
       provider?: string;
       mode?: "full" | "rules_only";
+      dossier?: FinancialDossier;
+      models?: ModelConfig;
     };
 
     const mode = body.mode ?? "rules_only";
     const policy = body.policy ?? {};
 
-    // --- Full Agent Mode: LLM-powered evaluation ---
+    // --- Full Mode with inline dossier: use rich prompt builder ---
+    if (mode === "full" && body.dossier) {
+      const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
+      const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+
+      if (apiKey) {
+        try {
+          const response = await evaluateStandalone(ctx, policy, body.dossier, provider, body.models);
+          // Override case_id with the deal ID
+          response.case.case_id = dealId;
+
+          await ctx.auditService.record({
+            deal_id: dealId,
+            type: "DEAL_UPDATED",
+            actor,
+            timestamp: new Date().toISOString(),
+            changes: [
+              { field: "evaluation", before: null, after: { run_id: response.run_id, action: response.decision.action, risk_grade: response.decision.risk_grade, mode: "full_dossier" } },
+            ],
+          });
+
+          return c.json(stripNulls(response), 200);
+        } catch (err: any) {
+          console.warn(`[evaluate] dossier-based evaluation failed: ${err?.message}, falling back`);
+          // Fall through to agent or rules mode
+        }
+      }
+    }
+
+    // --- Full Agent Mode: LLM-powered evaluation (existing path) ---
     if (mode === "full") {
       const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
       const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
@@ -422,6 +460,31 @@ export function underwritingRoutes(ctx: AppContext) {
       ],
     });
 
+    return c.json(stripNulls(response), 200);
+  });
+
+  // POST /v1/underwrite - standalone underwriting (no deal required)
+  //
+  // Accepts a dossier + policy inline, builds a rich prompt, calls the LLM,
+  // and returns an UnderwritingRun. This is the "underwrite only" entry point.
+  app.post("/underwrite", async (c) => {
+    const actor = c.req.header("X-Actor") ?? "system";
+
+    const body = await c.req.json() as {
+      dossier: FinancialDossier;
+      policy?: UnderwritePolicy;
+      provider?: string;
+      models?: ModelConfig;
+    };
+
+    if (!body.dossier) {
+      return c.json({ error: "dossier is required" }, 400);
+    }
+
+    const policy = body.policy ?? {};
+    const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
+
+    const response = await evaluateStandalone(ctx, policy, body.dossier, provider, body.models);
     return c.json(stripNulls(response), 200);
   });
 
