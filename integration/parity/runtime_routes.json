@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-02-23T20:24:19.010Z",
-  "total_routes": 85,
+  "generated_at": "2026-02-24T08:40:56.424Z",
+  "total_routes": 86,
   "routes": [
     {
       "method": "POST",
@@ -86,6 +86,11 @@
       "method": "POST",
       "path": "/v1/deals/{dealId}/documents",
       "source_file": "documents.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/evaluate",
+      "source_file": "underwriting.ts"
     },
     {
       "method": "GET",
