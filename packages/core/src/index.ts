@@ -1,3 +1,33 @@
+export type {
+  UnderwritingRun,
+  RunCase,
+  RunPolicy,
+  RunInputs,
+  RunTrace,
+  RunDecision,
+  RunLabels,
+  RunScores,
+  DecisionTerms,
+  DecisionRationale,
+  DecisionAction,
+  TraceStep,
+  TraceCost,
+  ExtractedFinancials,
+  ExtractedBanking,
+  ExtractedBusiness,
+  BorrowerDossier,
+  FinancialDossier,
+  QuarterlyIncome,
+  MonthlyStatement,
+  Transaction,
+  ExtractionResult,
+  ExtractionFields,
+  ExtractionEvidence,
+  FieldEvidence,
+  LosEventEnvelope,
+  LosEventType,
+  LosEventMetadata,
+} from "./schema/contracts.js";
 export { createDatabase, migrateDatabase } from "./schema/db.js";
 export type { Database } from "./schema/db.js";
 export {

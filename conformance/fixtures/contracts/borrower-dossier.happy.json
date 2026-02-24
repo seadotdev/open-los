@@ -1,0 +1,54 @@
+{
+  "borrower_id": "borrower_001",
+  "true_outcome": "good",
+  "months_before_default": null,
+  "dossier": {
+    "company_name": "TechCorp Solutions",
+    "sector": "Technology",
+    "years_in_business": 5,
+    "annual_revenue": 1200000,
+    "annual_expenses": 1080000,
+    "net_income": 120000,
+    "employee_count": 25,
+    "bank_statements": [
+      {
+        "month": "2025-01",
+        "opening_balance": 80000,
+        "deposits": [
+          { "date": "2025-01-05", "description": "Client payment - Acme Corp", "amount": 45000 },
+          { "date": "2025-01-15", "description": "Client payment - Beta Inc", "amount": 55000 }
+        ],
+        "withdrawals": [
+          { "date": "2025-01-10", "description": "Payroll", "amount": 40000 },
+          { "date": "2025-01-20", "description": "Office rent", "amount": 8000 }
+        ],
+        "ending_balance": 132000,
+        "total_deposits": 100000,
+        "total_withdrawals": 48000
+      }
+    ],
+    "quarterly_income": [
+      {
+        "quarter": "Q1 2025",
+        "revenue": 290000,
+        "expenses": 260000,
+        "gross_profit": 101500,
+        "gross_margin_pct": 35.0,
+        "net_income": 30000,
+        "net_margin_pct": 10.3
+      },
+      {
+        "quarter": "Q2 2025",
+        "revenue": 305000,
+        "expenses": 268000,
+        "gross_profit": 106750,
+        "gross_margin_pct": 35.0,
+        "net_income": 37000,
+        "net_margin_pct": 12.1
+      }
+    ],
+    "narrative": "TechCorp Solutions is a 5-year-old SaaS company serving mid-market businesses with project management tools. Revenue has grown 15% YoY with strong retention rates.",
+    "loan_request_amount": 250000,
+    "loan_purpose": "Equipment purchase and working capital"
+  }
+}

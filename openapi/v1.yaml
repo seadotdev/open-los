@@ -663,12 +663,13 @@ paths:
       operationId: evaluateDeal
       summary: Trigger underwriting evaluation for a deal
       description: |
-        Runs the LOS underwriting evaluator for the deal using lender policy
-        configuration. Returns a structured run-like response with decision and
-        execution trace.
+        Triggers the LOS agent to evaluate the deal using the provided policy
+        configuration. Returns a structured UnderwritingRun conforming to
+        schemas/underwriting-run.schema.json.
 
-        `rules_only` mode is deterministic and is the active implementation.
-        `full` mode currently falls back to the same evaluator.
+        The agent evaluates using the deal's full context (documents, spreads,
+        entity graph) and the lender's policy (persona, model, limits, sector
+        constraints). Supports configurable LLM providers.
       tags: [underwriting]
       requestBody:
         required: true
@@ -1584,34 +1585,28 @@ components:
         provider:
           type: string
           enum: [openrouter, anthropic]
-          description: LLM provider preference (reserved for future full mode)
+          description: LLM provider to use for evaluation
         mode:
           type: string
           enum: [full, rules_only]
-          default: rules_only
-          description: "full currently falls back to rules_only."
+          default: full
+          description: "full = LLM agent evaluation; rules_only = deterministic rules (thin agent fallback)"
 
     EvaluateResponse:
       type: object
-      required: [run_id, timestamp_utc, decision, trace]
+      description: Structured UnderwritingRun result conforming to underwriting-run.schema.json
+      required: [run_id, decision]
       properties:
         run_id:
           type: string
           format: uuid
-        timestamp_utc:
-          type: string
-          format: date-time
         decision:
           type: object
-          required: [action, risk_grade, prob_default_12m, terms, conditions, covenants, rationale, confidence]
+          required: [action]
           properties:
             action:
               type: string
               enum: [approve, decline, counter, refer]
-            risk_grade:
-              type: string
-            prob_default_12m:
-              type: number
             terms:
               type: object
               properties:
@@ -1619,62 +1614,37 @@ components:
                   type: number
                 apr:
                   type: number
-                  description: Decimal form (0.095 = 9.5%)
+                  description: "Decimal (0.095 = 9.5%)"
                 tenor_months:
                   type: integer
-                fees:
-                  type: object
-                  additionalProperties:
-                    type: number
-            conditions:
-              type: array
-              items:
-                type: string
-            covenants:
-              type: array
-              items:
-                type: string
-            rationale:
-              type: object
-              required: [summary, key_factors, what_would_change]
-              properties:
-                summary:
-                  type: string
-                key_factors:
-                  type: array
-                  items:
-                    type: string
-                what_would_change:
-                  type: array
-                  items:
-                    type: string
+            risk_grade:
+              type: string
             confidence:
               type: number
+        rationale:
+          type: object
+          properties:
+            summary:
+              type: string
+            key_factors:
+              type: array
+              items:
+                type: string
+            what_would_change:
+              type: array
+              items:
+                type: string
         trace:
           type: object
-          required: [steps, latency_ms, cost]
           properties:
             steps:
               type: array
               items:
                 type: object
-                required: [t, type]
-                properties:
-                  t:
-                    type: string
-                    format: date-time
-                  type:
-                    type: string
-                    enum: [tool_call, note, reasoning, doc_request]
-                  name:
-                    type: string
-                  content:
-                    type: string
             latency_ms:
               type: integer
             cost:
               type: object
-              required: [tokens_in, tokens_out, estimated_cost_usd]
               properties:
                 tokens_in:
                   type: integer

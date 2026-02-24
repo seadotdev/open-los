@@ -1,0 +1,20 @@
+{
+  "event_id": "990e8400-e29b-41d4-a716-446655440004",
+  "event_type": "evaluation.completed",
+  "deal_id": "550e8400-e29b-41d4-a716-446655440000",
+  "tenant_id": "lender_velocity",
+  "actor": "agent:underwriting",
+  "timestamp": "2026-02-23T14:30:05Z",
+  "sequence": 7,
+  "payload": {
+    "decision": "approve",
+    "risk_grade": "B",
+    "latency_ms": 4200,
+    "model": "deepseek/deepseek-chat-v3-0324"
+  },
+  "metadata": {
+    "run_id": "550e8400-e29b-41d4-a716-446655440000",
+    "correlation_id": "sim-run-2026-02-23-001",
+    "source": "simulation"
+  }
+}
