@@ -1,0 +1,95 @@
+{
+  "run_id": "660e8400-e29b-41d4-a716-446655440001",
+  "timestamp_utc": "2026-02-23T15:00:00Z",
+  "case": {
+    "case_id": "borrower_fraud_001",
+    "source": "simulator",
+    "segment": "retail_term_loan",
+    "jurisdiction": "US",
+    "currency": "USD",
+    "requested_amount": 100000,
+    "requested_tenor_months": 12,
+    "requested_purpose": "Inventory expansion"
+  },
+  "policy": {
+    "policy_id": "p_heritage_qwen",
+    "model": "qwen/qwen3-235b-a22b",
+    "params": {
+      "target_yield_pct": 8.0,
+      "max_single_loan": 300000,
+      "total_capital": 1500000,
+      "persona": "conservative value lender"
+    }
+  },
+  "inputs": {
+    "raw_documents": [
+      { "doc_id": "bank_statements_12m", "type": "bank_statement", "bytes_sha": "deadbeef" }
+    ],
+    "financials": {
+      "revenue_ttm": 500000,
+      "gross_margin": 0.10,
+      "ebitda_ttm": 5000,
+      "net_income": 2000,
+      "annual_expenses": 498000
+    },
+    "banking": {
+      "avg_daily_balance_90d": 3000,
+      "nsf_12m": 4,
+      "total_deposits_12m": 480000,
+      "total_withdrawals_12m": 477000
+    },
+    "business": {
+      "industry": "Retail",
+      "years_trading": 2,
+      "employee_count": 5,
+      "company_name": "QuickMart LLC"
+    },
+    "missing_info": []
+  },
+  "trace": {
+    "steps": [
+      {
+        "t": "2026-02-23T15:00:02Z",
+        "type": "reasoning",
+        "content": "Very thin margins, multiple NSF events, and suspiciously round transaction amounts suggest fabricated financials"
+      }
+    ],
+    "latency_ms": 3100,
+    "cost": {
+      "tokens_in": 12000,
+      "tokens_out": 500,
+      "estimated_cost_usd": 0.003
+    }
+  },
+  "decision": {
+    "action": "decline",
+    "risk_grade": "D",
+    "prob_default_12m": 0.85,
+    "terms": {},
+    "conditions": [],
+    "covenants": [],
+    "rationale": {
+      "summary": "Application declined due to extremely thin margins (10% gross), multiple NSF events, and signs consistent with financial fabrication.",
+      "key_factors": [
+        "4 NSF events in 12 months",
+        "Gross margin only 10%",
+        "Suspiciously uniform deposit patterns"
+      ],
+      "what_would_change": [
+        "Clean bank history for 6+ months",
+        "Improved margins above 20%"
+      ]
+    },
+    "confidence": 0.92
+  },
+  "labels": {
+    "available": true,
+    "gold": {
+      "true_outcome": "fraud",
+      "correct_action": "decline",
+      "months_before_default": null
+    },
+    "outcome": null
+  },
+  "scores": null
+}

@@ -1,0 +1,321 @@
+{
+  "generated_at": "2026-02-24T08:40:56.424Z",
+  "mode": "dev",
+  "raw_runtime_only_count": 56,
+  "raw_spec_only_count": 2,
+  "raw_method_mismatch_count": 1,
+  "runtime_only_count": 56,
+  "spec_only_count": 2,
+  "method_mismatch_count": 1,
+  "allowlisted_count": 0,
+  "runtime_only": [
+    {
+      "direction": "runtime_only",
+      "method": "DELETE",
+      "path": "/v1/deals/{dealId}/audit/{eventId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "PATCH",
+      "path": "/v1/deals/{dealId}/audit/{eventId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/facilities"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/facilities"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "DELETE",
+      "path": "/v1/deals/{dealId}/facilities/{facilityId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/facilities/{facilityId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "PATCH",
+      "path": "/v1/deals/{dealId}/facilities/{facilityId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/loans"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/loans/arrears"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/loans/balance"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/spreads"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/deposits"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/deposits"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/deposits/{depositId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "DELETE",
+      "path": "/v1/entities/{entityId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/facilities/{facilityId}/loans"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/facilities/{facilityId}/loans/approved"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/gates/check"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/gates/policies"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/gates/policies"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "DELETE",
+      "path": "/v1/gates/policies/{policyId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/gates/policies/{policyId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "PATCH",
+      "path": "/v1/gates/policies/{policyId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/gates/records"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/gates/records/{recordId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/gates/records/{recordId}/bypass"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/gates/records/{recordId}/decide"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/loans"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/loans:search"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/loans/{loanId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "PATCH",
+      "path": "/v1/loans/{loanId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/loans/{loanId}/arrears"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/loans/{loanId}/arrears/update"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/loans/{loanId}/balance"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/loans/{loanId}/schedule"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/loans/{loanId}/transactions"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/loans/{loanId}/transactions"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/loans/by-account-id/{accountId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/loans/by-encoded-key/{encodedKey}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/loans/transactions:search"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/sandboxes"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/sandboxes"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints/{checkpointId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints/{checkpointId}/restore"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints/compare"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/diff"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}/entities"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/entities"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "DELETE",
+      "path": "/v1/sandboxes/{sandboxId}/entities/{entityType}/{entityId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "PATCH",
+      "path": "/v1/sandboxes/{sandboxId}/entities/{entityType}/{entityId}"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/entities/clone"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}/history"
+    },
+    {
+      "direction": "runtime_only",
+      "method": "PATCH",
+      "path": "/v1/sandboxes/{sandboxId}/status"
+    }
+  ],
+  "spec_only": [
+    {
+      "direction": "spec_only",
+      "method": "GET",
+      "path": "/v1/documents/{documentId}"
+    },
+    {
+      "direction": "spec_only",
+      "method": "GET",
+      "path": "/v1/documents/{documentId}/versions"
+    }
+  ],
+  "method_mismatches": [
+    {
+      "direction": "method_mismatch",
+      "path": "/v1/entities/{entityId}",
+      "runtime_methods": [
+        "DELETE",
+        "GET",
+        "PATCH"
+      ],
+      "spec_methods": [
+        "GET",
+        "PATCH"
+      ]
+    }
+  ],
+  "allowlisted": []
+}

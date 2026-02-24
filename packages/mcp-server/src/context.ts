@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-import { serve } from "@hono/node-server";
 import {
   createDatabase,
   migrateDatabase,
@@ -23,23 +21,45 @@ import {
   ApprovalGateService,
   ApprovalService,
 } from "@open-los/core";
-import { createApp } from "./server.js";
-import type { AppContext } from "./server.js";
+import type { Database } from "@open-los/core";
 
-const PORT = parseInt(process.env.PORT || "3000", 10);
-const DB_PATH = process.env.DB_PATH || ":memory:";
+export interface LLMConfig {
+  defaultProvider: "anthropic" | "openrouter";
+  defaultModel: string;
+  apiKeys: Record<string, string>;
+}
 
-async function main() {
-  console.log(`Starting Open LOS API...`);
-  console.log(`  Database: ${DB_PATH}`);
-  console.log(`  Port: ${PORT}`);
+export interface ServiceContext {
+  db: Database;
+  dealService: DealService;
+  documentService: DocumentService;
+  auditService: AuditService;
+  stageService: StageService;
+  entityService: EntityService;
+  relationshipService: RelationshipService;
+  templateService: TemplateService;
+  artifactService: ArtifactService;
+  spreadService: SpreadService;
+  covenantService: CovenantService;
+  monitoringService: MonitoringService;
+  emailService: EmailService;
+  loanAccountService: LoanAccountService;
+  facilityService: FacilityService;
+  sandboxService: SandboxService;
+  depositAccountService: DepositAccountService;
+  approvalGateService: ApprovalGateService;
+  approvalService: ApprovalService;
+  llmConfig?: LLMConfig;
+  getNow: () => string;
+}
 
-  // Create database
-  const db = createDatabase(DB_PATH);
+export async function createServiceContext(
+  dbPath?: string
+): Promise<ServiceContext> {
+  const resolvedPath = dbPath ?? process.env.OPEN_LOS_DB_PATH ?? ":memory:";
+  const db = createDatabase(resolvedPath);
   await migrateDatabase(db);
-  console.log(`  Database migrated`);
 
-  // Create services
   const clock = () => new Date().toISOString();
   const auditService = new AuditService(db);
   const dealService = new DealService(db, auditService, clock);
@@ -48,7 +68,12 @@ async function main() {
   const entityService = new EntityService(db, auditService, clock);
   const relationshipService = new RelationshipService(db, auditService, clock);
   const templateService = new TemplateService();
-  const artifactService = new ArtifactService(db, auditService, templateService, clock);
+  const artifactService = new ArtifactService(
+    db,
+    auditService,
+    templateService,
+    clock
+  );
   const spreadService = new SpreadService(db, auditService, clock);
   const covenantService = new CovenantService(db, auditService, clock);
   const monitoringService = new MonitoringService(db, auditService, clock);
@@ -57,18 +82,26 @@ async function main() {
   const facilityService = new FacilityService(db, auditService, clock);
   const depositAccountService = new DepositAccountService(db, clock);
   const gitProvider = new InMemoryGitProvider();
-  const sandboxService = new SandboxService(db, auditService, gitProvider, clock);
+  const sandboxService = new SandboxService(
+    db,
+    auditService,
+    gitProvider,
+    clock
+  );
   const approvalGateService = new ApprovalGateService(db, auditService, clock);
   const approvalService = new ApprovalService(db, auditService, clock);
 
   // LLM config from environment (optional — only needed for mode: "full")
-  const llmConfig = (() => {
+  const llmConfig: LLMConfig | undefined = (() => {
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     const openrouterKey = process.env.OPENROUTER_API_KEY;
     if (!anthropicKey && !openrouterKey) return undefined;
     return {
-      defaultProvider: (anthropicKey ? "anthropic" : "openrouter") as "anthropic" | "openrouter",
-      defaultModel: process.env.LOS_DEFAULT_MODEL ?? "claude-sonnet-4-5-20250929",
+      defaultProvider: (anthropicKey
+        ? "anthropic"
+        : "openrouter") as LLMConfig["defaultProvider"],
+      defaultModel:
+        process.env.LOS_DEFAULT_MODEL ?? "claude-sonnet-4-5-20250929",
       apiKeys: {
         ...(anthropicKey && { anthropic: anthropicKey }),
         ...(openrouterKey && { openrouter: openrouterKey }),
@@ -76,7 +109,7 @@ async function main() {
     };
   })();
 
-  const ctx: AppContext = {
+  return {
     db,
     dealService,
     documentService,
@@ -96,28 +129,7 @@ async function main() {
     depositAccountService,
     approvalGateService,
     approvalService,
-    getNow: clock,
-    users: new Map(),
     llmConfig,
+    getNow: clock,
   };
-
-  // Create app
-  const app = createApp(ctx);
-
-  // Health check
-  app.get("/health", (c) => c.json({ status: "ok", timestamp: clock() }));
-
-  // Start server
-  serve({ fetch: app.fetch, port: PORT }, (info) => {
-    console.log(`\nOpen LOS API running at http://localhost:${info.port}`);
-    console.log(`\nTry:`);
-    console.log(`  curl http://localhost:${info.port}/health`);
-    console.log(`  curl http://localhost:${info.port}/v1/deals`);
-    console.log(`  curl -X POST http://localhost:${info.port}/v1/deals -H "Content-Type: application/json" -d '{"borrower_name":"Acme Ltd"}'`);
-  });
 }
-
-main().catch((err) => {
-  console.error("Failed to start:", err);
-  process.exit(1);
-});

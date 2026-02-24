@@ -1,0 +1,16 @@
+{
+  "run_id": "770e8400-e29b-41d4-a716-446655440002",
+  "timestamp_utc": "2026-02-23T16:00:00Z",
+  "case": {
+    "case_id": "edge_001",
+    "source": "benchmark",
+    "segment": "generic_term_loan"
+  },
+  "policy": {
+    "policy_id": "p_test",
+    "model": "test-model"
+  },
+  "decision": {
+    "action": "pending"
+  }
+}

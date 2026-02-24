@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/los-event-envelope.schema.json",
+  "title": "LosEventEnvelope",
+  "description": "Domain events emitted during deal lifecycle — stage transitions, facility creation, loan state changes, covenant tests. Consumed by the SIM for trace reconstruction and observability.",
+  "type": "object",
+  "required": ["event_id", "event_type", "deal_id", "timestamp", "actor"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "deal.created",
+        "deal.updated",
+        "stage.transitioned",
+        "document.uploaded",
+        "document.classified",
+        "spread.created",
+        "entity.created",
+        "entity.linked",
+        "evaluation.started",
+        "evaluation.completed",
+        "facility.created",
+        "facility.converted",
+        "loan.created",
+        "loan.state_changed",
+        "loan.transaction_posted",
+        "covenant.created",
+        "covenant.tested",
+        "covenant.waived",
+        "alert.created"
+      ]
+    },
+    "deal_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string" },
+    "actor": { "type": "string", "description": "Who triggered this event" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "sequence": { "type": "integer", "minimum": 0, "description": "Monotonic sequence number within the deal" },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific payload. Structure depends on event_type.",
+      "additionalProperties": true
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata (correlation IDs, SIM run references, etc.)",
+      "properties": {
+        "run_id": { "type": "string", "description": "SIM run ID if triggered by simulation" },
+        "correlation_id": { "type": "string" },
+        "source": { "type": "string", "enum": ["api", "agent", "simulation", "system"] }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

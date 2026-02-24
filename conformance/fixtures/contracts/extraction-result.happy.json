@@ -1,0 +1,42 @@
+{
+  "extraction_id": "880e8400-e29b-41d4-a716-446655440003",
+  "deal_id": "550e8400-e29b-41d4-a716-446655440000",
+  "company_name": "HIREFUL LTD",
+  "period": "2025-10",
+  "source_document_ids": ["doc-001", "doc-002"],
+  "fields": {
+    "Revenue": 339715,
+    "Cogs": 150000,
+    "Ebitda": -2218,
+    "NetIncome": 6087,
+    "CashAtBank": 300000,
+    "TradeDebtors": 200000,
+    "TradeCreditors": 180000,
+    "Stock": null
+  },
+  "evidence": {
+    "Revenue": {
+      "period_column": "Year to Oct 2025",
+      "unit_scale": "full",
+      "source_sheet": "P&L",
+      "source_row": "Turnover",
+      "confidence": 0.95
+    },
+    "Ebitda": {
+      "period_column": "Year to Oct 2025",
+      "unit_scale": "full",
+      "source_sheet": "P&L",
+      "source_row": "Adjusted EBITDA",
+      "confidence": 0.60
+    }
+  },
+  "metadata": {
+    "model": "anthropic/claude-3.5-haiku",
+    "latency_ms": 2500,
+    "tokens_used": 8000,
+    "case_id": "borrower_hireful",
+    "policy_id": "p_extraction_v1",
+    "run_id": "550e8400-e29b-41d4-a716-446655440000"
+  },
+  "created_at": "2026-02-23T14:35:00Z"
+}

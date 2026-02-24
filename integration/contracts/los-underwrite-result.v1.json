@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "los-underwrite-result.v1.json",
+  "title": "LOS Underwrite Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "timestamp_utc",
+    "case_id",
+    "policy_id",
+    "decision",
+    "trace"
+  ],
+  "properties": {
+    "run_id": { "type": "string", "minLength": 1 },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "case_id": { "type": "string", "minLength": 1 },
+    "policy_id": { "type": "string", "minLength": 1 },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "rationale_summary", "terms"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["approve", "decline", "counter", "refer"]
+        },
+        "rationale_summary": { "type": "string" },
+        "terms": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["amount", "apr", "tenor_months"],
+          "properties": {
+            "amount": { "type": "number", "minimum": 0 },
+            "apr": { "type": "number", "minimum": 0, "maximum": 1 },
+            "tenor_months": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latency_ms", "tokens_in", "tokens_out", "estimated_cost_usd"],
+      "properties": {
+        "latency_ms": { "type": "integer", "minimum": 0 },
+        "tokens_in": { "type": "integer", "minimum": 0 },
+        "tokens_out": { "type": "integer", "minimum": 0 },
+        "estimated_cost_usd": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

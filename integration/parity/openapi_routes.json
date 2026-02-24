@@ -1,0 +1,134 @@
+{
+  "generated_at": "2026-02-24T08:40:56.424Z",
+  "total_routes": 32,
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/v1/covenants/{covenantId}/waivers"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/deals/{dealId}"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/artifacts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/artifacts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/audit"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/borrower-group"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/communications"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/covenants"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/covenants"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/covenants/test"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/documents"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/documents"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/evaluate"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/monitoring/ingest"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/monitoring/status"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/ratios"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/spread"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/stage-transitions"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/stage-transitions"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/documents/{documentId}"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/documents/{documentId}/versions"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/email/ingest"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/entities"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/entities"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/entities/{entityId}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/entities/{entityId}"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/relationships"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/templates"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/templates/render"
+    }
+  ]
+}

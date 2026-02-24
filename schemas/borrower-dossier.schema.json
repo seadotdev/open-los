@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-los.dev/schemas/borrower-dossier.schema.json",
+  "title": "BorrowerDossier",
+  "description": "What gets submitted for underwriting evaluation — the borrower's financial dossier and metadata.",
+  "type": "object",
+  "required": ["borrower_id", "dossier"],
+  "properties": {
+    "borrower_id": { "type": "string" },
+    "true_outcome": {
+      "type": "string",
+      "enum": ["good", "bad", "fraud"],
+      "description": "Hidden ground truth — never exposed to the underwriting agent"
+    },
+    "months_before_default": { "type": ["integer", "null"], "minimum": 0 },
+    "dossier": { "$ref": "#/$defs/FinancialDossier" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Transaction": {
+      "type": "object",
+      "required": ["date", "description", "amount"],
+      "properties": {
+        "date": { "type": "string", "description": "Transaction date (YYYY-MM-DD or similar)" },
+        "description": { "type": "string" },
+        "amount": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "MonthlyStatement": {
+      "type": "object",
+      "required": ["month", "opening_balance", "ending_balance"],
+      "properties": {
+        "month": { "type": "string", "description": "Month identifier e.g. 2025-01" },
+        "opening_balance": { "type": "number" },
+        "deposits": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Transaction" }
+        },
+        "withdrawals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Transaction" }
+        },
+        "ending_balance": { "type": "number" },
+        "total_deposits": { "type": "number", "minimum": 0 },
+        "total_withdrawals": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "QuarterlyIncome": {
+      "type": "object",
+      "description": "Pre-computed quarterly income statement.",
+      "required": ["quarter", "revenue", "expenses", "net_income"],
+      "properties": {
+        "quarter": { "type": "string", "description": "e.g. Q1 2025" },
+        "revenue": { "type": "number" },
+        "expenses": { "type": "number" },
+        "gross_profit": { "type": "number" },
+        "gross_margin_pct": { "type": "number" },
+        "net_income": { "type": "number" },
+        "net_margin_pct": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "FinancialDossier": {
+      "type": "object",
+      "description": "Complete financial dossier for a loan applicant.",
+      "required": ["company_name", "sector", "annual_revenue", "loan_request_amount"],
+      "properties": {
+        "company_name": { "type": "string", "minLength": 1 },
+        "sector": { "type": "string" },
+        "years_in_business": { "type": "integer", "minimum": 0 },
+        "annual_revenue": { "type": "number" },
+        "annual_expenses": { "type": "number" },
+        "net_income": { "type": "number" },
+        "employee_count": { "type": "integer", "minimum": 0 },
+        "bank_statements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/MonthlyStatement" }
+        },
+        "quarterly_income": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/QuarterlyIncome" }
+        },
+        "narrative": { "type": "string" },
+        "loan_request_amount": { "type": "number", "minimum": 0 },
+        "loan_purpose": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

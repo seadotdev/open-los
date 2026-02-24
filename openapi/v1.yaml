@@ -655,6 +655,40 @@ paths:
                         gross_margin:
                           type: number
 
+  # ── Evaluate (Underwriting) ────────────────────────────────────────────
+  /v1/deals/{dealId}/evaluate:
+    parameters:
+      - $ref: "#/components/parameters/DealId"
+    post:
+      operationId: evaluateDeal
+      summary: Trigger underwriting evaluation for a deal
+      description: |
+        Triggers the LOS agent to evaluate the deal using the provided policy
+        configuration. Returns a structured UnderwritingRun conforming to
+        schemas/underwriting-run.schema.json.
+
+        The agent evaluates using the deal's full context (documents, spreads,
+        entity graph) and the lender's policy (persona, model, limits, sector
+        constraints). Supports configurable LLM providers.
+      tags: [underwriting]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvaluateRequest"
+      responses:
+        "200":
+          description: Evaluation completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluateResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   # ── Covenants ──────────────────────────────────────────────────────────
   /v1/deals/{dealId}/covenants:
     parameters:
@@ -1518,6 +1552,106 @@ components:
         grace_period_expires:
           type: string
           format: date-time
+
+    # ── Evaluate (Underwriting) ──
+    EvaluateRequest:
+      type: object
+      properties:
+        policy:
+          type: object
+          description: Lender policy configuration for the evaluation
+          required: [policy_id, model]
+          properties:
+            policy_id:
+              type: string
+            model:
+              type: string
+              description: LLM model identifier
+            persona:
+              type: string
+            target_yield_pct:
+              type: number
+            max_single_loan:
+              type: number
+            total_capital:
+              type: number
+            sector_limits:
+              type: object
+              additionalProperties:
+                type: number
+            params:
+              type: object
+              additionalProperties: true
+        provider:
+          type: string
+          enum: [openrouter, anthropic]
+          description: LLM provider to use for evaluation
+        mode:
+          type: string
+          enum: [full, rules_only]
+          default: full
+          description: "full = LLM agent evaluation; rules_only = deterministic rules (thin agent fallback)"
+
+    EvaluateResponse:
+      type: object
+      description: Structured UnderwritingRun result conforming to underwriting-run.schema.json
+      required: [run_id, decision]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        decision:
+          type: object
+          required: [action]
+          properties:
+            action:
+              type: string
+              enum: [approve, decline, counter, refer]
+            terms:
+              type: object
+              properties:
+                amount:
+                  type: number
+                apr:
+                  type: number
+                  description: "Decimal (0.095 = 9.5%)"
+                tenor_months:
+                  type: integer
+            risk_grade:
+              type: string
+            confidence:
+              type: number
+        rationale:
+          type: object
+          properties:
+            summary:
+              type: string
+            key_factors:
+              type: array
+              items:
+                type: string
+            what_would_change:
+              type: array
+              items:
+                type: string
+        trace:
+          type: object
+          properties:
+            steps:
+              type: array
+              items:
+                type: object
+            latency_ms:
+              type: integer
+            cost:
+              type: object
+              properties:
+                tokens_in:
+                  type: integer
+                tokens_out:
+                  type: integer
+                estimated_cost_usd:
+                  type: number
 
     # ── Error ──
     ApiError:

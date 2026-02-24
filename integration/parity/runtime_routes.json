@@ -1,0 +1,436 @@
+{
+  "generated_at": "2026-02-24T08:40:56.424Z",
+  "total_routes": 86,
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/v1/covenants/{covenantId}/waivers",
+      "source_file": "covenants.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals",
+      "source_file": "deals.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals",
+      "source_file": "deals.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}",
+      "source_file": "deals.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/deals/{dealId}",
+      "source_file": "deals.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/artifacts",
+      "source_file": "templates.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/artifacts",
+      "source_file": "templates.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/audit",
+      "source_file": "audit.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/deals/{dealId}/audit/{eventId}",
+      "source_file": "audit.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/deals/{dealId}/audit/{eventId}",
+      "source_file": "audit.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/borrower-group",
+      "source_file": "relationships.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/communications",
+      "source_file": "email.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/covenants",
+      "source_file": "covenants.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/covenants",
+      "source_file": "covenants.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/covenants/test",
+      "source_file": "covenants.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/documents",
+      "source_file": "documents.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/documents",
+      "source_file": "documents.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/evaluate",
+      "source_file": "underwriting.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/facilities",
+      "source_file": "facilities.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/facilities",
+      "source_file": "facilities.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/deals/{dealId}/facilities/{facilityId}",
+      "source_file": "facilities.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/facilities/{facilityId}",
+      "source_file": "facilities.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/deals/{dealId}/facilities/{facilityId}",
+      "source_file": "facilities.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/loans",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/loans/arrears",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/loans/balance",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/monitoring/ingest",
+      "source_file": "monitoring.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/monitoring/status",
+      "source_file": "monitoring.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/ratios",
+      "source_file": "underwriting.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/spread",
+      "source_file": "underwriting.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/spreads",
+      "source_file": "underwriting.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deals/{dealId}/stage-transitions",
+      "source_file": "stages.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deals/{dealId}/stage-transitions",
+      "source_file": "stages.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deposits",
+      "source_file": "deposits.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/deposits",
+      "source_file": "deposits.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/deposits/{depositId}",
+      "source_file": "deposits.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/email/ingest",
+      "source_file": "email.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/entities",
+      "source_file": "entities.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/entities",
+      "source_file": "entities.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/entities/{entityId}",
+      "source_file": "entities.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/entities/{entityId}",
+      "source_file": "entities.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/entities/{entityId}",
+      "source_file": "entities.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/facilities/{facilityId}/loans",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/facilities/{facilityId}/loans/approved",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/gates/check",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/gates/policies",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/gates/policies",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/gates/policies/{policyId}",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/gates/policies/{policyId}",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/gates/policies/{policyId}",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/gates/records",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/gates/records/{recordId}",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/gates/records/{recordId}/bypass",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/gates/records/{recordId}/decide",
+      "source_file": "gates.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/loans",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/loans:search",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/loans/{loanId}",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/loans/{loanId}",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/loans/{loanId}/arrears",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/loans/{loanId}/arrears/update",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/loans/{loanId}/balance",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/loans/{loanId}/schedule",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/loans/{loanId}/transactions",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/loans/{loanId}/transactions",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/loans/by-account-id/{accountId}",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/loans/by-encoded-key/{encodedKey}",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/loans/transactions:search",
+      "source_file": "loans.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/relationships",
+      "source_file": "relationships.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sandboxes",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sandboxes",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints/{checkpointId}",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints/{checkpointId}/restore",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/checkpoints/compare",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/diff",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}/entities",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/entities",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/sandboxes/{sandboxId}/entities/{entityType}/{entityId}",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/sandboxes/{sandboxId}/entities/{entityType}/{entityId}",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sandboxes/{sandboxId}/entities/clone",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sandboxes/{sandboxId}/history",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/sandboxes/{sandboxId}/status",
+      "source_file": "sandboxes.ts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/templates",
+      "source_file": "templates.ts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/templates/render",
+      "source_file": "templates.ts"
+    }
+  ]
+}
