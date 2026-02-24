@@ -2,11 +2,14 @@ import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import type { AppContext } from "../server.js";
 import { stripNulls } from "../utils.js";
+import { LoanOriginationAgent, createLLMClient, createAgentServices } from "@open-los/agent";
 import type {
   LineItem,
   CreateSpreadInput,
   MetricsInput,
   UnderwritingRun,
+  RunCase,
+  RunPolicy,
   RunDecision,
   DecisionTerms,
   DecisionRationale,
@@ -169,6 +172,58 @@ export function underwritingRoutes(ctx: AppContext) {
     const mode = body.mode ?? "rules_only";
     const policy = body.policy ?? {};
 
+    // --- Full Agent Mode: LLM-powered evaluation ---
+    if (mode === "full") {
+      const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
+      const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+
+      if (!apiKey) {
+        // No API key available — fall through to rules-only with a warning in trace
+        console.warn(`[evaluate] mode=full requested but no API key for provider=${provider}, falling back to rules_only`);
+      } else {
+        const agentServices = createAgentServices(ctx, { tenantId, actor });
+        const llmClient = createLLMClient(provider, {
+          apiKey,
+          model: policy.model ?? ctx.llmConfig?.defaultModel,
+        });
+        const agent = new LoanOriginationAgent({
+          los: agentServices,
+          llm: llmClient,
+          tenantId,
+        });
+
+        const runPolicy = {
+          policy_id: policy.policy_id ?? `agent_${tenantId}`,
+          model: policy.model ?? ctx.llmConfig?.defaultModel ?? "rules_only",
+          params: {
+            persona: policy.persona,
+            target_yield_pct: policy.target_yield_pct,
+            max_single_loan: policy.max_single_loan,
+            total_capital: policy.total_capital,
+            sector_limits: policy.sector_limits,
+            ...policy.params,
+          },
+        };
+
+        const response = await agent.evaluate(dealId, runPolicy, { tenantId, actor });
+
+        // Log evaluation as audit event
+        await ctx.auditService.record({
+          deal_id: dealId,
+          type: "DEAL_UPDATED",
+          actor,
+          timestamp: new Date().toISOString(),
+          changes: [
+            { field: "evaluation", before: null, after: { run_id: response.run_id, action: response.decision.action, risk_grade: response.decision.risk_grade, mode: "full" } },
+          ],
+        });
+
+        return c.json(stripNulls(response), 200);
+      }
+    }
+
+    // --- Rules-Only Mode (default) ---
+
     // Fetch the deal
     const deal = await ctx.dealService.getById(dealId, tenantId);
 
@@ -312,6 +367,30 @@ export function underwritingRoutes(ctx: AppContext) {
 
     // Assemble the response
     const runId = randomUUID();
+
+    const runCase: RunCase = {
+      case_id: dealId,
+      source: "production",
+      segment: "smb_term_loan",
+      jurisdiction: deal.jurisdiction ?? "US",
+      currency: "USD",
+      requested_amount: requestedAmountDollars,
+      requested_purpose: deal.purpose ?? undefined,
+    };
+
+    const runPolicy: RunPolicy = {
+      policy_id: policy.policy_id ?? `rules_${tenantId}`,
+      model: policy.model ?? "rules_only",
+      params: {
+        persona: policy.persona,
+        target_yield_pct: policy.target_yield_pct,
+        max_single_loan: policy.max_single_loan,
+        total_capital: policy.total_capital,
+        sector_limits: policy.sector_limits,
+        ...policy.params,
+      },
+    };
+
     const decision: RunDecision = {
       action: action as RunDecision["action"],
       risk_grade: riskGrade,
@@ -323,9 +402,11 @@ export function underwritingRoutes(ctx: AppContext) {
       confidence,
     };
 
-    const response: Partial<UnderwritingRun> = {
+    const response: UnderwritingRun = {
       run_id: runId,
       timestamp_utc: new Date().toISOString(),
+      case: runCase,
+      policy: runPolicy,
       decision,
       trace,
     };

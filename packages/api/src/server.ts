@@ -22,6 +22,7 @@ import {
   DepositAccountService,
   AppError,
   ApprovalGateService,
+  ApprovalService,
 } from "@open-los/core";
 import type { Database } from "@open-los/core";
 import { dealRoutes } from "./routes/deals.js";
@@ -40,6 +41,12 @@ import { facilityRoutes } from "./routes/facilities.js";
 import { sandboxRoutes } from "./routes/sandboxes.js";
 import { depositRoutes } from "./routes/deposits.js";
 import { gateRoutes } from "./routes/gates.js";
+
+export interface LLMConfig {
+  defaultProvider: "anthropic" | "openrouter";
+  defaultModel: string;
+  apiKeys: Record<string, string>;
+}
 
 export interface AppContext {
   db: Database;
@@ -60,8 +67,10 @@ export interface AppContext {
   sandboxService: SandboxService;
   depositAccountService: DepositAccountService;
   approvalGateService: ApprovalGateService;
+  approvalService: ApprovalService;
   getNow: () => string;
   users?: Map<string, { id: string; role: string }>;
+  llmConfig?: LLMConfig;
 }
 
 function getCorsOrigins(): string[] | undefined {
@@ -153,6 +162,22 @@ export async function createAppWithDb(getNow?: () => string) {
   const gitProvider = new InMemoryGitProvider();
   const sandboxService = new SandboxService(db, auditService, gitProvider, clock);
   const approvalGateService = new ApprovalGateService(db, auditService, clock);
+  const approvalService = new ApprovalService(db, auditService, clock);
+
+  // LLM config from environment (optional — only needed for mode: "full")
+  const llmConfig: LLMConfig | undefined = (() => {
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    const openrouterKey = process.env.OPENROUTER_API_KEY;
+    if (!anthropicKey && !openrouterKey) return undefined;
+    return {
+      defaultProvider: (anthropicKey ? "anthropic" : "openrouter") as "anthropic" | "openrouter",
+      defaultModel: process.env.LOS_DEFAULT_MODEL ?? "claude-sonnet-4-5-20250929",
+      apiKeys: {
+        ...(anthropicKey && { anthropic: anthropicKey }),
+        ...(openrouterKey && { openrouter: openrouterKey }),
+      },
+    };
+  })();
 
   const ctx: AppContext = {
     db,
@@ -173,8 +198,10 @@ export async function createAppWithDb(getNow?: () => string) {
     sandboxService,
     depositAccountService,
     approvalGateService,
+    approvalService,
     getNow: clock,
     users: new Map(),
+    llmConfig,
   };
 
   return { app: createApp(ctx), ctx };
