@@ -507,13 +507,13 @@ export class LoanOriginationAgent {
         "details": { "amount": ..., "term": ..., "rate": ..., "covenants": [...] },
         "confidence": 0.0-1.0
       }
-	    `
+    `
 
-	    const recommendation = await this.llm.structured<Omit<Recommendation, 'id'>>(prompt, {
-	      type: 'object',
-	      properties: {
-	        type: { type: 'string' },
-	        summary: { type: 'string' },
+    const recommendation = await this.llm.structured<Omit<Recommendation, 'id'>>(prompt, {
+      type: 'object',
+      properties: {
+        type: { type: 'string' },
+        summary: { type: 'string' },
         rationale: { type: 'string' },
         details: { type: 'object' },
         confidence: { type: 'number' },
