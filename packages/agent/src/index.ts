@@ -8,3 +8,9 @@
 
 export { LoanOriginationAgent } from './agent'
 export * from './interface/types'
+export * from './types'
+export { createLLMClient } from './llm/index'
+export { createAgentServices } from './adapters/los-adapter'
+export type { CoreServices, AdapterContext } from './adapters/los-adapter'
+export { buildUnderwritingPrompt, evaluateStandalone } from './underwrite'
+export type { UnderwritePolicy, ModelConfig, UnderwriteContext } from './underwrite'

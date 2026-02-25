@@ -3,14 +3,7 @@
   "version": "0.1.0",
   "description": "Loan Origination Agent Service - outcome-oriented interface on top of open-los",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
+  "main": "src/index.ts",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -18,18 +11,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@open-los/core": "*"
+    "@open-los/core": "*",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.77.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
-  },
-  "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.20.0"
-  },
-  "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": {
-      "optional": true
-    }
   }
 }

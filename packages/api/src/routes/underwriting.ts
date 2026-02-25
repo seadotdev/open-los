@@ -2,16 +2,27 @@ import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import type { AppContext } from "../server.js";
 import { stripNulls } from "../utils.js";
+import {
+  LoanOriginationAgent,
+  createLLMClient,
+  createAgentServices,
+  buildUnderwritingPrompt,
+  evaluateStandalone,
+} from "@open-los/agent";
+import type { UnderwritePolicy, ModelConfig } from "@open-los/agent";
 import type {
   LineItem,
   CreateSpreadInput,
   MetricsInput,
   UnderwritingRun,
+  RunCase,
+  RunPolicy,
   RunDecision,
   DecisionTerms,
   DecisionRationale,
   RunTrace,
   TraceCost,
+  FinancialDossier,
 } from "@open-los/core";
 
 interface CreateSpreadJsonBody {
@@ -38,6 +49,10 @@ function clampInt(value: number, min: number, max: number): number {
   const rounded = Math.round(value);
   return Math.min(max, Math.max(min, rounded));
 }
+
+// ---------------------------------------------------------------------------
+// CSV parsing
+// ---------------------------------------------------------------------------
 
 function parseCSV(csvContent: string, filterPeriod?: string): LineItem[] {
   const lines = csvContent.trim().split("\n");
@@ -78,6 +93,10 @@ function parseCSV(csvContent: string, filterPeriod?: string): LineItem[] {
   // Remove period field from results
   return items.map(({ period, ...rest }) => rest);
 }
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
 
 export function underwritingRoutes(ctx: AppContext) {
   const app = new Hono();
@@ -155,10 +174,9 @@ export function underwritingRoutes(ctx: AppContext) {
 
   // POST /v1/deals/:dealId/evaluate - trigger underwriting evaluation
   //
-  // This is the key integration endpoint for the SIM → LOS loop.
-  // Currently implements the "thin agent" (rules-based) path.
-  // The full LLM agent path will be wired when agent.ts service
-  // interfaces are connected to real implementations.
+  // When dossier is provided AND mode=full, uses the rich prompt builder
+  // (buildUnderwritingPrompt) for LLM-quality underwriting.
+  // Otherwise falls through to agent evaluate or rules-only as before.
   app.post("/deals/:dealId/evaluate", async (c) => {
     const dealId = c.req.param("dealId");
     const actor = c.req.header("X-Actor") ?? "system";
@@ -166,23 +184,97 @@ export function underwritingRoutes(ctx: AppContext) {
     const startTime = Date.now();
 
     const body = await c.req.json() as {
-      policy?: {
-        policy_id?: string;
-        model?: string;
-        persona?: string;
-        target_yield_pct?: number;
-        max_single_loan?: number;
-        total_capital?: number;
-        sector_limits?: Record<string, number>;
-        params?: Record<string, unknown>;
-      };
+      policy?: UnderwritePolicy;
       provider?: string;
       mode?: "full" | "rules_only";
+      dossier?: FinancialDossier;
+      models?: ModelConfig;
     };
 
     const mode = body.mode ?? "rules_only";
     const policy = body.policy ?? {};
     const policyParams = policy.params ?? {};
+
+    // --- Full Mode with inline dossier: use rich prompt builder ---
+    if (mode === "full" && body.dossier) {
+      const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
+      const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+
+      if (apiKey) {
+        try {
+          const response = await evaluateStandalone(ctx, policy, body.dossier, provider, body.models);
+          // Override case_id with the deal ID
+          response.case.case_id = dealId;
+
+          await ctx.auditService.record({
+            deal_id: dealId,
+            type: "DEAL_UPDATED",
+            actor,
+            timestamp: new Date().toISOString(),
+            changes: [
+              { field: "evaluation", before: null, after: { run_id: response.run_id, action: response.decision.action, risk_grade: response.decision.risk_grade, mode: "full_dossier" } },
+            ],
+          });
+
+          return c.json(stripNulls(response), 200);
+        } catch (err: any) {
+          console.warn(`[evaluate] dossier-based evaluation failed: ${err?.message}, falling back`);
+          // Fall through to agent or rules mode
+        }
+      }
+    }
+
+    // --- Full Agent Mode: LLM-powered evaluation (existing path) ---
+    if (mode === "full") {
+      const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
+      const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+
+      if (!apiKey) {
+        // No API key available — fall through to rules-only with a warning in trace
+        console.warn(`[evaluate] mode=full requested but no API key for provider=${provider}, falling back to rules_only`);
+      } else {
+        const agentServices = createAgentServices(ctx, { tenantId, actor });
+        const llmClient = createLLMClient(provider, {
+          apiKey,
+          model: policy.model ?? ctx.llmConfig?.defaultModel,
+        });
+        const agent = new LoanOriginationAgent({
+          los: agentServices,
+          llm: llmClient,
+          tenantId,
+        });
+
+        const runPolicy = {
+          policy_id: policy.policy_id ?? `agent_${tenantId}`,
+          model: policy.model ?? ctx.llmConfig?.defaultModel ?? "rules_only",
+          params: {
+            persona: policy.persona,
+            target_yield_pct: policy.target_yield_pct,
+            max_single_loan: policy.max_single_loan,
+            total_capital: policy.total_capital,
+            sector_limits: policy.sector_limits,
+            ...policy.params,
+          },
+        };
+
+        const response = await agent.evaluate(dealId, runPolicy, { tenantId, actor });
+
+        // Log evaluation as audit event
+        await ctx.auditService.record({
+          deal_id: dealId,
+          type: "DEAL_UPDATED",
+          actor,
+          timestamp: new Date().toISOString(),
+          changes: [
+            { field: "evaluation", before: null, after: { run_id: response.run_id, action: response.decision.action, risk_grade: response.decision.risk_grade, mode: "full" } },
+          ],
+        });
+
+        return c.json(stripNulls(response), 200);
+      }
+    }
+
+    // --- Rules-Only Mode (default) ---
 
     // Fetch the deal
     const deal = await ctx.dealService.getById(dealId, tenantId);
@@ -354,6 +446,30 @@ export function underwritingRoutes(ctx: AppContext) {
 
     // Assemble the response
     const runId = randomUUID();
+
+    const runCase: RunCase = {
+      case_id: dealId,
+      source: "production",
+      segment: "smb_term_loan",
+      jurisdiction: deal.jurisdiction ?? "US",
+      currency: "USD",
+      requested_amount: requestedAmountDollars,
+      requested_purpose: deal.purpose ?? undefined,
+    };
+
+    const runPolicy: RunPolicy = {
+      policy_id: policy.policy_id ?? `rules_${tenantId}`,
+      model: policy.model ?? "rules_only",
+      params: {
+        persona: policy.persona,
+        target_yield_pct: policy.target_yield_pct,
+        max_single_loan: policy.max_single_loan,
+        total_capital: policy.total_capital,
+        sector_limits: policy.sector_limits,
+        ...policy.params,
+      },
+    };
+
     const decision: RunDecision = {
       action: action as RunDecision["action"],
       risk_grade: riskGrade,
@@ -365,9 +481,11 @@ export function underwritingRoutes(ctx: AppContext) {
       confidence,
     };
 
-    const response: Partial<UnderwritingRun> = {
+    const response: UnderwritingRun = {
       run_id: runId,
       timestamp_utc: new Date().toISOString(),
+      case: runCase,
+      policy: runPolicy,
       decision,
       trace,
     };
@@ -383,6 +501,31 @@ export function underwritingRoutes(ctx: AppContext) {
       ],
     });
 
+    return c.json(stripNulls(response), 200);
+  });
+
+  // POST /v1/underwrite - standalone underwriting (no deal required)
+  //
+  // Accepts a dossier + policy inline, builds a rich prompt, calls the LLM,
+  // and returns an UnderwritingRun. This is the "underwrite only" entry point.
+  app.post("/underwrite", async (c) => {
+    const actor = c.req.header("X-Actor") ?? "system";
+
+    const body = await c.req.json() as {
+      dossier: FinancialDossier;
+      policy?: UnderwritePolicy;
+      provider?: string;
+      models?: ModelConfig;
+    };
+
+    if (!body.dossier) {
+      return c.json({ error: "dossier is required" }, 400);
+    }
+
+    const policy = body.policy ?? {};
+    const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
+
+    const response = await evaluateStandalone(ctx, policy, body.dossier, provider, body.models);
     return c.json(stripNulls(response), 200);
   });
 

@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@open-los/core": "*",
+    "@open-los/agent": "*",
+    "@open-los/chat": "*",
     "hono": "^4.0.0",
     "@hono/node-server": "^1.13.0",
     "tsx": "^4.0.0"

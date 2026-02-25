@@ -21,48 +21,29 @@ import type {
   Decision,
   DecisionResult,
   ExplanationRequest,
+  Recommendation,
   Explanation,
   PortfolioSummary,
   Alert,
   AlertSubscription,
 } from './interface/types'
 
-// Types for the backing system (open-los)
-interface OpenLOSServices {
-  deals: DealService
-  stages: StageService
-  documents: DocumentService
-  entities: EntityService
-  spreads: SpreadService
-  covenants: CovenantService
-  facilities: FacilityService
-  loans: LoanService
-  monitoring: MonitoringService
-  audit: AuditService
-  approvals: ApprovalsService
-}
+import type {
+  OpenLOSServices,
+  LLMClient,
+  AgentConfig,
+  AgentContext,
+} from './types'
 
-interface LLMClient {
-  complete(prompt: string, options?: LLMOptions): Promise<string>
-  structured<T>(prompt: string, schema: object): Promise<T>
-}
-
-interface LLMOptions {
-  temperature?: number
-  maxTokens?: number
-}
-
-interface AgentConfig {
-  los: OpenLOSServices
-  llm: LLMClient
-  tenantId?: string
-}
-
-interface AgentContext {
-  tenantId: string
-  actor: string
-  dealId?: string
-}
+import type {
+  RunPolicy,
+  RunDecision,
+  UnderwritingRun,
+  RunCase,
+  RunTrace,
+  DecisionTerms,
+  DecisionRationale,
+} from '@open-los/core'
 
 /**
  * The main agent class that customers interact with
@@ -526,13 +507,13 @@ export class LoanOriginationAgent {
         "details": { "amount": ..., "term": ..., "rate": ..., "covenants": [...] },
         "confidence": 0.0-1.0
       }
-    `
+	    `
 
-    const recommendation = await this.llm.structured<NonNullable<DealStatus['recommendation']>>(prompt, {
-      type: 'object',
-      properties: {
-        type: { type: 'string' },
-        summary: { type: 'string' },
+	    const recommendation = await this.llm.structured<Omit<Recommendation, 'id'>>(prompt, {
+	      type: 'object',
+	      properties: {
+	        type: { type: 'string' },
+	        summary: { type: 'string' },
         rationale: { type: 'string' },
         details: { type: 'object' },
         confidence: { type: 'number' },
@@ -579,6 +560,321 @@ export class LoanOriginationAgent {
         relevance: 'Supporting evidence',
       })),
     }
+  }
+
+  // ============================================
+  // Underwriting Evaluation
+  // ============================================
+
+  /**
+   * Run a full underwriting evaluation on a deal.
+   *
+   * Produces an UnderwritingRun — the canonical contract type shared
+   * between the LOS, SIM, and UW Bench.
+   *
+   * Flow:
+   * 1. Fetch deal data, ratios, documents, audit
+   * 2. Run deterministic rules baseline
+   * 3. Call LLM with deal context + policy + rules baseline
+   * 4. Assemble UnderwritingRun with rich trace
+   * 5. On LLM failure, fall back to rules baseline
+   */
+  async evaluate(
+    dealId: string,
+    policy: RunPolicy,
+    context?: Partial<AgentContext>
+  ): Promise<UnderwritingRun> {
+    const ctx = this.buildContext(context)
+    const startTime = Date.now()
+    const runId = crypto.randomUUID()
+
+    // 1. Fetch deal data
+    const deal = await this.los.deals.get(dealId)
+    const ratios = await this.los.spreads.getRatios(dealId)
+    const docs = await this.los.documents.listByDeal(dealId)
+    let auditEvents: any[] = []
+    try { auditEvents = await this.los.audit.listByDeal(dealId) } catch { /* ok */ }
+
+    // 2. Rules baseline
+    const requestedAmount = deal.requested_amount ?? 0
+    const requestedAmountDollars = requestedAmount / 100
+    const policyParams = policy.params ?? {}
+    const maxLoan = (policyParams.max_single_loan as number) ?? 500000
+    const targetYield = (policyParams.target_yield_pct as number) ?? 10.0
+    const rulesBaseline = this.runRulesBaseline(deal, ratios, requestedAmountDollars, maxLoan, targetYield, policyParams)
+
+    // 3. Build LLM prompt and call
+    const persona = (policyParams.persona as string) ?? 'a conservative commercial lender'
+    const sectorLimits = policyParams.sector_limits
+      ? JSON.stringify(policyParams.sector_limits)
+      : 'none specified'
+
+    const dscr = typeof ratios.dscr === 'number' ? ratios.dscr.toFixed(2) : 'N/A'
+    const grossMargin = typeof ratios.gross_margin === 'number' ? (ratios.gross_margin * 100).toFixed(1) : 'N/A'
+    const netMargin = typeof ratios.net_margin === 'number' ? (ratios.net_margin * 100).toFixed(1) : 'N/A'
+    const currentRatio = typeof ratios.current_ratio === 'number' ? ratios.current_ratio.toFixed(2) : 'N/A'
+
+    const systemPrompt = `You are a senior credit analyst for ${persona}. Your lending parameters:
+- Target yield: ${targetYield}%
+- Maximum single loan: $${maxLoan.toLocaleString()}
+- Sector limits: ${sectorLimits}
+
+Evaluate this loan application and return a structured decision.
+APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
+
+    const docList = Array.isArray(docs) ? docs.map((d: any) => d.filename ?? d.doc_type ?? 'unknown').join(', ') : 'none'
+
+    const userPrompt = `${systemPrompt}
+
+## Borrower: ${deal.borrower_name}
+## Financials
+- Annual Revenue: See spread data  |  DSCR: ${dscr}x  |  Gross Margin: ${grossMargin}%
+- Net Margin: ${netMargin}%  |  Current Ratio: ${currentRatio}
+## Request: $${requestedAmountDollars.toLocaleString()} for ${deal.purpose ?? 'general business purposes'}
+## Documents: ${docList}
+## Rules baseline: ${rulesBaseline.action} (risk grade: ${rulesBaseline.risk_grade}, confidence: ${rulesBaseline.confidence}) — for reference, make your own assessment`
+
+    const decisionSchema = {
+      type: 'object' as const,
+      properties: {
+        action: { type: 'string', enum: ['approve', 'decline', 'counter', 'refer'] },
+        risk_grade: { type: 'string', enum: ['A', 'B', 'C', 'D'] },
+        prob_default_12m: { type: 'number' },
+        terms: {
+          type: 'object',
+          properties: {
+            amount: { type: 'number' },
+            apr: { type: 'number' },
+            tenor_months: { type: 'number' },
+          },
+        },
+        rationale: {
+          type: 'object',
+          properties: {
+            summary: { type: 'string' },
+            key_factors: { type: 'array', items: { type: 'string' } },
+            what_would_change: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        conditions: { type: 'array', items: { type: 'string' } },
+        covenants: { type: 'array', items: { type: 'string' } },
+        confidence: { type: 'number' },
+      },
+      required: ['action', 'risk_grade', 'rationale'],
+    }
+
+    // Try LLM, fall back to rules on failure
+    let decision: RunDecision
+    const traceSteps: Array<{ t: string; type: 'tool_call' | 'note' | 'reasoning' | 'doc_request'; name?: string; content?: string; result?: Record<string, unknown> }> = []
+    let tokensIn = 0
+    let tokensOut = 0
+    let costUsd = 0
+
+    traceSteps.push({
+      t: new Date(startTime).toISOString(),
+      type: 'reasoning',
+      name: 'rules_baseline',
+      content: `Rules evaluation: ${rulesBaseline.action} (grade: ${rulesBaseline.risk_grade})`,
+      result: rulesBaseline as unknown as Record<string, unknown>,
+    })
+
+    try {
+      const llmResult = await this.llm.structured<{
+        action: string
+        risk_grade: string
+        prob_default_12m?: number
+        terms?: { amount?: number; apr?: number; tenor_months?: number }
+        rationale: { summary?: string; key_factors?: string[]; what_would_change?: string[] }
+        conditions?: string[]
+        covenants?: string[]
+        confidence?: number
+      }>(userPrompt, decisionSchema)
+
+      // Clamp APR to valid range
+      if (llmResult.terms?.apr && llmResult.terms.apr > 0.55) {
+        llmResult.terms.apr = 0.55
+      }
+
+      // Extract token usage from LLM client if available
+      const llmAny = this.llm as any
+      if (typeof llmAny.tokensIn === 'number') {
+        tokensIn = llmAny.tokensIn
+        tokensOut = llmAny.tokensOut ?? 0
+        costUsd = this.estimateCost(tokensIn, tokensOut, policy.model)
+      }
+
+      decision = {
+        action: llmResult.action as RunDecision['action'],
+        risk_grade: llmResult.risk_grade,
+        prob_default_12m: llmResult.prob_default_12m ?? rulesBaseline.prob_default_12m,
+        terms: llmResult.terms as DecisionTerms,
+        conditions: llmResult.conditions ?? [],
+        covenants: llmResult.covenants ?? [],
+        rationale: llmResult.rationale as DecisionRationale,
+        confidence: llmResult.confidence ?? 0.75,
+      }
+
+      traceSteps.push({
+        t: new Date().toISOString(),
+        type: 'tool_call',
+        name: 'llm_evaluate',
+        content: `LLM evaluation via ${policy.model}: ${decision.action}`,
+      })
+
+      traceSteps.push({
+        t: new Date().toISOString(),
+        type: 'reasoning',
+        name: 'llm_rationale',
+        content: decision.rationale?.summary ?? 'No rationale provided',
+      })
+    } catch (err: any) {
+      // LLM failed — fall back to rules baseline
+      decision = rulesBaseline
+      traceSteps.push({
+        t: new Date().toISOString(),
+        type: 'note',
+        name: 'llm_fallback',
+        content: `LLM call failed, using rules baseline: ${err?.message ?? 'unknown error'}`,
+      })
+    }
+
+    const latencyMs = Date.now() - startTime
+
+    const trace: RunTrace = {
+      steps: traceSteps,
+      latency_ms: latencyMs,
+      cost: { tokens_in: tokensIn, tokens_out: tokensOut, estimated_cost_usd: costUsd },
+    }
+
+    const runCase: RunCase = {
+      case_id: dealId,
+      source: 'production',
+      segment: 'smb_term_loan',
+      jurisdiction: deal.jurisdiction ?? 'US',
+      currency: 'USD',
+      requested_amount: requestedAmountDollars,
+      requested_purpose: deal.purpose ?? undefined,
+    }
+
+    return {
+      run_id: runId,
+      timestamp_utc: new Date().toISOString(),
+      case: runCase,
+      policy,
+      decision,
+      trace,
+    }
+  }
+
+  private runRulesBaseline(
+    deal: any,
+    ratios: any,
+    requestedAmountDollars: number,
+    maxLoan: number,
+    targetYield: number,
+    policyParams: Record<string, unknown>
+  ): RunDecision {
+    const dscr = typeof ratios.dscr === 'number' ? ratios.dscr : null
+    const grossMargin = typeof ratios.gross_margin === 'number' ? ratios.gross_margin : null
+
+    let action: string = 'approve'
+    let riskGrade = 'B'
+    let confidence = 0.70
+    let probDefault = 0.05
+    const keyFactors: string[] = []
+    const conditions: string[] = []
+    const whatWouldChange: string[] = []
+
+    if (requestedAmountDollars > maxLoan) {
+      action = 'decline'
+      riskGrade = 'D'
+      confidence = 0.95
+      probDefault = 0.30
+      keyFactors.push(`Requested amount $${requestedAmountDollars.toLocaleString()} exceeds maximum $${maxLoan.toLocaleString()}`)
+      whatWouldChange.push('Reduce loan amount below maximum threshold')
+    }
+
+    if (dscr !== null && dscr < 1.0) {
+      action = 'decline'
+      riskGrade = 'D'
+      confidence = 0.90
+      probDefault = 0.40
+      keyFactors.push(`DSCR ${dscr.toFixed(2)}x is below 1.0x minimum`)
+      whatWouldChange.push('Improve cash flow to achieve DSCR >= 1.2x')
+    } else if (dscr !== null && dscr < 1.2) {
+      if (action === 'approve') action = 'refer'
+      riskGrade = 'C'
+      probDefault = 0.15
+      keyFactors.push(`DSCR ${dscr.toFixed(2)}x is marginal (below 1.2x)`)
+      conditions.push('Quarterly financial reporting required')
+    } else if (dscr !== null) {
+      keyFactors.push(`DSCR ${dscr.toFixed(2)}x provides adequate debt service coverage`)
+    }
+
+    if (grossMargin !== null && grossMargin < 0.10) {
+      if (action === 'approve') action = 'refer'
+      riskGrade = 'C'
+      probDefault = Math.max(probDefault, 0.20)
+      keyFactors.push(`Gross margin ${(grossMargin * 100).toFixed(1)}% is very thin`)
+      whatWouldChange.push('Improve gross margins above 15%')
+    } else if (grossMargin !== null) {
+      keyFactors.push(`Gross margin ${(grossMargin * 100).toFixed(1)}% is healthy`)
+    }
+
+    if (action === 'approve') {
+      if (dscr !== null && dscr >= 1.5 && grossMargin !== null && grossMargin >= 0.25) {
+        riskGrade = 'A'
+        probDefault = 0.02
+        confidence = 0.85
+      } else {
+        riskGrade = 'B'
+        probDefault = 0.05
+        confidence = 0.75
+      }
+    }
+
+    const terms: DecisionTerms = {}
+    if (action === 'approve' || action === 'counter') {
+      const baseRate = targetYield / 100
+      const riskPremium = riskGrade === 'A' ? 0.0 : riskGrade === 'B' ? 0.02 : 0.05
+      terms.amount = action === 'counter'
+        ? Math.min(requestedAmountDollars, maxLoan * 0.8)
+        : requestedAmountDollars
+      terms.apr = baseRate + riskPremium
+      terms.tenor_months = 24
+      terms.fees = { origination: Math.round(terms.amount * 0.01) }
+    }
+
+    const rationale: DecisionRationale = {
+      summary: action === 'approve'
+        ? `Approved based on ${keyFactors[0]?.toLowerCase() ?? 'acceptable risk profile'}.`
+        : action === 'decline'
+          ? `Declined: ${keyFactors[0] ?? 'insufficient risk profile'}.`
+          : `Referred for manual review: ${keyFactors[0] ?? 'marginal indicators'}.`,
+      key_factors: keyFactors,
+      what_would_change: whatWouldChange,
+    }
+
+    return {
+      action: action as RunDecision['action'],
+      risk_grade: riskGrade,
+      prob_default_12m: probDefault,
+      terms,
+      conditions,
+      covenants: dscr !== null && dscr < 1.5 ? ['DSCR >= 1.2x quarterly'] : [],
+      rationale,
+      confidence,
+    }
+  }
+
+  private estimateCost(tokensIn: number, tokensOut: number, model: string): number {
+    // Rough cost estimates per 1M tokens
+    const costs: Record<string, { input: number; output: number }> = {
+      'claude-sonnet-4-5-20250929': { input: 3, output: 15 },
+      'claude-haiku-4-5-20251001': { input: 0.8, output: 4 },
+    }
+    const c = costs[model] ?? { input: 3, output: 15 }
+    return (tokensIn * c.input + tokensOut * c.output) / 1_000_000
   }
 
   // ============================================
@@ -744,59 +1040,4 @@ export class LoanOriginationAgent {
     // Filter logic based on topic
     return true
   }
-}
-
-// Placeholder types for services (would come from @open-los/core)
-interface DealService {
-  create(params: any): Promise<any>
-  get(id: string): Promise<any>
-  list(params: any): Promise<any[]>
-  getPendingApprovals(tenantId: string): Promise<any[]>
-}
-
-interface StageService {
-  checkGuards(dealId: string, stage: string): Promise<{ satisfied: boolean; unsatisfied: any[] }>
-  checkGuard(dealId: string, guard: any): Promise<boolean>
-  getGuards(stage: string): Promise<any[]>
-  transition(dealId: string, stage: string, params: any): Promise<void>
-}
-
-interface DocumentService {
-  create(params: any): Promise<any>
-  listByDeal(dealId: string): Promise<any[]>
-}
-
-interface EntityService {
-  create(params: any): Promise<any>
-}
-
-interface SpreadService {
-  create(params: any): Promise<any>
-  getRatios(dealId: string): Promise<any>
-}
-
-interface CovenantService {
-  list(dealId: string): Promise<any[]>
-}
-
-interface FacilityService {
-  create(params: any): Promise<any>
-}
-
-interface LoanService {
-  create(params: any): Promise<any>
-}
-
-interface MonitoringService {
-  ingestTransactions(params: any): Promise<void>
-  getAlerts(tenantId: string): Promise<any[]>
-}
-
-interface AuditService {
-  listByDeal(dealId: string): Promise<any[]>
-}
-
-interface ApprovalsService {
-  get(id: string): Promise<any>
-  decide(id: string, params: any): Promise<void>
 }
