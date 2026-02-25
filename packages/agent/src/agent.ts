@@ -1041,4 +1041,3 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
     return true
   }
 }
-

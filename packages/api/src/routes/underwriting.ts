@@ -36,6 +36,19 @@ interface ParsedLineItem extends LineItem {
   period?: string;
 }
 
+function asFiniteNumber(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return value;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  const rounded = Math.round(value);
+  return Math.min(max, Math.max(min, rounded));
+}
 
 // ---------------------------------------------------------------------------
 // CSV parsing
@@ -180,6 +193,7 @@ export function underwritingRoutes(ctx: AppContext) {
 
     const mode = body.mode ?? "rules_only";
     const policy = body.policy ?? {};
+    const policyParams = policy.params ?? {};
 
     // --- Full Mode with inline dossier: use rich prompt builder ---
     if (mode === "full" && body.dossier) {
@@ -283,8 +297,34 @@ export function underwritingRoutes(ctx: AppContext) {
     // an LLM. Used for integration testing and as a fallback.
     const requestedAmount = deal.requested_amount ?? 0;
     const requestedAmountDollars = requestedAmount / 100; // minor units → dollars
-    const maxLoan = policy.max_single_loan ?? 500000;
-    const targetYield = policy.target_yield_pct ?? 10.0;
+    const maxLoan = asFiniteNumber(policy.max_single_loan)
+      ?? asFiniteNumber(policyParams["max_single_loan"])
+      ?? 500000;
+    const targetYield = asFiniteNumber(policy.target_yield_pct)
+      ?? asFiniteNumber(policyParams["target_yield_pct"])
+      ?? 10.0;
+    const defaultTenorMonths = clampInt(
+      asFiniteNumber(policyParams["default_tenor_months"]) ?? 24,
+      1,
+      360,
+    );
+    const originationFeePct = clampNumber(
+      asFiniteNumber(policyParams["origination_fee_pct"]) ?? 1.0,
+      0,
+      100,
+    );
+    const originationFeeRate = originationFeePct / 100;
+    const aprCapDecimal = clampNumber(
+      asFiniteNumber(policyParams["apr_cap_decimal"]) ?? 0.55,
+      0,
+      0.55,
+    );
+    const counterOfferMaxPctOfMaxLoan = clampNumber(
+      asFiniteNumber(policyParams["counter_offer_max_pct_of_max_loan"]) ?? 80.0,
+      0,
+      100,
+    );
+    const counterOfferMaxFractionOfMaxLoan = counterOfferMaxPctOfMaxLoan / 100;
 
     // Extract key ratios
     const dscr = typeof ratios.dscr === "number" ? ratios.dscr : null;
@@ -369,11 +409,12 @@ export function underwritingRoutes(ctx: AppContext) {
       // Risk premium based on grade
       const riskPremium = riskGrade === "A" ? 0.0 : riskGrade === "B" ? 0.02 : 0.05;
       terms.amount = action === "counter"
-        ? Math.min(requestedAmountDollars, maxLoan * 0.8)
+        ? Math.min(requestedAmountDollars, maxLoan * counterOfferMaxFractionOfMaxLoan)
         : requestedAmountDollars;
-      terms.apr = baseRate + riskPremium; // Decimal form (0.095 = 9.5%)
-      terms.tenor_months = 24;
-      terms.fees = { origination: Math.round(terms.amount * 0.01) };
+      const apr = baseRate + riskPremium;
+      terms.apr = clampNumber(apr, 0, aprCapDecimal); // Decimal form (0.095 = 9.5%)
+      terms.tenor_months = defaultTenorMonths;
+      terms.fees = { origination: Math.round(terms.amount * originationFeeRate) };
     }
 
     // Build rationale
