@@ -28,7 +28,13 @@
     "docs:video": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type video",
     "docs:demo": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type demo",
     "docs:version-bump": "npx tsx docs/auto-docs/scripts/version-bump.ts",
-    "docs:install-hooks": "bash docs/auto-docs/scripts/install-hooks.sh"
+    "docs:install-hooks": "bash docs/auto-docs/scripts/install-hooks.sh",
+    "demo": "DEMO_MODE=true npm run start --workspace=packages/api",
+    "demo:docker": "docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build",
+    "web:dev": "npm run dev --workspace=packages/web",
+    "web:build": "npm run build --workspace=packages/web",
+    "eval": "npm run eval --workspace=packages/eval",
+    "cli": "npx tsx packages/cli/src/index.ts"
   },
   "engines": {
     "node": ">=20"

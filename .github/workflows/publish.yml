@@ -1,0 +1,89 @@
+name: Publish Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (no publish)"
+        type: boolean
+        default: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # Publish packages in dependency order
+      - name: Publish @open-los/core
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/core
+          npm publish --access public || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @open-los/api
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/api
+          npm publish --access public || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @open-los/agent
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/agent
+          npm publish --access public || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @open-los/cli
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/cli
+          npm publish --access public || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @open-los/mcp-server
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/mcp-server
+          npm publish --access public || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @open-los/eval
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/eval
+          npm publish --access public || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @open-los/create
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/create-open-los
+          npm publish --access public || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

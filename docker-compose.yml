@@ -1,0 +1,20 @@
+services:
+  api:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - DB_PATH=/data/los.db
+      - DEMO_MODE=${DEMO_MODE:-false}
+      - DEMO_SECRET=${DEMO_SECRET:-demo-secret-change-me}
+      - DEMO_TENANT_TTL=${DEMO_TENANT_TTL:-86400}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    volumes:
+      - los-data:/data
+    restart: unless-stopped
+
+volumes:
+  los-data:

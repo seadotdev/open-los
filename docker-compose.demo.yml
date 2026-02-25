@@ -1,0 +1,8 @@
+services:
+  api:
+    environment:
+      - DEMO_MODE=true
+      - DB_PATH=:memory:
+      - CORS_ORIGINS=*
+    # No volume needed for in-memory
+    volumes: []

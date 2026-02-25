@@ -41,6 +41,9 @@ import { facilityRoutes } from "./routes/facilities.js";
 import { sandboxRoutes } from "./routes/sandboxes.js";
 import { depositRoutes } from "./routes/deposits.js";
 import { gateRoutes } from "./routes/gates.js";
+import { demoAuth } from "./middleware/demo-auth.js";
+import { demoRoutes } from "./routes/demo.js";
+import { createSseHandler } from "@open-los/mcp-server/src/sse.js";
 
 export interface LLMConfig {
   defaultProvider: "anthropic" | "openrouter";
@@ -85,11 +88,15 @@ function getCorsOrigins(): string[] | undefined {
 export function createApp(ctx: AppContext) {
   const app = new Hono();
 
+  // Demo auth (must run before CORS so tokens are verified early)
+  app.use("*", demoAuth);
+
   // CORS
   const corsOrigins = getCorsOrigins();
   app.use("*", cors(corsOrigins ? { origin: corsOrigins } : undefined));
 
   // Mount routes
+  app.route("/v1", demoRoutes(ctx));
   app.route("/v1", dealRoutes(ctx));
   app.route("/v1", documentRoutes(ctx));
   app.route("/v1", auditRoutes(ctx));
@@ -106,6 +113,9 @@ export function createApp(ctx: AppContext) {
   app.route("/v1", sandboxRoutes(ctx));
   app.route("/v1", depositRoutes(ctx));
   app.route("/v1", gateRoutes(ctx));
+
+  // MCP SSE endpoint — enables remote agents to connect over HTTP
+  app.route("/mcp", createSseHandler(ctx as any));
 
   // Global error handler
   app.onError((err, c) => {

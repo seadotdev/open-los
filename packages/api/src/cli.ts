@@ -33,6 +33,10 @@ async function main() {
   console.log(`Starting Open LOS API...`);
   console.log(`  Database: ${DB_PATH}`);
   console.log(`  Port: ${PORT}`);
+  if (process.env.DEMO_MODE === "true") {
+    console.log(`  Demo mode: ENABLED`);
+    console.log(`  Demo tenant TTL: ${process.env.DEMO_TENANT_TTL || "86400"}s`);
+  }
 
   // Create database
   const db = createDatabase(DB_PATH);
@@ -114,6 +118,9 @@ async function main() {
     console.log(`  curl http://localhost:${info.port}/health`);
     console.log(`  curl http://localhost:${info.port}/v1/deals`);
     console.log(`  curl -X POST http://localhost:${info.port}/v1/deals -H "Content-Type: application/json" -d '{"borrower_name":"Acme Ltd"}'`);
+    if (process.env.DEMO_MODE === "true") {
+      console.log(`  curl -X POST http://localhost:${info.port}/v1/demo/provision`);
+    }
   });
 }
 

@@ -1,0 +1,22 @@
+name: Stage Transitions
+description: >
+  Tests navigating a deal through all valid stage transitions.
+
+initial_state:
+  deals:
+    - borrower_name: "Stage Test Corp"
+      requested_amount: 100000000
+
+goal:
+  description: >
+    Advance the deal through broker -> origination -> underwriting -> closing.
+  checks:
+    - name: "Deal advanced past broker"
+      type: count
+      endpoint: /v1/deals?stage=broker
+      expect: 0
+      weight: 1
+
+constraints:
+  max_steps: 10
+  max_time_seconds: 30

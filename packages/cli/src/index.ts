@@ -34,6 +34,7 @@ import { registerEmailCommands } from './commands/email.js';
 import { registerDepositCommands } from './commands/deposits.js';
 import { registerGateCommands } from './commands/gates.js';
 import { registerShadowCommands } from '@open-los/shadow-cli';
+import { registerConnectCommands } from './commands/connect.js';
 
 type CommandRegistrar = (program: Command) => void;
 
@@ -99,6 +100,9 @@ program
 for (const register of allCommandRegistrars) {
   register(program);
 }
+
+// Register connect/config/disconnect commands
+registerConnectCommands(program);
 
 // Parse and execute
 program.parse();

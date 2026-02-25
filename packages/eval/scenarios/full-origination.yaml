@@ -1,0 +1,31 @@
+name: Full Deal Origination
+description: >
+  Tests the complete deal origination flow from creating a deal
+  to advancing it through all stages to closing.
+
+initial_state:
+  entities:
+    - type: company
+      name: "Eval Corp"
+      legal_name: "Evaluation Corporation"
+      jurisdiction: "US-CA"
+
+goal:
+  description: >
+    Create a deal for Eval Corp, link the entity, add financial data,
+    set up covenants, and advance through all stages to closing.
+  checks:
+    - name: "Deal exists"
+      type: count
+      endpoint: /v1/deals
+      expect: 1
+      weight: 1
+    - name: "Entity exists"
+      type: count
+      endpoint: /v1/entities
+      expect: 1
+      weight: 1
+
+constraints:
+  max_steps: 50
+  max_time_seconds: 120

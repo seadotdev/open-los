@@ -3,21 +3,27 @@
  * Handles all HTTP communication with the API server
  */
 
+import { loadConfig } from './config.js';
+
 export interface ClientConfig {
   baseUrl: string;
   actor: string;
   tenantId: string;
+  token?: string;
 }
 
 export class LosClient {
   private config: ClientConfig;
+  private token?: string;
 
   constructor(config: Partial<ClientConfig> = {}) {
+    const saved = loadConfig();
     this.config = {
-      baseUrl: config.baseUrl || process.env.LOS_API_URL || 'http://localhost:3000',
-      actor: config.actor || process.env.LOS_ACTOR || 'cli',
-      tenantId: config.tenantId || process.env.LOS_TENANT_ID || 'default',
+      baseUrl: config.baseUrl || process.env.LOS_API_URL || saved.server || 'http://localhost:3000',
+      actor: config.actor || process.env.LOS_ACTOR || saved.actor || 'cli',
+      tenantId: config.tenantId || process.env.LOS_TENANT_ID || saved.tenant_id || 'default',
     };
+    this.token = config.token || saved.token;
   }
 
   private async request<T>(
@@ -50,6 +56,10 @@ export class LosClient {
       'X-Tenant-Id': this.config.tenantId,
       ...options.headers,
     };
+
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
 
     if (options.body && !(options.body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';

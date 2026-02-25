@@ -17,6 +17,8 @@
   "dependencies": {
     "@open-los/core": "*",
     "@open-los/agent": "*",
+    "@open-los/mcp-server": "*",
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "hono": "^4.0.0",
     "@hono/node-server": "^1.13.0",
     "tsx": "^4.0.0"
