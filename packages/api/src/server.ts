@@ -41,6 +41,7 @@ import { facilityRoutes } from "./routes/facilities.js";
 import { sandboxRoutes } from "./routes/sandboxes.js";
 import { depositRoutes } from "./routes/deposits.js";
 import { gateRoutes } from "./routes/gates.js";
+import { chatRoutes } from "./routes/chat.js";
 
 export interface LLMConfig {
   defaultProvider: "anthropic" | "openrouter";
@@ -106,6 +107,9 @@ export function createApp(ctx: AppContext) {
   app.route("/v1", sandboxRoutes(ctx));
   app.route("/v1", depositRoutes(ctx));
   app.route("/v1", gateRoutes(ctx));
+
+  // Chat bot webhook routes (Slack, Teams)
+  app.route("/chat", chatRoutes(ctx));
 
   // Global error handler
   app.onError((err, c) => {
