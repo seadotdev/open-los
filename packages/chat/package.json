@@ -1,0 +1,24 @@
+{
+  "name": "@open-los/chat",
+  "version": "0.1.0",
+  "description": "Chat interface for Open LOS — control your loan origination system from Slack, Teams, and more",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@open-los/core": "*",
+    "@open-los/agent": "*",
+    "chat": "^4.0.0",
+    "@chat-adapter/slack": "^4.0.0",
+    "@chat-adapter/teams": "^4.0.0",
+    "@chat-adapter/state-redis": "^4.0.0",
+    "@chat-adapter/state-memory": "^4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

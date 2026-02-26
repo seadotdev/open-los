@@ -663,13 +663,13 @@ paths:
       operationId: evaluateDeal
       summary: Trigger underwriting evaluation for a deal
       description: |
-        Triggers the LOS agent to evaluate the deal using the provided policy
+        Triggers underwriting evaluation for the deal using the provided policy
         configuration. Returns a structured UnderwritingRun conforming to
-        schemas/underwriting-run.schema.json.
+        `schemas/underwriting-run.schema.json`.
 
-        The agent evaluates using the deal's full context (documents, spreads,
-        entity graph) and the lender's policy (persona, model, limits, sector
-        constraints). Supports configurable LLM providers.
+        Current implementation is the deterministic thin-agent rules path.
+        `mode=full` is accepted for forward compatibility and currently falls
+        back to the same rules evaluation as `mode=rules_only`.
       tags: [underwriting]
       requestBody:
         required: true
@@ -1585,7 +1585,7 @@ components:
         provider:
           type: string
           enum: [openrouter, anthropic]
-          description: LLM provider to use for evaluation
+          description: Reserved for future full-agent provider selection
         mode:
           type: string
           enum: [full, rules_only]

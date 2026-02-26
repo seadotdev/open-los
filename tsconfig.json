@@ -18,7 +18,8 @@
       "@open-los/api": ["./packages/api/src"],
       "@open-los/agent": ["./packages/agent/src"],
       "@open-los/conformance": ["./packages/conformance/src"],
-      "@open-los/mcp-server": ["./packages/mcp-server/src"]
+      "@open-los/mcp-server": ["./packages/mcp-server/src"],
+      "@open-los/chat": ["./packages/chat/src"]
     }
   },
   "exclude": ["node_modules", "dist", "**/dist"]

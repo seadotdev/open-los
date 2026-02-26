@@ -107,6 +107,14 @@ async function main() {
   // Health check
   app.get("/health", (c) => c.json({ status: "ok", timestamp: clock() }));
 
+  // Chat bot status
+  const chatPlatforms: string[] = [];
+  if (process.env.SLACK_BOT_TOKEN) chatPlatforms.push("Slack");
+  if (process.env.TEAMS_APP_ID) chatPlatforms.push("Teams");
+  if (chatPlatforms.length > 0) {
+    console.log(`  Chat: ${chatPlatforms.join(", ")} enabled`);
+  }
+
   // Start server
   serve({ fetch: app.fetch, port: PORT }, (info) => {
     console.log(`\nOpen LOS API running at http://localhost:${info.port}`);
@@ -114,6 +122,10 @@ async function main() {
     console.log(`  curl http://localhost:${info.port}/health`);
     console.log(`  curl http://localhost:${info.port}/v1/deals`);
     console.log(`  curl -X POST http://localhost:${info.port}/v1/deals -H "Content-Type: application/json" -d '{"borrower_name":"Acme Ltd"}'`);
+    if (chatPlatforms.length > 0) {
+      console.log(`\nChat bot (${chatPlatforms.join(", ")}):`);
+      console.log(`  curl http://localhost:${info.port}/chat/health`);
+    }
   });
 }
 

@@ -137,6 +137,8 @@ curl -X POST http://localhost:3000/v1/deals/{id}/stage-transitions \
 packages/
   core/           # Domain logic, services, database schema
   api/            # Hono HTTP server
+  agent/          # AI agent orchestration layer
+  chat/           # Chat bot interface (Slack, Teams) — Vercel Chat SDK
   conformance/    # YAML-driven test suites
 
 schemas/          # JSON Schema definitions
@@ -162,6 +164,21 @@ docs/             # Architecture documentation
 | Facilities | ✅ |
 | Approval workflow | ✅ |
 | Loan ledger (Mambu-compatible) | ✅ |
+| Chat interface (Slack, Teams) | ✅ |
+
+## Chat Interface (Slack & Teams)
+
+Control Open LOS from Slack or Microsoft Teams using the [Vercel Chat SDK](https://chat-sdk.dev/). Set platform credentials and the bot mounts automatically:
+
+```bash
+# Enable Slack
+SLACK_BOT_TOKEN=xoxb-... SLACK_SIGNING_SECRET=... npm run start --workspace=packages/api
+
+# Enable Teams
+TEAMS_APP_ID=... TEAMS_APP_PASSWORD=... npm run start --workspace=packages/api
+```
+
+Available commands: `/los-deals`, `/los-deal <id>`, `/los-new-deal`, `/los-advance <id>`, `/los-portfolio`. See [packages/chat/README.md](./packages/chat/README.md) for full details.
 
 ## Environment Variables
 
@@ -169,6 +186,11 @@ docs/             # Architecture documentation
 |----------|---------|-------------|
 | `PORT` | `3000` | HTTP server port |
 | `DB_PATH` | `:memory:` | SQLite database path |
+| `SLACK_BOT_TOKEN` | — | Slack bot token (enables Slack chat) |
+| `SLACK_SIGNING_SECRET` | — | Slack request signing secret |
+| `TEAMS_APP_ID` | — | Teams app ID (enables Teams chat) |
+| `TEAMS_APP_PASSWORD` | — | Teams app password |
+| `REDIS_URL` | — | Redis URL for chat state (optional) |
 
 ## Development
 
