@@ -13,6 +13,7 @@
     "test:smoke": "npm run test:smoke --workspace=packages/conformance",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck:ci": "npm run typecheck --workspace=packages/agent --workspace=packages/core --workspace=packages/mcp-server --if-present",
     "integration:parity:report": "node scripts/check_api_parity.mjs --mode report",
     "integration:parity:dev": "node scripts/check_api_parity.mjs --mode dev",
     "integration:parity:release": "node scripts/check_api_parity.mjs --mode release",
