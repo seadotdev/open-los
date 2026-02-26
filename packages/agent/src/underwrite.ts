@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto"
 import { createLLMClient } from "./llm/index.js"
+import { resolveUsageForTrace } from "./llm/usage.js"
 import type {
   UnderwritingRun,
   RunCase,
@@ -382,13 +383,6 @@ export async function evaluateStandalone(
       term_sheet?: { loan_amount?: number; interest_rate?: number; term_months?: number }
     }>(user, decisionSchema, { system })
 
-    const llmAny = llmClient as any
-    if (typeof llmAny.tokensIn === "number") {
-      tokensIn = llmAny.tokensIn
-      tokensOut = llmAny.tokensOut ?? 0
-      costUsd = estimateCost(tokensIn, tokensOut, model)
-    }
-
     const action = llmResult.decision?.toUpperCase() === "APPROVE" ? "approve" : "decline"
     const ts = llmResult.term_sheet
 
@@ -446,6 +440,16 @@ export async function evaluateStandalone(
       content: `LLM call failed: ${err?.message ?? "unknown error"}`,
     })
   }
+
+  // Capture usage regardless of success/failure so billed attempts are counted.
+  const usage = resolveUsageForTrace(
+    llmClient,
+    (tokensInEstimate, tokensOutEstimate) =>
+      estimateCost(tokensInEstimate, tokensOutEstimate, model)
+  )
+  tokensIn = usage.tokensIn
+  tokensOut = usage.tokensOut
+  costUsd = usage.costUsd
 
   const latencyMs = Date.now() - startTime
 
