@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { LLMClient, LLMOptions } from '../types.js'
+import type { LLMClient, LLMOptions, LLMStructuredOptions } from '../types.js'
+import { validateStructuredOutput } from './schema-validate.js'
 
 export interface AnthropicClientConfig {
   apiKey: string
@@ -34,30 +35,42 @@ export class AnthropicClient implements LLMClient {
     return textBlock?.type === 'text' ? textBlock.text : ''
   }
 
-  async structured<T>(prompt: string, schema: object): Promise<T> {
-    const start = Date.now()
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: 2048,
-      temperature: 0.2,
-      messages: [{ role: 'user', content: prompt }],
-      tools: [
-        {
-          name: 'structured_output',
-          description: 'Return structured data matching the schema',
-          input_schema: schema as Anthropic.Tool['input_schema'],
-        },
-      ],
-      tool_choice: { type: 'tool', name: 'structured_output' },
-    })
-    this.latencyMs += Date.now() - start
-    this.tokensIn += response.usage.input_tokens
-    this.tokensOut += response.usage.output_tokens
+  async structured<T>(prompt: string, schema: object, options?: LLMStructuredOptions): Promise<T> {
+    let lastError = 'No tool_use block in Anthropic response'
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const start = Date.now()
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 2048,
+        temperature: 0.2,
+        system: options?.system,
+        messages: [{ role: 'user', content: prompt }],
+        tools: [
+          {
+            name: 'structured_output',
+            description: 'Return structured data matching the schema',
+            input_schema: schema as Anthropic.Tool['input_schema'],
+          },
+        ],
+        tool_choice: { type: 'tool', name: 'structured_output' },
+      })
+      this.latencyMs += Date.now() - start
+      this.tokensIn += response.usage.input_tokens
+      this.tokensOut += response.usage.output_tokens
 
-    const toolBlock = response.content.find((b) => b.type === 'tool_use')
-    if (toolBlock?.type === 'tool_use') {
-      return toolBlock.input as T
+      const toolBlock = response.content.find((b) => b.type === 'tool_use')
+      if (toolBlock?.type !== 'tool_use') {
+        lastError = 'No tool_use block in Anthropic response'
+        continue
+      }
+
+      const validationErrors = validateStructuredOutput(toolBlock.input, schema)
+      if (validationErrors.length === 0) {
+        return toolBlock.input as T
+      }
+
+      lastError = `Structured output schema mismatch: ${validationErrors.join('; ')}`
     }
-    throw new Error('No tool_use block in Anthropic response')
+    throw new Error(lastError)
   }
 }

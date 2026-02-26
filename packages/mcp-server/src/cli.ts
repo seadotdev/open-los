@@ -294,8 +294,9 @@ export async function startCli(args: string[]) {
   program
     .command("evaluate <dealId>")
     .description("Run underwriting evaluation")
-    .option("--mode <mode>", "rules_only or full", "rules_only")
+    .option("--mode <mode>", "rules_only or full", "full")
     .option("--provider <provider>", "anthropic or openrouter")
+    .option("--allow-rules-fallback", "Allow rules_only fallback when mode=full", false)
     .option("--target-yield <pct>", "Target yield %", parseFloat)
     .option("--max-loan <amount>", "Max single loan $", parseFloat)
     .action(async (dealId, opts) => {
@@ -305,6 +306,7 @@ export async function startCli(args: string[]) {
           deal_id: dealId,
           mode: opts.mode,
           provider: opts.provider,
+          allow_rules_fallback: !!opts.allowRulesFallback,
           target_yield_pct: opts.targetYield,
           max_single_loan: opts.maxLoan,
           actor: g.actor,

@@ -135,32 +135,50 @@ function formatQuarterlyTable(quarters: QuarterlyIncome[]): string {
 function formatBankStatements(statements: MonthlyStatement[]): string {
   if (!statements || statements.length === 0) return "  (No bank statement data available)"
 
+  const MAX_TXNS_PER_MONTH = 50
+  const MAX_TOTAL_CHARS = 12000
+  let truncated = false
+
   const entries = statements.map(s => {
+    const deposits = s.deposits ? s.deposits.slice(0, MAX_TXNS_PER_MONTH) : undefined
+    const withdrawals = s.withdrawals ? s.withdrawals.slice(0, MAX_TXNS_PER_MONTH) : undefined
+    if ((s.deposits?.length ?? 0) > MAX_TXNS_PER_MONTH || (s.withdrawals?.length ?? 0) > MAX_TXNS_PER_MONTH) {
+      truncated = true
+    }
+
     const entry: Record<string, unknown> = {
       month: s.month,
       opening_balance: s.opening_balance,
       ending_balance: s.ending_balance,
     }
-    if (s.deposits) {
-      entry.deposits = s.deposits.map(t => ({
+    if (deposits) {
+      entry.deposits = deposits.map(t => ({
         date: t.date,
         description: t.description,
         amount: t.amount,
       }))
-      entry.total_deposits = s.total_deposits ?? s.deposits.reduce((sum, t) => sum + t.amount, 0)
+      entry.total_deposits = s.total_deposits ?? deposits.reduce((sum, t) => sum + t.amount, 0)
     }
-    if (s.withdrawals) {
-      entry.withdrawals = s.withdrawals.map(t => ({
+    if (withdrawals) {
+      entry.withdrawals = withdrawals.map(t => ({
         date: t.date,
         description: t.description,
         amount: t.amount,
       }))
-      entry.total_withdrawals = s.total_withdrawals ?? s.withdrawals.reduce((sum, t) => sum + t.amount, 0)
+      entry.total_withdrawals = s.total_withdrawals ?? withdrawals.reduce((sum, t) => sum + t.amount, 0)
     }
     return entry
   })
 
-  return JSON.stringify(entries, null, 2)
+  let output = JSON.stringify(entries, null, 2)
+  if (output.length > MAX_TOTAL_CHARS) {
+    output = output.slice(0, MAX_TOTAL_CHARS)
+    truncated = true
+  }
+  if (truncated) {
+    output += "\n\n[truncated: statements were reduced for token budget]"
+  }
+  return output
 }
 
 /**
@@ -315,7 +333,7 @@ export async function evaluateStandalone(
   const startTime = Date.now()
   const runId = randomUUID()
 
-  const model = models?.default ?? policy.model ?? ctx.llmConfig?.defaultModel ?? "rules_only"
+  const model = models?.default ?? policy.model ?? ctx.llmConfig?.defaultModel ?? "claude-sonnet-4-5-20250929"
   const apiKey = ctx.llmConfig?.apiKeys[provider] ?? ""
 
   if (!apiKey) {
@@ -325,8 +343,6 @@ export async function evaluateStandalone(
   const { system, user } = buildUnderwritingPrompt(policy, dossier)
 
   const llmClient = createLLMClient(provider, { apiKey, model })
-
-  const fullPrompt = `${system}\n\n${user}`
 
   const decisionSchema = {
     type: "object" as const,
@@ -364,7 +380,7 @@ export async function evaluateStandalone(
       decision: string
       reasoning: string
       term_sheet?: { loan_amount?: number; interest_rate?: number; term_months?: number }
-    }>(fullPrompt, decisionSchema)
+    }>(user, decisionSchema, { system })
 
     const llmAny = llmClient as any
     if (typeof llmAny.tokensIn === "number") {

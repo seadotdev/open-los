@@ -1,6 +1,8 @@
 import OpenAI from 'openai'
 import type { FunctionParameters } from 'openai/resources/shared'
-import type { LLMClient, LLMOptions } from '../types.js'
+import type { LLMClient, LLMOptions, LLMStructuredOptions } from '../types.js'
+import { validateStructuredOutput } from './schema-validate.js'
+import { parseStructuredFromAssistantMessage } from './structured-parse.js'
 
 export interface OpenRouterClientConfig {
   apiKey: string
@@ -37,21 +39,21 @@ export class OpenRouterClient implements LLMClient {
     return response.choices[0]?.message?.content ?? ''
   }
 
-  async structured<T>(prompt: string, schema: object): Promise<T> {
-    const start = Date.now()
+  async structured<T>(prompt: string, schema: object, options?: LLMStructuredOptions): Promise<T> {
+    let lastError = 'No tool call in OpenRouter response'
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const start = Date.now()
+      const messages: Array<{ role: 'system' | 'user'; content: string }> = []
+      if (options?.system) {
+        messages.push({ role: 'system', content: options.system })
+      }
+      messages.push({ role: 'user', content: prompt })
 
-    // Try with tool calling first (tool_choice "auto" for broad model compat).
-    // If the model/provider doesn't support tools at all, fall back to plain
-    // text completion and extract JSON from the response.
-    let response: OpenAI.Chat.Completions.ChatCompletion
-    let usedTools = true
-
-    try {
-      response = await this.client.chat.completions.create({
+      const response = await this.client.chat.completions.create({
         model: this.model,
         max_tokens: 2048,
         temperature: 0.2,
-        messages: [{ role: 'user', content: prompt }],
+        messages,
         tools: [
           {
             type: 'function',
@@ -62,44 +64,38 @@ export class OpenRouterClient implements LLMClient {
             },
           },
         ],
-        tool_choice: 'auto',
+        tool_choice: { type: 'function', function: { name: 'structured_output' } },
       })
-    } catch (toolErr: any) {
-      const msg = toolErr?.message ?? ''
-      // Model/provider doesn't support tool use at all — retry without tools
-      if (msg.includes('tool use') || msg.includes('tool_choice') || toolErr?.status === 404) {
-        usedTools = false
-        const jsonHint = '\n\nIMPORTANT: You MUST respond with ONLY a valid JSON object (no markdown, no commentary).'
-        response = await this.client.chat.completions.create({
-          model: this.model,
-          max_tokens: 2048,
-          temperature: 0.2,
-          messages: [{ role: 'user', content: prompt + jsonHint }],
-        })
-      } else {
-        throw toolErr
-      }
-    }
+      this.latencyMs += Date.now() - start
+      this.tokensIn += response.usage?.prompt_tokens ?? 0
+      this.tokensOut += response.usage?.completion_tokens ?? 0
 
-    this.latencyMs += Date.now() - start
-    this.tokensIn += response.usage?.prompt_tokens ?? 0
-    this.tokensOut += response.usage?.completion_tokens ?? 0
-
-    // 1. Check for tool call response
-    if (usedTools) {
       const toolCall = response.choices[0]?.message?.tool_calls?.[0]
       if (toolCall?.function?.arguments) {
-        return JSON.parse(toolCall.function.arguments) as T
+        try {
+          const parsed = JSON.parse(toolCall.function.arguments) as unknown
+          const validationErrors = validateStructuredOutput(parsed, schema)
+          if (validationErrors.length === 0) {
+            return parsed as T
+          }
+          lastError = `Structured output schema mismatch: ${validationErrors.join('; ')}`
+          continue
+        } catch (err: any) {
+          lastError = `Tool-call JSON parse failed: ${err?.message ?? 'unknown error'}`
+          continue
+        }
       }
-    }
 
-    // 2. Fallback: extract JSON from plain text content
-    const text = response.choices[0]?.message?.content ?? ''
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]) as T
+      // Recovery path for models that accept tools but return prose text.
+      const parsedFromText = parseStructuredFromAssistantMessage<T>(
+        response.choices[0]?.message?.content,
+        schema
+      )
+      if (parsedFromText.value !== undefined) {
+        return parsedFromText.value
+      }
+      lastError = parsedFromText.error ?? 'No structured output in tool call or assistant text'
     }
-
-    throw new Error(`No structured output from model ${this.model}: neither tool call nor JSON in response`)
+    throw new Error(lastError)
   }
 }

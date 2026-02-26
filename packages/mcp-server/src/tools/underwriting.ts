@@ -22,6 +22,16 @@ import type {
   FinancialDossier,
 } from "@open-los/core";
 
+type LlmProvider = "anthropic" | "openrouter";
+
+function parseProvider(value: unknown, fallback?: string): LlmProvider {
+  const candidate = (typeof value === "string" ? value : fallback) ?? "anthropic";
+  if (candidate !== "anthropic" && candidate !== "openrouter") {
+    throw new Error(`Invalid provider "${candidate}". Expected "anthropic" or "openrouter".`);
+  }
+  return candidate;
+}
+
 // Re-export for CLI
 export { buildUnderwritingPrompt, evaluateStandalone } from "@open-los/agent";
 export type { UnderwritePolicy, ModelConfig } from "@open-los/agent";
@@ -75,12 +85,17 @@ export const evaluateSchema = {
   mode: z
     .enum(["rules_only", "full"])
     .optional()
-    .default("rules_only")
+    .default("full")
     .describe("rules_only = deterministic, full = LLM agent"),
   provider: z
     .enum(["anthropic", "openrouter"])
     .optional()
     .describe("LLM provider (only for mode=full)"),
+  allow_rules_fallback: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("When mode=full, permit deterministic rules fallback if LLM is unavailable/fails"),
   policy_id: z.string().optional(),
   model: z.string().optional(),
   persona: z.string().optional(),
@@ -123,6 +138,7 @@ export async function handleEvaluate(
     deal_id: string;
     mode?: string;
     provider?: string;
+    allow_rules_fallback?: boolean;
     policy_id?: string;
     model?: string;
     persona?: string;
@@ -137,14 +153,16 @@ export async function handleEvaluate(
 ): Promise<UnderwritingRun> {
   const {
     deal_id: dealId,
-    mode = "rules_only",
+    mode = "full",
     tenant_id: tenantId = "default",
     actor = "mcp-agent",
     dossier,
+    allow_rules_fallback: allowRulesFallback = false,
     ...policyParams
   } = params;
 
   const startTime = Date.now();
+  const fallbackNotes: string[] = [];
 
   const policy: UnderwritePolicy = {
     policy_id: policyParams.policy_id,
@@ -158,44 +176,58 @@ export async function handleEvaluate(
 
   // --- Full Mode with inline dossier: use rich prompt builder ---
   if (mode === "full" && dossier) {
-    const provider = (params.provider ??
-      ctx.llmConfig?.defaultProvider ??
-      "anthropic") as "anthropic" | "openrouter";
+    const provider = parseProvider(params.provider, ctx.llmConfig?.defaultProvider);
     const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
 
+    if (!apiKey && !allowRulesFallback) {
+      throw new Error(`mode=full requires API key for provider=${provider} (or set allow_rules_fallback=true)`);
+    }
+
     if (apiKey) {
-      const response = await evaluateStandalone(ctx as any, policy, dossier, provider);
-      response.case.case_id = dealId;
+      try {
+        const response = await evaluateStandalone(ctx as any, policy, dossier, provider);
+        response.case.case_id = dealId;
 
-      await ctx.auditService.record({
-        deal_id: dealId,
-        type: "DEAL_UPDATED",
-        actor,
-        timestamp: new Date().toISOString(),
-        changes: [
-          {
-            field: "evaluation",
-            before: null,
-            after: {
-              run_id: response.run_id,
-              action: response.decision.action,
-              risk_grade: response.decision.risk_grade,
-              mode: "full_dossier",
+        await ctx.auditService.record({
+          deal_id: dealId,
+          type: "DEAL_UPDATED",
+          actor,
+          timestamp: new Date().toISOString(),
+          changes: [
+            {
+              field: "evaluation",
+              before: null,
+              after: {
+                run_id: response.run_id,
+                action: response.decision.action,
+                risk_grade: response.decision.risk_grade,
+                mode: "full_dossier",
+                allow_rules_fallback: allowRulesFallback,
+              },
             },
-          },
-        ],
-      });
+          ],
+        });
 
-      return response;
+        return response;
+      } catch (err: any) {
+        if (!allowRulesFallback) {
+          throw new Error(`Full dossier underwriting failed: ${err?.message ?? "unknown error"}`);
+        }
+        fallbackNotes.push(`dossier_full_failed:${err?.message ?? "unknown error"}`);
+      }
+    } else {
+      fallbackNotes.push(`missing_api_key:${provider}`);
     }
   }
 
   // --- Full Agent Mode ---
   if (mode === "full") {
-    const provider = (params.provider ??
-      ctx.llmConfig?.defaultProvider ??
-      "anthropic") as "anthropic" | "openrouter";
+    const provider = parseProvider(params.provider, ctx.llmConfig?.defaultProvider);
     const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+
+    if (!apiKey && !allowRulesFallback) {
+      throw new Error(`mode=full requires API key for provider=${provider} (or set allow_rules_fallback=true)`);
+    }
 
     if (apiKey) {
       const agentServices = createAgentServices(ctx as any, {
@@ -225,10 +257,15 @@ export async function handleEvaluate(
         },
       };
 
-      const response = await agent.evaluate(dealId, runPolicy, {
-        tenantId,
-        actor,
-      });
+      const response = await agent.evaluate(
+        dealId,
+        runPolicy,
+        {
+          tenantId,
+          actor,
+        },
+        { allowRulesFallback }
+      );
 
       await ctx.auditService.record({
         deal_id: dealId,
@@ -244,6 +281,7 @@ export async function handleEvaluate(
               action: response.decision.action,
               risk_grade: response.decision.risk_grade,
               mode: "full",
+              allow_rules_fallback: allowRulesFallback,
             },
           },
         ],
@@ -251,7 +289,8 @@ export async function handleEvaluate(
 
       return response;
     }
-    // No API key — fall through to rules_only
+    // No API key — fall through to rules_only only if explicitly allowed
+    fallbackNotes.push(`missing_api_key:${provider}`);
   }
 
   // --- Rules-Only Mode ---
@@ -339,8 +378,27 @@ export async function handleEvaluate(
   if (policy.sector_limits && (deal as any).custom_fields) {
     const sector = ((deal as any).custom_fields as Record<string, unknown>)
       .sector as string;
-    if (sector && policy.sector_limits[sector] !== undefined) {
-      keyFactors.push(`Sector "${sector}" within concentration limits`);
+    const limit = sector ? policy.sector_limits[sector] : undefined;
+    const totalCapital = policy.total_capital;
+    const existingExposure = sector && policy.existing_portfolio
+      ? policy.existing_portfolio
+          .filter((loan) => loan.sector === sector)
+          .reduce((sum, loan) => sum + loan.remaining_balance, 0)
+      : 0;
+    if (sector && limit !== undefined && totalCapital && totalCapital > 0) {
+      const projectedPct = (existingExposure + requestedAmountDollars) / totalCapital;
+      if (projectedPct > limit) {
+        action = "decline";
+        riskGrade = "D";
+        confidence = Math.max(confidence, 0.90);
+        probDefault = Math.max(probDefault, 0.25);
+        keyFactors.push(
+          `Sector concentration breach for "${sector}": projected ${(projectedPct * 100).toFixed(1)}% exceeds ${(limit * 100).toFixed(1)}% limit`
+        );
+        whatWouldChange.push(`Reduce sector exposure for ${sector} or increase total capital`);
+      } else {
+        keyFactors.push(`Sector "${sector}" projected concentration ${(projectedPct * 100).toFixed(1)}% is within ${(limit * 100).toFixed(1)}% limit`);
+      }
     }
   }
 
@@ -368,13 +426,14 @@ export async function handleEvaluate(
     const baseRate = targetYield / 100;
     const riskPremium =
       riskGrade === "A" ? 0.0 : riskGrade === "B" ? 0.02 : 0.05;
-    terms.amount =
-      action === "counter"
-        ? Math.min(requestedAmountDollars, maxLoan * 0.8)
-        : requestedAmountDollars;
-    terms.apr = baseRate + riskPremium;
-    terms.tenor_months = 24;
-    terms.fees = { origination: Math.round(terms.amount * 0.01) };
+      terms.amount =
+        action === "counter"
+          ? Math.min(requestedAmountDollars, maxLoan * 0.8)
+          : requestedAmountDollars;
+      terms.apr = baseRate + riskPremium;
+      if (terms.apr > 0.55) terms.apr = 0.55;
+      terms.tenor_months = 24;
+      terms.fees = { origination: Math.round(terms.amount * 0.01) };
   }
 
   const rationale: DecisionRationale = {
@@ -399,6 +458,27 @@ export async function handleEvaluate(
         name: "rules_evaluation",
         content: `Evaluated ${Object.keys(ratios).length} financial ratios, ${Array.isArray(docs) ? docs.length : 0} documents`,
       },
+      ...(fallbackNotes.length > 0
+        ? [
+            {
+              t: new Date().toISOString(),
+              type: "note" as const,
+              name: "llm_fallback",
+              content: `Fell back to rules_only: ${fallbackNotes.join(", ")}`,
+            },
+          ]
+        : []),
+      {
+        t: new Date().toISOString(),
+        type: "note" as const,
+        name: "evaluation_mode",
+        content:
+          mode === "full"
+            ? fallbackNotes.length > 0
+              ? "full_requested_rules_fallback"
+              : "full"
+            : "rules_only",
+      },
     ],
     latency_ms: latencyMs,
     cost: { tokens_in: 0, tokens_out: 0, estimated_cost_usd: 0 },
@@ -416,7 +496,7 @@ export async function handleEvaluate(
 
   const runPolicy: RunPolicy = {
     policy_id: policy.policy_id ?? `rules_${tenantId}`,
-    model: policy.model ?? "rules_only",
+    model: "rules_only",
     params: {
       persona: policy.persona,
       target_yield_pct: policy.target_yield_pct,
@@ -455,7 +535,15 @@ export async function handleEvaluate(
       {
         field: "evaluation",
         before: null,
-        after: { run_id: runId, action, risk_grade: riskGrade },
+        after: {
+          run_id: runId,
+          action,
+          risk_grade: riskGrade,
+          mode: mode === "full" ? "rules_fallback" : "rules_only",
+          fallback_reason:
+            fallbackNotes.length > 0 ? fallbackNotes.join(", ") : null,
+          allow_rules_fallback: allowRulesFallback,
+        },
       },
     ],
   });
@@ -487,9 +575,7 @@ export async function handleUnderwrite(
     actor?: string;
   }
 ): Promise<UnderwritingRun> {
-  const provider = (params.provider ??
-    ctx.llmConfig?.defaultProvider ??
-    "anthropic") as "anthropic" | "openrouter";
+  const provider = parseProvider(params.provider, ctx.llmConfig?.defaultProvider);
 
   const policy: UnderwritePolicy = {
     policy_id: params.policy_id,

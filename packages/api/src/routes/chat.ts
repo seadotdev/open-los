@@ -62,6 +62,7 @@ export function chatRoutes(ctx: AppContext): Hono {
           documentService: ctx.documentService,
           stageService: ctx.stageService,
           entityService: ctx.entityService,
+          relationshipService: ctx.relationshipService,
           spreadService: ctx.spreadService,
           covenantService: ctx.covenantService,
           facilityService: ctx.facilityService,

@@ -36,6 +36,16 @@ interface ParsedLineItem extends LineItem {
   period?: string;
 }
 
+type LlmProvider = "anthropic" | "openrouter";
+
+function parseProvider(value: unknown, fallback?: string): LlmProvider | null {
+  const candidate = (typeof value === "string" ? value : fallback) ?? "anthropic";
+  if (candidate === "anthropic" || candidate === "openrouter") {
+    return candidate;
+  }
+  return null;
+}
+
 function asFiniteNumber(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   return value;
@@ -176,7 +186,7 @@ export function underwritingRoutes(ctx: AppContext) {
   //
   // When dossier is provided AND mode=full, uses the rich prompt builder
   // (buildUnderwritingPrompt) for LLM-quality underwriting.
-  // Otherwise falls through to agent evaluate or rules-only as before.
+  // Otherwise follows agent evaluate or rules-only.
   app.post("/deals/:dealId/evaluate", async (c) => {
     const dealId = c.req.param("dealId");
     const actor = c.req.header("X-Actor") ?? "system";
@@ -187,18 +197,28 @@ export function underwritingRoutes(ctx: AppContext) {
       policy?: UnderwritePolicy;
       provider?: string;
       mode?: "full" | "rules_only";
+      allow_rules_fallback?: boolean;
       dossier?: FinancialDossier;
       models?: ModelConfig;
     };
 
-    const mode = body.mode ?? "rules_only";
+    const mode = body.mode ?? "full";
+    const allowRulesFallback = body.allow_rules_fallback ?? false;
     const policy = body.policy ?? {};
+    const fallbackNotes: string[] = [];
     const policyParams = policy.params ?? {};
 
     // --- Full Mode with inline dossier: use rich prompt builder ---
     if (mode === "full" && body.dossier) {
-      const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
+      const provider = parseProvider(body.provider, ctx.llmConfig?.defaultProvider);
+      if (!provider) {
+        return c.json({ error: "Invalid provider. Expected 'anthropic' or 'openrouter'." }, 400);
+      }
       const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+
+      if (!apiKey && !allowRulesFallback) {
+        return c.json({ error: `mode=full requires API key for provider=${provider} (or set allow_rules_fallback=true)` }, 503);
+      }
 
       if (apiKey) {
         try {
@@ -212,25 +232,36 @@ export function underwritingRoutes(ctx: AppContext) {
             actor,
             timestamp: new Date().toISOString(),
             changes: [
-              { field: "evaluation", before: null, after: { run_id: response.run_id, action: response.decision.action, risk_grade: response.decision.risk_grade, mode: "full_dossier" } },
+              { field: "evaluation", before: null, after: { run_id: response.run_id, action: response.decision.action, risk_grade: response.decision.risk_grade, mode: "full_dossier", allow_rules_fallback: allowRulesFallback } },
             ],
           });
 
           return c.json(stripNulls(response), 200);
         } catch (err: any) {
+          if (!allowRulesFallback) {
+            return c.json({ error: `Full dossier underwriting failed: ${err?.message ?? "unknown error"}` }, 502);
+          }
+          fallbackNotes.push(`dossier_full_failed:${err?.message ?? "unknown error"}`);
           console.warn(`[evaluate] dossier-based evaluation failed: ${err?.message}, falling back`);
-          // Fall through to agent or rules mode
         }
+      } else {
+        fallbackNotes.push(`missing_api_key:${provider}`);
       }
     }
 
     // --- Full Agent Mode: LLM-powered evaluation (existing path) ---
     if (mode === "full") {
-      const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
+      const provider = parseProvider(body.provider, ctx.llmConfig?.defaultProvider);
+      if (!provider) {
+        return c.json({ error: "Invalid provider. Expected 'anthropic' or 'openrouter'." }, 400);
+      }
       const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
 
       if (!apiKey) {
-        // No API key available — fall through to rules-only with a warning in trace
+        if (!allowRulesFallback) {
+          return c.json({ error: `mode=full requires API key for provider=${provider} (or set allow_rules_fallback=true)` }, 503);
+        }
+        fallbackNotes.push(`missing_api_key:${provider}`);
         console.warn(`[evaluate] mode=full requested but no API key for provider=${provider}, falling back to rules_only`);
       } else {
         const agentServices = createAgentServices(ctx, { tenantId, actor });
@@ -257,20 +288,38 @@ export function underwritingRoutes(ctx: AppContext) {
           },
         };
 
-        const response = await agent.evaluate(dealId, runPolicy, { tenantId, actor });
+        let response: UnderwritingRun | null = null;
+        try {
+          response = await agent.evaluate(
+            dealId,
+            runPolicy,
+            { tenantId, actor },
+            { allowRulesFallback }
+          );
+        } catch (err: any) {
+          if (!allowRulesFallback) {
+            return c.json({ error: `Full agent underwriting failed: ${err?.message ?? "unknown error"}` }, 502);
+          }
+          fallbackNotes.push(`agent_full_failed:${err?.message ?? "unknown error"}`);
+          console.warn(`[evaluate] full agent evaluation failed: ${err?.message}, falling back to rules_only`);
+        }
+        if (!response) {
+          // fall through to explicit rules path when fallback is enabled
+        } else {
 
-        // Log evaluation as audit event
-        await ctx.auditService.record({
-          deal_id: dealId,
-          type: "DEAL_UPDATED",
-          actor,
-          timestamp: new Date().toISOString(),
-          changes: [
-            { field: "evaluation", before: null, after: { run_id: response.run_id, action: response.decision.action, risk_grade: response.decision.risk_grade, mode: "full" } },
-          ],
-        });
+          // Log evaluation as audit event
+          await ctx.auditService.record({
+            deal_id: dealId,
+            type: "DEAL_UPDATED",
+            actor,
+            timestamp: new Date().toISOString(),
+            changes: [
+              { field: "evaluation", before: null, after: { run_id: response.run_id, action: response.decision.action, risk_grade: response.decision.risk_grade, mode: "full", allow_rules_fallback: allowRulesFallback } },
+            ],
+          });
 
-        return c.json(stripNulls(response), 200);
+          return c.json(stripNulls(response), 200);
+        }
       }
     }
 
@@ -383,9 +432,27 @@ export function underwritingRoutes(ctx: AppContext) {
     // Rule 4: Sector concentration check
     if (policy.sector_limits && deal.custom_fields) {
       const sector = (deal.custom_fields as Record<string, unknown>).sector as string;
-      if (sector && policy.sector_limits[sector] !== undefined) {
-        // Simplified: just note the limit exists
-        keyFactors.push(`Sector "${sector}" within concentration limits`);
+      const limit = sector ? policy.sector_limits[sector] : undefined;
+      const totalCapital = policy.total_capital;
+      const existingExposure = sector && policy.existing_portfolio
+        ? policy.existing_portfolio
+            .filter((loan) => loan.sector === sector)
+            .reduce((sum, loan) => sum + loan.remaining_balance, 0)
+        : 0;
+      if (sector && limit !== undefined && totalCapital && totalCapital > 0) {
+        const projectedPct = (existingExposure + requestedAmountDollars) / totalCapital;
+        if (projectedPct > limit) {
+          action = "decline";
+          riskGrade = "D";
+          confidence = Math.max(confidence, 0.90);
+          probDefault = Math.max(probDefault, 0.25);
+          keyFactors.push(
+            `Sector concentration breach for "${sector}": projected ${(projectedPct * 100).toFixed(1)}% exceeds ${(limit * 100).toFixed(1)}% limit`
+          );
+          whatWouldChange.push(`Reduce sector exposure for ${sector} or increase total capital`);
+        } else {
+          keyFactors.push(`Sector "${sector}" projected concentration ${(projectedPct * 100).toFixed(1)}% is within ${(limit * 100).toFixed(1)}% limit`);
+        }
       }
     }
 
@@ -439,6 +506,20 @@ export function underwritingRoutes(ctx: AppContext) {
           name: "rules_evaluation",
           content: `Evaluated ${Object.keys(ratios).length} financial ratios, ${Array.isArray(docs) ? docs.length : 0} documents`,
         },
+        ...(fallbackNotes.length > 0 ? [{
+          t: new Date().toISOString(),
+          type: "note" as const,
+          name: "llm_fallback",
+          content: `Fell back to rules_only: ${fallbackNotes.join(", ")}`,
+        }] : []),
+        {
+          t: new Date().toISOString(),
+          type: "note" as const,
+          name: "evaluation_mode",
+          content: mode === "full"
+            ? (fallbackNotes.length > 0 ? "full_requested_rules_fallback" : "full")
+            : "rules_only",
+        },
       ],
       latency_ms: latencyMs,
       cost: { tokens_in: 0, tokens_out: 0, estimated_cost_usd: 0 },
@@ -459,7 +540,7 @@ export function underwritingRoutes(ctx: AppContext) {
 
     const runPolicy: RunPolicy = {
       policy_id: policy.policy_id ?? `rules_${tenantId}`,
-      model: policy.model ?? "rules_only",
+      model: "rules_only",
       params: {
         persona: policy.persona,
         target_yield_pct: policy.target_yield_pct,
@@ -497,7 +578,18 @@ export function underwritingRoutes(ctx: AppContext) {
       actor,
       timestamp: new Date().toISOString(),
       changes: [
-        { field: "evaluation", before: null, after: { run_id: runId, action, risk_grade: riskGrade } },
+        {
+          field: "evaluation",
+          before: null,
+          after: {
+            run_id: runId,
+            action,
+            risk_grade: riskGrade,
+            mode: mode === "full" ? "rules_fallback" : "rules_only",
+            fallback_reason: fallbackNotes.length > 0 ? fallbackNotes.join(", ") : null,
+            allow_rules_fallback: allowRulesFallback,
+          },
+        },
       ],
     });
 
@@ -523,7 +615,10 @@ export function underwritingRoutes(ctx: AppContext) {
     }
 
     const policy = body.policy ?? {};
-    const provider = (body.provider ?? ctx.llmConfig?.defaultProvider ?? "anthropic") as "anthropic" | "openrouter";
+    const provider = parseProvider(body.provider, ctx.llmConfig?.defaultProvider);
+    if (!provider) {
+      return c.json({ error: "Invalid provider. Expected 'anthropic' or 'openrouter'." }, 400);
+    }
 
     const response = await evaluateStandalone(ctx, policy, body.dossier, provider, body.models);
     return c.json(stripNulls(response), 200);
