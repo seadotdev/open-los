@@ -582,7 +582,8 @@ export class LoanOriginationAgent {
   async evaluate(
     dealId: string,
     policy: RunPolicy,
-    context?: Partial<AgentContext>
+    context?: Partial<AgentContext>,
+    options?: { allowRulesFallback?: boolean }
   ): Promise<UnderwritingRun> {
     const ctx = this.buildContext(context)
     const startTime = Date.now()
@@ -592,6 +593,14 @@ export class LoanOriginationAgent {
     const deal = await this.los.deals.get(dealId)
     const ratios = await this.los.spreads.getRatios(dealId)
     const docs = await this.los.documents.listByDeal(dealId)
+    let borrowerGroup: { entities: any[]; relationships: any[] } | null = null
+    if (deal.primary_entity_id) {
+      try {
+        borrowerGroup = await this.los.relationships.getBorrowerGroup(deal.primary_entity_id)
+      } catch {
+        borrowerGroup = null
+      }
+    }
     let auditEvents: any[] = []
     try { auditEvents = await this.los.audit.listByDeal(dealId) } catch { /* ok */ }
 
@@ -614,6 +623,8 @@ export class LoanOriginationAgent {
     const netMargin = typeof ratios.net_margin === 'number' ? (ratios.net_margin * 100).toFixed(1) : 'N/A'
     const currentRatio = typeof ratios.current_ratio === 'number' ? ratios.current_ratio.toFixed(2) : 'N/A'
 
+    const allowRulesFallback = options?.allowRulesFallback ?? false
+
     const systemPrompt = `You are a senior credit analyst for ${persona}. Your lending parameters:
 - Target yield: ${targetYield}%
 - Maximum single loan: $${maxLoan.toLocaleString()}
@@ -622,9 +633,28 @@ export class LoanOriginationAgent {
 Evaluate this loan application and return a structured decision.
 APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
 
-    const docList = Array.isArray(docs) ? docs.map((d: any) => d.filename ?? d.doc_type ?? 'unknown').join(', ') : 'none'
+    const docList = Array.isArray(docs)
+      ? docs.slice(0, 25).map((d: any) => {
+        const name = d.filename ?? 'unknown'
+        const type = d.doc_type ?? 'unknown'
+        return `${type}:${name}`
+      }).join(', ')
+      : 'none'
+    const dealContext = JSON.stringify({
+      borrower_name: deal.borrower_name,
+      jurisdiction: deal.jurisdiction,
+      purpose: deal.purpose,
+      custom_fields: deal.custom_fields ?? {},
+      borrower_group_entities: borrowerGroup?.entities ?? [],
+      borrower_group_relationships: borrowerGroup?.relationships ?? [],
+      recent_audit_events: auditEvents.slice(-10).map((e: any) => ({
+        type: e.type ?? e.event_type,
+        timestamp: e.timestamp,
+        actor: e.actor,
+      })),
+    })
 
-    const userPrompt = `${systemPrompt}
+    const userPrompt = `
 
 ## Borrower: ${deal.borrower_name}
 ## Financials
@@ -632,6 +662,8 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
 - Net Margin: ${netMargin}%  |  Current Ratio: ${currentRatio}
 ## Request: $${requestedAmountDollars.toLocaleString()} for ${deal.purpose ?? 'general business purposes'}
 ## Documents: ${docList}
+## Borrower Group + Deal Context (JSON)
+${dealContext}
 ## Rules baseline: ${rulesBaseline.action} (risk grade: ${rulesBaseline.risk_grade}, confidence: ${rulesBaseline.confidence}) — for reference, make your own assessment`
 
     const decisionSchema = {
@@ -663,7 +695,7 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
       required: ['action', 'risk_grade', 'rationale'],
     }
 
-    // Try LLM, fall back to rules on failure
+    // Try LLM, optionally fall back to rules on failure
     let decision: RunDecision
     const traceSteps: Array<{ t: string; type: 'tool_call' | 'note' | 'reasoning' | 'doc_request'; name?: string; content?: string; result?: Record<string, unknown> }> = []
     let tokensIn = 0
@@ -688,7 +720,7 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
         conditions?: string[]
         covenants?: string[]
         confidence?: number
-      }>(userPrompt, decisionSchema)
+      }>(userPrompt, decisionSchema, { system: systemPrompt })
 
       // Clamp APR to valid range
       if (llmResult.terms?.apr && llmResult.terms.apr > 0.55) {
@@ -728,7 +760,9 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
         content: decision.rationale?.summary ?? 'No rationale provided',
       })
     } catch (err: any) {
-      // LLM failed — fall back to rules baseline
+      if (!allowRulesFallback) {
+        throw new Error(`LLM evaluation failed with fallback disabled: ${err?.message ?? 'unknown error'}`)
+      }
       decision = rulesBaseline
       traceSteps.push({
         t: new Date().toISOString(),
@@ -821,6 +855,31 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
       keyFactors.push(`Gross margin ${(grossMargin * 100).toFixed(1)}% is healthy`)
     }
 
+    if (policyParams.sector_limits && typeof policyParams.sector_limits === 'object') {
+      const sectorLimits = policyParams.sector_limits as Record<string, number>
+      const sector = deal.custom_fields?.sector as string | undefined
+      const totalCapital = typeof policyParams.total_capital === 'number' ? policyParams.total_capital : null
+      const portfolio = Array.isArray(policyParams.existing_portfolio)
+        ? policyParams.existing_portfolio as Array<{ sector?: string; remaining_balance?: number }>
+        : []
+      if (sector && totalCapital && totalCapital > 0 && sectorLimits[sector] != null) {
+        const existingExposure = portfolio
+          .filter((loan) => loan.sector === sector)
+          .reduce((sum, loan) => sum + (loan.remaining_balance ?? 0), 0)
+        const projectedPct = (existingExposure + requestedAmountDollars) / totalCapital
+        if (projectedPct > sectorLimits[sector]) {
+          action = 'decline'
+          riskGrade = 'D'
+          confidence = Math.max(confidence, 0.9)
+          probDefault = Math.max(probDefault, 0.25)
+          keyFactors.push(
+            `Sector concentration breach for ${sector}: projected ${(projectedPct * 100).toFixed(1)}% exceeds ${(sectorLimits[sector] * 100).toFixed(1)}% limit`
+          )
+          whatWouldChange.push(`Reduce sector exposure for ${sector} or increase total capital`)
+        }
+      }
+    }
+
     if (action === 'approve') {
       if (dscr !== null && dscr >= 1.5 && grossMargin !== null && grossMargin >= 0.25) {
         riskGrade = 'A'
@@ -841,6 +900,7 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
         ? Math.min(requestedAmountDollars, maxLoan * 0.8)
         : requestedAmountDollars
       terms.apr = baseRate + riskPremium
+      if (terms.apr > 0.55) terms.apr = 0.55
       terms.tenor_months = 24
       terms.fees = { origination: Math.round(terms.amount * 0.01) }
     }
@@ -1041,4 +1101,3 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
     return true
   }
 }
-

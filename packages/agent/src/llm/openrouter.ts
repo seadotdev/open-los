@@ -1,6 +1,8 @@
 import OpenAI from 'openai'
 import type { FunctionParameters } from 'openai/resources/shared'
-import type { LLMClient, LLMOptions } from '../types.js'
+import type { LLMClient, LLMOptions, LLMStructuredOptions } from '../types.js'
+import { validateStructuredOutput } from './schema-validate.js'
+import { parseStructuredFromAssistantMessage } from './structured-parse.js'
 
 export interface OpenRouterClientConfig {
   apiKey: string
@@ -37,33 +39,63 @@ export class OpenRouterClient implements LLMClient {
     return response.choices[0]?.message?.content ?? ''
   }
 
-  async structured<T>(prompt: string, schema: object): Promise<T> {
-    const start = Date.now()
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: 2048,
-      temperature: 0.2,
-      messages: [{ role: 'user', content: prompt }],
-      tools: [
-        {
-          type: 'function',
-          function: {
-            name: 'structured_output',
-            description: 'Return structured data matching the schema',
-            parameters: schema as FunctionParameters,
-          },
-        },
-      ],
-      tool_choice: { type: 'function', function: { name: 'structured_output' } },
-    })
-    this.latencyMs += Date.now() - start
-    this.tokensIn += response.usage?.prompt_tokens ?? 0
-    this.tokensOut += response.usage?.completion_tokens ?? 0
+  async structured<T>(prompt: string, schema: object, options?: LLMStructuredOptions): Promise<T> {
+    let lastError = 'No tool call in OpenRouter response'
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const start = Date.now()
+      const messages: Array<{ role: 'system' | 'user'; content: string }> = []
+      if (options?.system) {
+        messages.push({ role: 'system', content: options.system })
+      }
+      messages.push({ role: 'user', content: prompt })
 
-    const toolCall = response.choices[0]?.message?.tool_calls?.[0]
-    if (toolCall?.function?.arguments) {
-      return JSON.parse(toolCall.function.arguments) as T
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        max_tokens: 2048,
+        temperature: 0.2,
+        messages,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'structured_output',
+              description: 'Return structured data matching the schema',
+              parameters: schema as FunctionParameters,
+            },
+          },
+        ],
+        tool_choice: { type: 'function', function: { name: 'structured_output' } },
+      })
+      this.latencyMs += Date.now() - start
+      this.tokensIn += response.usage?.prompt_tokens ?? 0
+      this.tokensOut += response.usage?.completion_tokens ?? 0
+
+      const toolCall = response.choices[0]?.message?.tool_calls?.[0]
+      if (toolCall?.function?.arguments) {
+        try {
+          const parsed = JSON.parse(toolCall.function.arguments) as unknown
+          const validationErrors = validateStructuredOutput(parsed, schema)
+          if (validationErrors.length === 0) {
+            return parsed as T
+          }
+          lastError = `Structured output schema mismatch: ${validationErrors.join('; ')}`
+          continue
+        } catch (err: any) {
+          lastError = `Tool-call JSON parse failed: ${err?.message ?? 'unknown error'}`
+          continue
+        }
+      }
+
+      // Recovery path for models that accept tools but return prose text.
+      const parsedFromText = parseStructuredFromAssistantMessage<T>(
+        response.choices[0]?.message?.content,
+        schema
+      )
+      if (parsedFromText.value !== undefined) {
+        return parsedFromText.value
+      }
+      lastError = parsedFromText.error ?? 'No structured output in tool call or assistant text'
     }
-    throw new Error('No tool call in OpenRouter response')
+    throw new Error(lastError)
   }
 }

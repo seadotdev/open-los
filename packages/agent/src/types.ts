@@ -33,6 +33,13 @@ export interface AgentEntityService {
   create(params: any): Promise<any>
 }
 
+export interface AgentRelationshipService {
+  getBorrowerGroup(primaryEntityId: string): Promise<{
+    entities: any[]
+    relationships: any[]
+  }>
+}
+
 export interface AgentSpreadService {
   create(params: any): Promise<any>
   getRatios(dealId: string): Promise<any>
@@ -73,6 +80,7 @@ export interface OpenLOSServices {
   stages: AgentStageService
   documents: AgentDocumentService
   entities: AgentEntityService
+  relationships: AgentRelationshipService
   spreads: AgentSpreadService
   covenants: AgentCovenantService
   facilities: AgentFacilityService
@@ -91,9 +99,13 @@ export interface LLMOptions {
   maxTokens?: number
 }
 
+export interface LLMStructuredOptions {
+  system?: string
+}
+
 export interface LLMClient {
   complete(prompt: string, options?: LLMOptions): Promise<string>
-  structured<T>(prompt: string, schema: object): Promise<T>
+  structured<T>(prompt: string, schema: object, options?: LLMStructuredOptions): Promise<T>
 }
 
 // ============================================

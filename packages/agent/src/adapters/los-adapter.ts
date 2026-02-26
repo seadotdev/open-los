@@ -31,6 +31,9 @@ export interface CoreServices {
   entityService: {
     create(input: any, actor: string, dealId?: string, tenantId?: string): Promise<any>
   }
+  relationshipService: {
+    getBorrowerGroup(primaryEntityId: string): Promise<any>
+  }
   spreadService: {
     create(dealId: string, input: any, actor: string): Promise<any>
     getRatios(dealId: string): Promise<any>
@@ -177,6 +180,12 @@ export function createAgentServices(
           params.deal_id,
           tenantId
         )
+      },
+    },
+
+    relationships: {
+      async getBorrowerGroup(primaryEntityId: string) {
+        return ctx.relationshipService.getBorrowerGroup(primaryEntityId)
       },
     },
 

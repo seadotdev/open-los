@@ -236,7 +236,8 @@ async function dispatch(
     case "evaluate":
       return handleEvaluate(ctx, {
         deal_id: resolveAlias(state, action ?? ""),
-        mode: flags.mode ?? "rules_only",
+        mode: flags.mode ?? "full",
+        allow_rules_fallback: flags["allow-rules-fallback"] === "true",
         actor,
         tenant_id,
       });

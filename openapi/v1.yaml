@@ -1591,6 +1591,10 @@ components:
           enum: [full, rules_only]
           default: full
           description: "full = LLM agent evaluation; rules_only = deterministic rules (thin agent fallback)"
+        allow_rules_fallback:
+          type: boolean
+          default: false
+          description: "Only when mode=full: if true, allows deterministic rules fallback when LLM is unavailable or fails"
 
     EvaluateResponse:
       type: object
