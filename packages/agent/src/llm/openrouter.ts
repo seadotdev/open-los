@@ -15,6 +15,22 @@ export interface OpenRouterClientConfig {
   model?: string
 }
 
+/**
+ * Models that use internal reasoning tokens (o1-style).
+ * These need max_completion_tokens instead of max_tokens, and
+ * reasoning_effort: "low" for structured output to avoid exhausting
+ * the token budget on thinking before producing a tool call.
+ */
+const REASONING_MODEL_PATTERNS = [
+  'openai/o1', 'openai/o3', 'openai/o4',
+  'openai/gpt-5',   // GPT-5 family has mandatory reasoning
+  'x-ai/grok-3-mini', 'x-ai/grok-4',
+]
+
+function isReasoningModel(model: string): boolean {
+  return REASONING_MODEL_PATTERNS.some(p => model.startsWith(p))
+}
+
 export class OpenRouterClient implements LLMClient {
   private client: OpenAI
   private model: string
@@ -55,9 +71,17 @@ export class OpenRouterClient implements LLMClient {
       }
       messages.push({ role: 'user', content: prompt })
 
+      // Reasoning models (GPT-5, o-series) use internal reasoning tokens that
+      // count against max_tokens. Use max_completion_tokens with a higher budget
+      // and reasoning_effort: "low" to leave room for the actual tool call output.
+      const reasoning = isReasoningModel(this.model)
+      const tokenParam = reasoning
+        ? { max_completion_tokens: 4096 }
+        : { max_tokens: 2048 }
+
       const response = await this.client.chat.completions.create({
         model: this.model,
-        max_tokens: 2048,
+        ...tokenParam,
         temperature: 0.2,
         messages,
         tools: [
@@ -71,6 +95,7 @@ export class OpenRouterClient implements LLMClient {
           },
         ],
         tool_choice: { type: 'function', function: { name: 'structured_output' } },
+        ...(reasoning ? { reasoning_effort: 'low' } as any : {}),
       })
       this.latencyMs += Date.now() - start
       this.tokensIn += response.usage?.prompt_tokens ?? 0
