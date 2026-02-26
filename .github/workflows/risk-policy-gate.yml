@@ -1,0 +1,104 @@
+name: risk-policy-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: write
+
+jobs:
+  risk-policy-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      risk_tier: ${{ steps.gate.outputs.risk_tier }}
+      required_checks: ${{ steps.gate.outputs.required_checks }}
+      requires_review_agent: ${{ steps.gate.outputs.requires_review_agent }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Evaluate risk policy contract
+        id: gate
+        run: |
+          git fetch origin main --depth=1
+          SUMMARY=$(BASE_REF=origin/main HEAD_REF=HEAD npm run --silent risk-policy-gate)
+          echo "$SUMMARY"
+          RISK_TIER=$(echo "$SUMMARY" | node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync(0,'utf8'));process.stdout.write(x.riskTier)")
+          REQUIRED_CHECKS=$(echo "$SUMMARY" | node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync(0,'utf8'));process.stdout.write(JSON.stringify(x.requiredChecks))")
+          REQUIRES_REVIEW_AGENT=$(echo "$SUMMARY" | node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync(0,'utf8'));process.stdout.write(String(x.requiresReviewAgent))")
+          echo "risk_tier=$RISK_TIER" >> "$GITHUB_OUTPUT"
+          echo "required_checks=$REQUIRED_CHECKS" >> "$GITHUB_OUTPUT"
+          echo "requires_review_agent=$REQUIRES_REVIEW_AGENT" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for current-head review-agent check
+        if: steps.gate.outputs.requires_review_agent == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const headSha = context.payload.pull_request.head.sha;
+            const checkName = 'Code Review Agent';
+            const timeoutMs = 20 * 60 * 1000;
+            const deadline = Date.now() + timeoutMs;
+
+            while (Date.now() < deadline) {
+              const res = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: headSha,
+              });
+
+              const run = res.data.check_runs
+                .filter((item) => item.name === checkName)
+                .sort((a, b) => Date.parse(b.started_at ?? b.created_at) - Date.parse(a.started_at ?? a.created_at))[0];
+
+              if (run && run.head_sha === headSha && run.status === 'completed') {
+                if (run.conclusion !== 'success') {
+                  core.setFailed(`${checkName} conclusion=${run.conclusion} for current head ${headSha}`);
+                }
+                return;
+              }
+
+              await new Promise((resolve) => setTimeout(resolve, 15000));
+            }
+
+            core.setFailed(`Timed out waiting for ${checkName} on current head SHA ${headSha}`);
+
+  harness-smoke:
+    runs-on: ubuntu-latest
+    needs: risk-policy-gate
+    if: contains(needs.risk-policy-gate.outputs.required_checks, 'harness-smoke')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run harness-smoke
+
+  browser-evidence:
+    name: Browser Evidence
+    runs-on: ubuntu-latest
+    needs: risk-policy-gate
+    if: contains(needs.risk-policy-gate.outputs.required_checks, 'Browser Evidence')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run harness:ui:capture-browser-evidence
+      - run: npm run harness:ui:verify-browser-evidence
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence
+          path: artifacts/browser-evidence

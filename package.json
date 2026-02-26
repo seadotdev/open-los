@@ -29,7 +29,16 @@
     "docs:video": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type video",
     "docs:demo": "npx tsx docs/auto-docs/scripts/generate-docs.ts --type demo",
     "docs:version-bump": "npx tsx docs/auto-docs/scripts/version-bump.ts",
-    "docs:install-hooks": "bash docs/auto-docs/scripts/install-hooks.sh"
+    "docs:install-hooks": "bash docs/auto-docs/scripts/install-hooks.sh",
+    "harness:risk-tier": "node scripts/risk-policy-gate.mjs",
+    "risk-policy-gate": "node scripts/risk-policy-gate.mjs",
+    "harness:legal-chat:smoke": "npm run test:smoke",
+    "harness-smoke": "npm run test:smoke",
+    "harness:ui:capture-browser-evidence": "node scripts/capture-browser-evidence.mjs",
+    "harness:ui:verify-browser-evidence": "node scripts/verify-browser-evidence.mjs",
+    "harness:ui:pre-pr": "npm run harness:ui:capture-browser-evidence && npm run harness:ui:verify-browser-evidence",
+    "build:ci": "npm run build",
+    "harness:weekly-metrics": "node scripts/harness-weekly-metrics.mjs"
   },
   "engines": {
     "node": ">=20"

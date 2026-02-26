@@ -1,0 +1,63 @@
+name: review-agent-auto-resolve-threads
+
+on:
+  workflow_run:
+    workflows: ["risk-policy-gate"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  resolve-bot-threads:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve bot-only review threads
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const headSha = context.payload.workflow_run.head_sha;
+
+            const prs = await github.rest.pulls.list({ owner, repo, state: 'open', per_page: 100 });
+            const pr = prs.data.find((item) => item.head.sha === headSha);
+            if (!pr) {
+              core.info(`No open PR found for head ${headSha}`);
+              return;
+            }
+
+            const query = `query($owner:String!, $repo:String!, $number:Int!) {
+              repository(owner:$owner, name:$repo) {
+                pullRequest(number:$number) {
+                  reviewThreads(first:100) {
+                    nodes {
+                      id
+                      isResolved
+                      comments(first:100) {
+                        nodes {
+                          author { login }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }`;
+
+            const data = await github.graphql(query, { owner, repo, number: pr.number });
+            const threads = data.repository.pullRequest.reviewThreads.nodes;
+            const botLogin = 'coderabbitai[bot]';
+
+            for (const thread of threads) {
+              if (thread.isResolved) continue;
+              const logins = thread.comments.nodes.map((c) => c.author?.login).filter(Boolean);
+              if (logins.length > 0 && logins.every((login) => login === botLogin)) {
+                await github.graphql(
+                  `mutation($threadId:ID!) { resolveReviewThread(input:{threadId:$threadId}) { thread { isResolved } } }`,
+                  { threadId: thread.id },
+                );
+              }
+            }
