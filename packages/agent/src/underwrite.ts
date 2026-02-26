@@ -99,6 +99,87 @@ function formatPortfolioSummary(policy: UnderwritePolicy): string {
   return lines.join("\n")
 }
 
+function formatPipelineContext(pipeline: any): string {
+  if (!pipeline || typeof pipeline !== "object") return ""
+
+  const lines: string[] = []
+  const capital = pipeline.capital ?? {}
+  const openOffers = Array.isArray(pipeline.open_offers) ? pipeline.open_offers : []
+  const marketPool = pipeline.market_pool ?? {}
+  const newThisWeek = Array.isArray(marketPool.new_this_week) ? marketPool.new_this_week : []
+  const returningAfterPass = Array.isArray(marketPool.returning_after_pass) ? marketPool.returning_after_pass : []
+  const withYourOffer = Array.isArray(marketPool.with_your_offer) ? marketPool.with_your_offer : []
+
+  lines.push("--- YOUR LENDING PIPELINE ---")
+  lines.push("CAPITAL POSITION:")
+  lines.push(`  Total Capital: $${Number(capital.total_capital ?? 0).toLocaleString()}`)
+  lines.push(`  Deployed in Active Loans: $${Number(capital.deployed_capital ?? 0).toLocaleString()}`)
+  lines.push(`  Reserved in Open Offers: $${Number(capital.reserved_open_offers ?? 0).toLocaleString()}`)
+  lines.push(`  Available for New Commitments: $${Number(capital.available_for_new_commitments ?? 0).toLocaleString()}`)
+  lines.push(`  Cost of Capital: ${(Number(capital.cost_of_capital_annual ?? 0) * 100).toFixed(1)}% annual`)
+  lines.push("")
+  lines.push("OPEN OFFERS (yours):")
+  if (openOffers.length === 0) {
+    lines.push("  (none)")
+  } else {
+    for (const offer of openOffers.slice(0, 12)) {
+      lines.push(
+        `  ${offer.offer_id}: ${offer.borrower_name} — ` +
+        `$${Number(offer.loan_amount ?? 0).toLocaleString()} @ ${Number(offer.interest_rate ?? 0).toFixed(2)}%, ` +
+        `${offer.term_months ?? 24}mo (${offer.weeks_remaining ?? 0} week(s) until expiry)`
+      )
+      if (offer.reasoning) {
+        lines.push(`    Rationale: ${offer.reasoning}`)
+      }
+    }
+  }
+  lines.push("")
+  lines.push("MARKET POOL (borrowers currently shopping):")
+  lines.push("  NEW THIS WEEK:")
+  if (newThisWeek.length === 0) {
+    lines.push("    (none)")
+  } else {
+    for (const row of newThisWeek.slice(0, 12)) {
+      lines.push(
+        `    ${row.borrower_id}: ${row.company_name} (${row.sector}) requesting ` +
+        `$${Number(row.request_amount ?? 0).toLocaleString()}`
+      )
+    }
+  }
+  lines.push("  RETURNING (you previously passed):")
+  if (returningAfterPass.length === 0) {
+    lines.push("    (none)")
+  } else {
+    for (const row of returningAfterPass.slice(0, 12)) {
+      lines.push(
+        `    ${row.borrower_id}: ${row.company_name} (${row.sector}) requesting ` +
+        `$${Number(row.request_amount ?? 0).toLocaleString()}`
+      )
+      lines.push(
+        `      - You passed week ${row.passed_week ?? "?"}, borrower has ` +
+        `${Math.max(0, Number(row.weeks_remaining ?? 0))} week(s) patience left`
+      )
+      lines.push(`      - Other lender offers: ${row.other_open_offer_count ?? 0}`)
+    }
+  }
+  lines.push("  HAVE YOUR OFFER:")
+  if (withYourOffer.length === 0) {
+    lines.push("    (none)")
+  } else {
+    for (const row of withYourOffer.slice(0, 12)) {
+      lines.push(`    ${row.borrower_id}: ${row.company_name} — your offer ${row.your_offer_id}`)
+    }
+  }
+  lines.push("")
+  lines.push("ACTIONS AVAILABLE:")
+  lines.push("  - APPROVE: Issue a term sheet. Specify offer_valid_weeks.")
+  lines.push("  - REJECT: Permanently decline this borrower.")
+  lines.push("  - PASS: Skip for now. You may revisit next week if still shopping.")
+  lines.push("---")
+
+  return lines.join("\n")
+}
+
 function formatQuarterlyTable(quarters: QuarterlyIncome[]): string {
   if (!quarters || quarters.length === 0) return "  (No quarterly data available)"
 
@@ -198,6 +279,7 @@ export function buildUnderwritingPrompt(
     .sort()
     .map(([sector, pct]) => `    - ${sector}: max ${(pct * 100).toFixed(0)}% of total capital`)
     .join("\n") || "    (none specified)"
+  const pipelineContext = formatPipelineContext(policy.params?.pipeline)
 
   const system = `${persona}
 
@@ -209,6 +291,8 @@ ${sectorLimitsStr}
 
 YOUR CURRENT PORTFOLIO:
 ${formatPortfolioSummary(policy)}
+
+${pipelineContext}
 
 INSTRUCTIONS:
 Evaluate the loan application below. You must analyze:
@@ -230,14 +314,19 @@ Evaluate the loan application below. You must analyze:
 When you are ready to give your final decision, respond with ONLY a valid JSON
 object in exactly this format:
 {
-  "decision": "APPROVE" or "REJECT",
+  "decision": "APPROVE" or "REJECT" or "PASS",
   "reasoning": "Your 2-4 sentence analysis summary",
   "term_sheet": {
-    "loan_amount": <number or null if rejected>,
-    "interest_rate": <annual rate as percentage e.g. 8.5, or null if rejected>,
-    "term_months": <integer or null if rejected>
-  }
+    "loan_amount": <number>,
+    "interest_rate": <annual rate as percentage e.g. 8.5>,
+    "term_months": <integer>
+  },
+  "offer_valid_weeks": <integer>
 }
+
+Rules:
+- APPROVE must include term_sheet + offer_valid_weeks.
+- REJECT and PASS should omit term_sheet and offer_valid_weeks.
 
 Respond with ONLY the JSON when giving your final answer. No other text.`
 
@@ -357,7 +446,7 @@ export async function evaluateStandalone(
   const decisionSchema = {
     type: "object" as const,
     properties: {
-      decision: { type: "string", enum: ["APPROVE", "REJECT"] },
+      decision: { type: "string", enum: ["APPROVE", "REJECT", "PASS"] },
       reasoning: { type: "string" },
       term_sheet: {
         type: "object",
@@ -367,6 +456,7 @@ export async function evaluateStandalone(
           term_months: { type: "number" },
         },
       },
+      offer_valid_weeks: { type: "number" },
     },
     required: ["decision", "reasoning"],
   }
@@ -390,6 +480,7 @@ export async function evaluateStandalone(
       decision: string
       reasoning: string
       term_sheet?: { loan_amount?: number; interest_rate?: number; term_months?: number }
+      offer_valid_weeks?: number
     }>(user, decisionSchema, {
       system,
       model,
@@ -404,10 +495,16 @@ export async function evaluateStandalone(
       costUsd = estimateCost(tokensIn, tokensOut, model)
     }
 
-    const action = llmResult.decision?.toUpperCase() === "APPROVE" ? "approve" : "decline"
+    const actionRaw = llmResult.decision?.toUpperCase() ?? "REJECT"
+    const action = actionRaw === "APPROVE"
+      ? "approve"
+      : actionRaw === "PASS"
+        ? "refer"
+        : "decline"
     const ts = llmResult.term_sheet
 
     const terms: DecisionTerms = {}
+    const conditions: string[] = []
     if (action === "approve" && ts) {
       terms.amount = ts.loan_amount ?? dossier.loan_request_amount
       // interest_rate comes as percentage (e.g. 8.5), convert to decimal APR (0.085)
@@ -415,17 +512,23 @@ export async function evaluateStandalone(
       if (terms.apr > 0.55) terms.apr = 0.55
       terms.tenor_months = ts.term_months ?? 24
       terms.fees = { origination: Math.round((terms.amount ?? 0) * 0.01) }
+      const validWeeks = Math.max(1, Math.min(12, Math.round(llmResult.offer_valid_weeks ?? 1)))
+      conditions.push(`offer_valid_weeks=${validWeeks}`)
     }
+
+    const rationaleSummary = action === "refer"
+      ? `[PASS] ${llmResult.reasoning || "No reasoning provided"}`
+      : (llmResult.reasoning || "No reasoning provided")
 
     decision = {
       action: action as RunDecision["action"],
-      risk_grade: action === "approve" ? "B" : "D",
-      prob_default_12m: action === "approve" ? 0.05 : 0.30,
+      risk_grade: action === "approve" ? "B" : action === "refer" ? "C" : "D",
+      prob_default_12m: action === "approve" ? 0.05 : action === "refer" ? 0.12 : 0.30,
       terms,
-      conditions: [],
+      conditions,
       covenants: [],
       rationale: {
-        summary: llmResult.reasoning || "No reasoning provided",
+        summary: rationaleSummary,
         key_factors: [],
         what_would_change: [],
       },
