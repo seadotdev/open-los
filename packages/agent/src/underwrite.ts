@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto"
 import { createLLMClient, resolveLLMRoute } from "./llm/index.js"
 import type { LLMConfig, LLMProvider } from "./types.js"
+import { resolveUsageForTrace } from "./llm/usage.js"
 import type {
   UnderwritingRun,
   RunCase,
@@ -488,13 +489,6 @@ export async function evaluateStandalone(
       providerOptions: route.providerOptions,
     })
 
-    const llmAny = llmClient as any
-    if (typeof llmAny.tokensIn === "number") {
-      tokensIn = llmAny.tokensIn
-      tokensOut = llmAny.tokensOut ?? 0
-      costUsd = estimateCost(tokensIn, tokensOut, model)
-    }
-
     const actionRaw = llmResult.decision?.toUpperCase() ?? "REJECT"
     const action = actionRaw === "APPROVE"
       ? "approve"
@@ -564,6 +558,16 @@ export async function evaluateStandalone(
       content: `LLM call failed: ${err?.message ?? "unknown error"}`,
     })
   }
+
+  // Capture usage regardless of success/failure so billed attempts are counted.
+  const usage = resolveUsageForTrace(
+    llmClient,
+    (tokensInEstimate, tokensOutEstimate) =>
+      estimateCost(tokensInEstimate, tokensOutEstimate, model)
+  )
+  tokensIn = usage.tokensIn
+  tokensOut = usage.tokensOut
+  costUsd = usage.costUsd
 
   const latencyMs = Date.now() - startTime
 

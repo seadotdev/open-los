@@ -111,9 +111,18 @@ export interface LLMStructuredOptions {
   providerOptions?: Record<string, unknown>
 }
 
+export interface LLMUsageSnapshot {
+  tokensIn: number
+  tokensOut: number
+  billedCostUsd?: number
+  rawTokensIn?: number
+  rawTokensOut?: number
+}
+
 export interface LLMClient {
   complete(prompt: string, options?: LLMOptions): Promise<string>
   structured<T>(prompt: string, schema: object, options?: LLMStructuredOptions): Promise<T>
+  getUsage?(): LLMUsageSnapshot
 }
 
 export type LLMProvider = 'anthropic' | 'openrouter' | 'openai' | 'vercel'
