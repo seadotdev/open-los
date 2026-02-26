@@ -7,7 +7,8 @@
  */
 
 import { randomUUID } from "node:crypto"
-import { createLLMClient } from "./llm/index.js"
+import { createLLMClient, resolveLLMRoute } from "./llm/index.js"
+import type { LLMConfig, LLMProvider } from "./types.js"
 import type {
   UnderwritingRun,
   RunCase,
@@ -53,11 +54,7 @@ export interface ModelConfig {
 
 /** Minimal context needed for evaluateStandalone */
 export interface UnderwriteContext {
-  llmConfig?: {
-    defaultProvider?: string
-    defaultModel?: string
-    apiKeys: Record<string, string>
-  }
+  llmConfig?: LLMConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -327,22 +324,35 @@ export async function evaluateStandalone(
   ctx: UnderwriteContext,
   policy: UnderwritePolicy,
   dossier: FinancialDossier,
-  provider: "anthropic" | "openrouter",
+  provider?: LLMProvider,
   models?: ModelConfig,
 ): Promise<UnderwritingRun> {
   const startTime = Date.now()
   const runId = randomUUID()
 
-  const model = models?.default ?? policy.model ?? ctx.llmConfig?.defaultModel ?? "claude-sonnet-4-5-20250929"
-  const apiKey = ctx.llmConfig?.apiKeys[provider] ?? ""
+  const route = resolveLLMRoute(ctx.llmConfig, "underwrite", {
+    provider,
+    model: models?.default ?? policy.model,
+  })
+
+  if (!route) {
+    throw new Error("No LLM route configured for function=underwrite")
+  }
+
+  const model = route.model
+  const apiKey = route.apiKey ?? ""
 
   if (!apiKey) {
-    throw new Error(`No API key configured for provider=${provider}`)
+    throw new Error(`No API key configured for provider=${route.provider}`)
   }
 
   const { system, user } = buildUnderwritingPrompt(policy, dossier)
 
-  const llmClient = createLLMClient(provider, { apiKey, model })
+  const llmClient = createLLMClient(route.provider, {
+    apiKey,
+    model,
+    baseURL: route.baseURL,
+  })
 
   const decisionSchema = {
     type: "object" as const,
@@ -380,7 +390,12 @@ export async function evaluateStandalone(
       decision: string
       reasoning: string
       term_sheet?: { loan_amount?: number; interest_rate?: number; term_months?: number }
-    }>(user, decisionSchema, { system })
+    }>(user, decisionSchema, {
+      system,
+      model,
+      fallbackModels: route.fallbackModels,
+      providerOptions: route.providerOptions,
+    })
 
     const llmAny = llmClient as any
     if (typeof llmAny.tokensIn === "number") {
