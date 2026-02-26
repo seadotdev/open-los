@@ -1,3 +1,9 @@
+/**
+ * OpenRouter LLM client with forced tool_choice + prose/JSON recovery.
+ *
+ * Not all models reliably support forced tool_choice — see
+ * docs/llm-structured-output-compat.md for tested models and failure patterns.
+ */
 import OpenAI from 'openai'
 import type { FunctionParameters } from 'openai/resources/shared'
 import type { LLMClient, LLMOptions, LLMStructuredOptions } from '../types.js'
