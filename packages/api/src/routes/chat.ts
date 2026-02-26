@@ -41,17 +41,17 @@ export function chatRoutes(ctx: AppContext): Hono {
 
     try {
       const { createChatRoutes } = await import("@open-los/chat");
-      const { createLLMClient } = await import("@open-los/agent");
+      const { createLLMClient, resolveLLMRoute } = await import("@open-los/agent");
 
       // Build LLM client if API keys are available
       let llmClient;
       if (ctx.llmConfig) {
-        const provider = ctx.llmConfig.defaultProvider;
-        const apiKey = ctx.llmConfig.apiKeys[provider];
-        if (apiKey) {
-          llmClient = createLLMClient(provider, {
-            apiKey,
-            model: ctx.llmConfig.defaultModel,
+        const route = resolveLLMRoute(ctx.llmConfig, "chat");
+        if (route?.apiKey) {
+          llmClient = createLLMClient(route.provider, {
+            apiKey: route.apiKey,
+            model: route.model,
+            baseURL: route.baseURL,
           });
         }
       }

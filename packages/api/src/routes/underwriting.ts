@@ -6,10 +6,10 @@ import {
   LoanOriginationAgent,
   createLLMClient,
   createAgentServices,
-  buildUnderwritingPrompt,
+  resolveLLMRoute,
   evaluateStandalone,
 } from "@open-los/agent";
-import type { UnderwritePolicy, ModelConfig } from "@open-los/agent";
+import type { UnderwritePolicy, ModelConfig, LLMProvider } from "@open-los/agent";
 import type {
   LineItem,
   CreateSpreadInput,
@@ -36,11 +36,14 @@ interface ParsedLineItem extends LineItem {
   period?: string;
 }
 
-type LlmProvider = "anthropic" | "openrouter";
-
-function parseProvider(value: unknown, fallback?: string): LlmProvider | null {
+function parseProvider(value: unknown, fallback?: string): LLMProvider | null {
   const candidate = (typeof value === "string" ? value : fallback) ?? "anthropic";
-  if (candidate === "anthropic" || candidate === "openrouter") {
+  if (
+    candidate === "anthropic"
+    || candidate === "openrouter"
+    || candidate === "openai"
+    || candidate === "vercel"
+  ) {
     return candidate;
   }
   return null;
@@ -210,19 +213,29 @@ export function underwritingRoutes(ctx: AppContext) {
 
     // --- Full Mode with inline dossier: use rich prompt builder ---
     if (mode === "full" && body.dossier) {
-      const provider = parseProvider(body.provider, ctx.llmConfig?.defaultProvider);
-      if (!provider) {
-        return c.json({ error: "Invalid provider. Expected 'anthropic' or 'openrouter'." }, 400);
+      const requestedProvider = parseProvider(body.provider, ctx.llmConfig?.defaultProvider);
+      if (!requestedProvider) {
+        return c.json(
+          { error: "Invalid provider. Expected 'anthropic', 'openrouter', 'openai', or 'vercel'." },
+          400
+        );
       }
-      const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+      const route = resolveLLMRoute(ctx.llmConfig, "underwrite", {
+        provider: requestedProvider,
+        model: body.models?.default ?? policy.model,
+      });
+      const routeProvider = route?.provider ?? requestedProvider;
+      const apiKey = route?.apiKey ?? "";
 
-      if (!apiKey && !allowRulesFallback) {
-        return c.json({ error: `mode=full requires API key for provider=${provider} (or set allow_rules_fallback=true)` }, 503);
-      }
-
-      if (apiKey) {
+      if (route && apiKey) {
         try {
-          const response = await evaluateStandalone(ctx, policy, body.dossier, provider, body.models);
+          const response = await evaluateStandalone(
+            ctx,
+            policy,
+            body.dossier,
+            route.provider,
+            { ...body.models, default: route.model }
+          );
           // Override case_id with the deal ID
           response.case.case_id = dealId;
 
@@ -245,29 +258,47 @@ export function underwritingRoutes(ctx: AppContext) {
           console.warn(`[evaluate] dossier-based evaluation failed: ${err?.message}, falling back`);
         }
       } else {
-        fallbackNotes.push(`missing_api_key:${provider}`);
+        if (!allowRulesFallback) {
+          return c.json(
+            { error: `mode=full requires API key for provider=${routeProvider} (or set allow_rules_fallback=true)` },
+            503
+          );
+        }
+        fallbackNotes.push(`missing_api_key:${routeProvider}`);
       }
     }
 
     // --- Full Agent Mode: LLM-powered evaluation (existing path) ---
     if (mode === "full") {
-      const provider = parseProvider(body.provider, ctx.llmConfig?.defaultProvider);
-      if (!provider) {
-        return c.json({ error: "Invalid provider. Expected 'anthropic' or 'openrouter'." }, 400);
+      const requestedProvider = parseProvider(body.provider, ctx.llmConfig?.defaultProvider);
+      if (!requestedProvider) {
+        return c.json(
+          { error: "Invalid provider. Expected 'anthropic', 'openrouter', 'openai', or 'vercel'." },
+          400
+        );
       }
-      const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+      const route = resolveLLMRoute(ctx.llmConfig, "underwrite", {
+        provider: requestedProvider,
+        model: policy.model,
+      });
+      const routeProvider = route?.provider ?? requestedProvider;
+      const apiKey = route?.apiKey ?? "";
 
       if (!apiKey) {
         if (!allowRulesFallback) {
-          return c.json({ error: `mode=full requires API key for provider=${provider} (or set allow_rules_fallback=true)` }, 503);
+          return c.json(
+            { error: `mode=full requires API key for provider=${routeProvider} (or set allow_rules_fallback=true)` },
+            503
+          );
         }
-        fallbackNotes.push(`missing_api_key:${provider}`);
-        console.warn(`[evaluate] mode=full requested but no API key for provider=${provider}, falling back to rules_only`);
+        fallbackNotes.push(`missing_api_key:${routeProvider}`);
+        console.warn(`[evaluate] mode=full requested but no API key for provider=${routeProvider}, falling back to rules_only`);
       } else {
         const agentServices = createAgentServices(ctx, { tenantId, actor });
-        const llmClient = createLLMClient(provider, {
+        const llmClient = createLLMClient(route!.provider, {
           apiKey,
-          model: policy.model ?? ctx.llmConfig?.defaultModel,
+          model: route!.model,
+          baseURL: route!.baseURL,
         });
         const agent = new LoanOriginationAgent({
           los: agentServices,
@@ -277,7 +308,7 @@ export function underwritingRoutes(ctx: AppContext) {
 
         const runPolicy = {
           policy_id: policy.policy_id ?? `agent_${tenantId}`,
-          model: policy.model ?? ctx.llmConfig?.defaultModel ?? "rules_only",
+          model: route?.model ?? policy.model ?? ctx.llmConfig?.defaultModel ?? "rules_only",
           params: {
             persona: policy.persona,
             target_yield_pct: policy.target_yield_pct,
@@ -615,12 +646,26 @@ export function underwritingRoutes(ctx: AppContext) {
     }
 
     const policy = body.policy ?? {};
-    const provider = parseProvider(body.provider, ctx.llmConfig?.defaultProvider);
-    if (!provider) {
-      return c.json({ error: "Invalid provider. Expected 'anthropic' or 'openrouter'." }, 400);
+    const requestedProvider = parseProvider(body.provider, ctx.llmConfig?.defaultProvider);
+    if (!requestedProvider) {
+      return c.json(
+        { error: "Invalid provider. Expected 'anthropic', 'openrouter', 'openai', or 'vercel'." },
+        400
+      );
     }
 
-    const response = await evaluateStandalone(ctx, policy, body.dossier, provider, body.models);
+    const route = resolveLLMRoute(ctx.llmConfig, "underwrite", {
+      provider: requestedProvider,
+      model: body.models?.default ?? policy.model,
+    });
+
+    const response = await evaluateStandalone(
+      ctx,
+      policy,
+      body.dossier,
+      route?.provider ?? requestedProvider,
+      { ...body.models, default: route?.model ?? body.models?.default ?? policy.model }
+    );
     return c.json(stripNulls(response), 200);
   });
 

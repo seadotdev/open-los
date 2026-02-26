@@ -22,7 +22,7 @@ export class AnthropicClient implements LLMClient {
   async complete(prompt: string, options?: LLMOptions): Promise<string> {
     const start = Date.now()
     const response = await this.client.messages.create({
-      model: this.model,
+      model: options?.model ?? this.model,
       max_tokens: options?.maxTokens ?? 2048,
       temperature: options?.temperature ?? 0.3,
       messages: [{ role: 'user', content: prompt }],
@@ -40,9 +40,9 @@ export class AnthropicClient implements LLMClient {
     for (let attempt = 1; attempt <= 2; attempt++) {
       const start = Date.now()
       const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 2048,
-        temperature: 0.2,
+        model: options?.model ?? this.model,
+        max_tokens: options?.maxTokens ?? 2048,
+        temperature: options?.temperature ?? 0.2,
         system: options?.system,
         messages: [{ role: 'user', content: prompt }],
         tools: [

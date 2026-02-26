@@ -23,7 +23,7 @@ import {
   ApprovalGateService,
   ApprovalService,
 } from "@open-los/core";
-import { createApp } from "./server.js";
+import { createApp, buildLLMConfigFromEnv } from "./server.js";
 import type { AppContext } from "./server.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -62,19 +62,7 @@ async function main() {
   const approvalService = new ApprovalService(db, auditService, clock);
 
   // LLM config from environment (optional — only needed for mode: "full")
-  const llmConfig = (() => {
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    const openrouterKey = process.env.OPENROUTER_API_KEY;
-    if (!anthropicKey && !openrouterKey) return undefined;
-    return {
-      defaultProvider: (anthropicKey ? "anthropic" : "openrouter") as "anthropic" | "openrouter",
-      defaultModel: process.env.LOS_DEFAULT_MODEL ?? "claude-sonnet-4-5-20250929",
-      apiKeys: {
-        ...(anthropicKey && { anthropic: anthropicKey }),
-        ...(openrouterKey && { openrouter: openrouterKey }),
-      },
-    };
-  })();
+  const llmConfig = buildLLMConfigFromEnv();
 
   const ctx: AppContext = {
     db,

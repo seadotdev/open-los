@@ -7,10 +7,10 @@ import {
   LoanOriginationAgent,
   createLLMClient,
   createAgentServices,
-  buildUnderwritingPrompt,
+  resolveLLMRoute,
   evaluateStandalone,
 } from "@open-los/agent";
-import type { UnderwritePolicy, ModelConfig } from "@open-los/agent";
+import type { UnderwritePolicy, ModelConfig, LLMProvider } from "@open-los/agent";
 import type {
   UnderwritingRun,
   RunCase,
@@ -22,14 +22,17 @@ import type {
   FinancialDossier,
 } from "@open-los/core";
 
-type LlmProvider = "anthropic" | "openrouter";
-
-function parseProvider(value: unknown, fallback?: string): LlmProvider {
+function parseProvider(value: unknown, fallback?: string): LLMProvider {
   const candidate = (typeof value === "string" ? value : fallback) ?? "anthropic";
-  if (candidate !== "anthropic" && candidate !== "openrouter") {
-    throw new Error(`Invalid provider "${candidate}". Expected "anthropic" or "openrouter".`);
+  if (
+    candidate === "anthropic"
+    || candidate === "openrouter"
+    || candidate === "openai"
+    || candidate === "vercel"
+  ) {
+    return candidate;
   }
-  return candidate;
+  throw new Error(`Invalid provider "${candidate}". Expected "anthropic", "openrouter", "openai", or "vercel".`);
 }
 
 // Re-export for CLI
@@ -88,7 +91,7 @@ export const evaluateSchema = {
     .default("full")
     .describe("rules_only = deterministic, full = LLM agent"),
   provider: z
-    .enum(["anthropic", "openrouter"])
+    .enum(["anthropic", "openrouter", "openai", "vercel"])
     .optional()
     .describe("LLM provider (only for mode=full)"),
   allow_rules_fallback: z
@@ -125,7 +128,7 @@ export const underwriteSchema = {
     remaining_balance: z.number(),
     interest_rate: z.number(),
   })).optional(),
-  provider: z.enum(["anthropic", "openrouter"]).optional(),
+  provider: z.enum(["anthropic", "openrouter", "openai", "vercel"]).optional(),
   tenant_id: z.string().optional().default("default"),
   actor: z.string().optional().default("mcp-agent"),
 };
@@ -176,16 +179,23 @@ export async function handleEvaluate(
 
   // --- Full Mode with inline dossier: use rich prompt builder ---
   if (mode === "full" && dossier) {
-    const provider = parseProvider(params.provider, ctx.llmConfig?.defaultProvider);
-    const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+    const requestedProvider = parseProvider(params.provider, ctx.llmConfig?.defaultProvider);
+    const route = resolveLLMRoute(ctx.llmConfig, "underwrite", {
+      provider: requestedProvider,
+      model: policy.model,
+    });
+    const routeProvider = route?.provider ?? requestedProvider;
+    const apiKey = route?.apiKey ?? "";
 
-    if (!apiKey && !allowRulesFallback) {
-      throw new Error(`mode=full requires API key for provider=${provider} (or set allow_rules_fallback=true)`);
-    }
-
-    if (apiKey) {
+    if (route && apiKey) {
       try {
-        const response = await evaluateStandalone(ctx as any, policy, dossier, provider);
+        const response = await evaluateStandalone(
+          ctx as any,
+          policy,
+          dossier,
+          route.provider,
+          { default: route.model }
+        );
         response.case.case_id = dealId;
 
         await ctx.auditService.record({
@@ -216,17 +226,25 @@ export async function handleEvaluate(
         fallbackNotes.push(`dossier_full_failed:${err?.message ?? "unknown error"}`);
       }
     } else {
-      fallbackNotes.push(`missing_api_key:${provider}`);
+      if (!allowRulesFallback) {
+        throw new Error(`mode=full requires API key for provider=${routeProvider} (or set allow_rules_fallback=true)`);
+      }
+      fallbackNotes.push(`missing_api_key:${routeProvider}`);
     }
   }
 
   // --- Full Agent Mode ---
   if (mode === "full") {
-    const provider = parseProvider(params.provider, ctx.llmConfig?.defaultProvider);
-    const apiKey = ctx.llmConfig?.apiKeys[provider] ?? "";
+    const requestedProvider = parseProvider(params.provider, ctx.llmConfig?.defaultProvider);
+    const route = resolveLLMRoute(ctx.llmConfig, "underwrite", {
+      provider: requestedProvider,
+      model: policy.model,
+    });
+    const routeProvider = route?.provider ?? requestedProvider;
+    const apiKey = route?.apiKey ?? "";
 
     if (!apiKey && !allowRulesFallback) {
-      throw new Error(`mode=full requires API key for provider=${provider} (or set allow_rules_fallback=true)`);
+      throw new Error(`mode=full requires API key for provider=${routeProvider} (or set allow_rules_fallback=true)`);
     }
 
     if (apiKey) {
@@ -234,9 +252,10 @@ export async function handleEvaluate(
         tenantId,
         actor,
       });
-      const llmClient = createLLMClient(provider, {
+      const llmClient = createLLMClient(route!.provider, {
         apiKey,
-        model: policy.model ?? ctx.llmConfig?.defaultModel,
+        model: route!.model,
+        baseURL: route!.baseURL,
       });
       const agent = new LoanOriginationAgent({
         los: agentServices,
@@ -247,7 +266,7 @@ export async function handleEvaluate(
       const runPolicy = {
         policy_id: policy.policy_id ?? `agent_${tenantId}`,
         model:
-          policy.model ?? ctx.llmConfig?.defaultModel ?? "rules_only",
+          route?.model ?? policy.model ?? ctx.llmConfig?.defaultModel ?? "rules_only",
         params: {
           persona: policy.persona,
           target_yield_pct: policy.target_yield_pct,
@@ -290,7 +309,7 @@ export async function handleEvaluate(
       return response;
     }
     // No API key — fall through to rules_only only if explicitly allowed
-    fallbackNotes.push(`missing_api_key:${provider}`);
+    fallbackNotes.push(`missing_api_key:${routeProvider}`);
   }
 
   // --- Rules-Only Mode ---
@@ -576,6 +595,10 @@ export async function handleUnderwrite(
   }
 ): Promise<UnderwritingRun> {
   const provider = parseProvider(params.provider, ctx.llmConfig?.defaultProvider);
+  const route = resolveLLMRoute(ctx.llmConfig, "underwrite", {
+    provider,
+    model: params.model,
+  });
 
   const policy: UnderwritePolicy = {
     policy_id: params.policy_id,
@@ -588,7 +611,13 @@ export async function handleUnderwrite(
     existing_portfolio: params.existing_portfolio,
   };
 
-  return evaluateStandalone(ctx as any, policy, params.dossier, provider);
+  return evaluateStandalone(
+    ctx as any,
+    policy,
+    params.dossier,
+    route?.provider ?? provider,
+    { default: route?.model ?? params.model ?? policy.model }
+  );
 }
 
 // MCP registration
