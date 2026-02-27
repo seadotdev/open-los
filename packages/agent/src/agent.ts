@@ -44,6 +44,7 @@ import type {
   DecisionTerms,
   DecisionRationale,
 } from '@open-los/core'
+import { resolveUsageForTrace } from './llm/usage.js'
 
 import { estimateCostUsd } from './pricing.js'
 
@@ -729,14 +730,6 @@ ${dealContext}
         llmResult.terms.apr = 0.55
       }
 
-      // Extract token usage from LLM client if available
-      const llmAny = this.llm as any
-      if (typeof llmAny.tokensIn === 'number') {
-        tokensIn = llmAny.tokensIn
-        tokensOut = llmAny.tokensOut ?? 0
-        costUsd = estimateCostUsd(tokensIn, tokensOut, policy.model)
-      }
-
       decision = {
         action: llmResult.action as RunDecision['action'],
         risk_grade: llmResult.risk_grade,
@@ -773,6 +766,16 @@ ${dealContext}
         content: `LLM call failed, using rules baseline: ${err?.message ?? 'unknown error'}`,
       })
     }
+
+    // Capture usage regardless of success/failure so billed attempts are counted.
+    const usage = resolveUsageForTrace(
+      this.llm,
+      (tokensInEstimate, tokensOutEstimate) =>
+        estimateCostUsd(tokensInEstimate, tokensOutEstimate, policy.model)
+    )
+    tokensIn = usage.tokensIn
+    tokensOut = usage.tokensOut
+    costUsd = usage.costUsd
 
     const latencyMs = Date.now() - startTime
 

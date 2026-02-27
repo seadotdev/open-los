@@ -97,15 +97,51 @@ export interface OpenLOSServices {
 export interface LLMOptions {
   temperature?: number
   maxTokens?: number
+  model?: string
+  fallbackModels?: string[]
+  providerOptions?: Record<string, unknown>
 }
 
 export interface LLMStructuredOptions {
   system?: string
+  temperature?: number
+  maxTokens?: number
+  model?: string
+  fallbackModels?: string[]
+  providerOptions?: Record<string, unknown>
+}
+
+export interface LLMUsageSnapshot {
+  tokensIn: number
+  tokensOut: number
+  billedCostUsd?: number
+  rawTokensIn?: number
+  rawTokensOut?: number
 }
 
 export interface LLMClient {
   complete(prompt: string, options?: LLMOptions): Promise<string>
   structured<T>(prompt: string, schema: object, options?: LLMStructuredOptions): Promise<T>
+  getUsage?(): LLMUsageSnapshot
+}
+
+export type LLMProvider = 'anthropic' | 'openrouter' | 'openai' | 'vercel'
+
+export interface LLMRouteConfig {
+  provider: LLMProvider
+  model: string
+  apiKey?: string
+  baseURL?: string
+  fallbackModels?: string[]
+  providerOptions?: Record<string, unknown>
+}
+
+export interface LLMConfig {
+  defaultProvider: LLMProvider
+  defaultModel: string
+  apiKeys: Record<string, string>
+  baseURLs?: Partial<Record<LLMProvider, string>>
+  routes?: Record<string, LLMRouteConfig>
 }
 
 // ============================================
