@@ -45,6 +45,8 @@ import type {
   DecisionRationale,
 } from '@open-los/core'
 
+import { estimateCostUsd } from './pricing.js'
+
 /**
  * The main agent class that customers interact with
  */
@@ -732,7 +734,7 @@ ${dealContext}
       if (typeof llmAny.tokensIn === 'number') {
         tokensIn = llmAny.tokensIn
         tokensOut = llmAny.tokensOut ?? 0
-        costUsd = this.estimateCost(tokensIn, tokensOut, policy.model)
+        costUsd = estimateCostUsd(tokensIn, tokensOut, policy.model)
       }
 
       decision = {
@@ -927,15 +929,6 @@ ${dealContext}
     }
   }
 
-  private estimateCost(tokensIn: number, tokensOut: number, model: string): number {
-    // Rough cost estimates per 1M tokens
-    const costs: Record<string, { input: number; output: number }> = {
-      'claude-sonnet-4-5-20250929': { input: 3, output: 15 },
-      'claude-haiku-4-5-20251001': { input: 0.8, output: 4 },
-    }
-    const c = costs[model] ?? { input: 3, output: 15 }
-    return (tokensIn * c.input + tokensOut * c.output) / 1_000_000
-  }
 
   // ============================================
   // Internal: Utilities

@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto"
 import { createLLMClient } from "./llm/index.js"
+import { estimateCostUsd } from "./pricing.js"
 import type {
   UnderwritingRun,
   RunCase,
@@ -308,15 +309,6 @@ Respond with ONLY the JSON when giving your final answer. No other text.`
 // Standalone underwriting via LLM (no deal required)
 // ---------------------------------------------------------------------------
 
-function estimateCost(tokensIn: number, tokensOut: number, model: string): number {
-  const costs: Record<string, { input: number; output: number }> = {
-    "claude-sonnet-4-5-20250929": { input: 3, output: 15 },
-    "claude-haiku-4-5-20251001": { input: 0.8, output: 4 },
-  }
-  const c = costs[model] ?? { input: 3, output: 15 }
-  return (tokensIn * c.input + tokensOut * c.output) / 1_000_000
-}
-
 /**
  * Run a standalone LLM underwriting evaluation.
  *
@@ -382,13 +374,6 @@ export async function evaluateStandalone(
       term_sheet?: { loan_amount?: number; interest_rate?: number; term_months?: number }
     }>(user, decisionSchema, { system })
 
-    const llmAny = llmClient as any
-    if (typeof llmAny.tokensIn === "number") {
-      tokensIn = llmAny.tokensIn
-      tokensOut = llmAny.tokensOut ?? 0
-      costUsd = estimateCost(tokensIn, tokensOut, model)
-    }
-
     const action = llmResult.decision?.toUpperCase() === "APPROVE" ? "approve" : "decline"
     const ts = llmResult.term_sheet
 
@@ -445,6 +430,16 @@ export async function evaluateStandalone(
       name: "llm_error",
       content: `LLM call failed: ${err?.message ?? "unknown error"}`,
     })
+  }
+
+
+  const llmAny = llmClient as any
+  if (typeof llmAny.tokensIn === "number") {
+    // Token counters include attempts that failed schema validation; those are
+    // still billed by the provider and must be included in estimates.
+    tokensIn = llmAny.tokensIn
+    tokensOut = llmAny.tokensOut ?? 0
+    costUsd = estimateCostUsd(tokensIn, tokensOut, model)
   }
 
   const latencyMs = Date.now() - startTime
