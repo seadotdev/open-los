@@ -23,6 +23,7 @@ export interface CoreServices {
   documentService: {
     upload(dealId: string, input: any, actor: string, tenantId?: string): Promise<any>
     listByDeal(dealId: string, tenantId?: string): Promise<any>
+    getContent?(docId: string, tenantId?: string): Promise<any>
   }
   stageService: {
     transition(dealId: string, input: any, actor: string, user?: any): Promise<any>
@@ -169,6 +170,12 @@ export function createAgentServices(
       },
       async listByDeal(dealId: string) {
         return ctx.documentService.listByDeal(dealId, tenantId)
+      },
+      async getContent(docId: string) {
+        if (ctx.documentService.getContent) {
+          return ctx.documentService.getContent(docId, tenantId)
+        }
+        return null
       },
     },
 

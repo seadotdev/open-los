@@ -27,6 +27,7 @@ export interface AgentStageService {
 export interface AgentDocumentService {
   create(params: any): Promise<any>
   listByDeal(dealId: string): Promise<any[]>
+  getContent(docId: string): Promise<{ doc_type: string; filename: string; content_base64: string } | null>
 }
 
 export interface AgentEntityService {
