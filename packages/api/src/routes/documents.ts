@@ -23,5 +23,25 @@ export function documentRoutes(ctx: AppContext) {
     return c.json(stripNulls({ documents: docs }), 200);
   });
 
+  // GET /v1/deals/:dealId/documents/:docId
+  app.get("/deals/:dealId/documents/:docId", async (c) => {
+    const dealId = c.req.param("dealId");
+    const docId = c.req.param("docId");
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
+    const doc = await ctx.documentService.getById(dealId, docId, tenantId);
+    return c.json(stripNulls(doc), 200);
+  });
+
+  // GET /v1/documents/:docId/content
+  app.get("/documents/:docId/content", async (c) => {
+    const docId = c.req.param("docId");
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
+    const result = await ctx.documentService.getContent(docId, tenantId);
+    if (!result) {
+      return c.json({ error: "Document not found" }, 404);
+    }
+    return c.json(result, 200);
+  });
+
   return app;
 }

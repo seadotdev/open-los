@@ -1052,16 +1052,8 @@ export class LoanAccountService {
     actor: string,
     tenantId = "default"
   ) {
-    const account = await this.getByIdRaw(id, tenantId);
-
-    // Must be in APPROVED state to disburse
-    if (account.state !== "APPROVED") {
-      throw new ValidationError(
-        `Cannot disburse loan in ${account.state} state. Must be APPROVED.`
-      );
-    }
-
-    // Check idempotency
+    // Check idempotency first — retries must return cached response
+    // regardless of current state (the first request already changed state)
     if (input.idempotency_key) {
       const existing = await this.db
         .select()
@@ -1070,6 +1062,15 @@ export class LoanAccountService {
       if (existing.length > 0) {
         return this.toApiTransaction(existing[0]);
       }
+    }
+
+    const account = await this.getByIdRaw(id, tenantId);
+
+    // Must be in APPROVED state to disburse
+    if (account.state !== "APPROVED") {
+      throw new ValidationError(
+        `Cannot disburse loan in ${account.state} state. Must be APPROVED.`
+      );
     }
 
     // Validate amount
@@ -1162,16 +1163,7 @@ export class LoanAccountService {
   }
 
   async repay(id: string, input: RepayInput, actor: string, tenantId = "default") {
-    const account = await this.getByIdRaw(id, tenantId);
-
-    // Must be in ACTIVE or ACTIVE_IN_ARREARS state
-    if (!["ACTIVE", "ACTIVE_IN_ARREARS"].includes(account.state)) {
-      throw new ValidationError(
-        `Cannot process repayment for loan in ${account.state} state. Must be ACTIVE or ACTIVE_IN_ARREARS.`
-      );
-    }
-
-    // Check idempotency
+    // Check idempotency first
     if (input.idempotency_key) {
       const existing = await this.db
         .select()
@@ -1180,6 +1172,15 @@ export class LoanAccountService {
       if (existing.length > 0) {
         return this.toApiTransaction(existing[0]);
       }
+    }
+
+    const account = await this.getByIdRaw(id, tenantId);
+
+    // Must be in ACTIVE or ACTIVE_IN_ARREARS state
+    if (!["ACTIVE", "ACTIVE_IN_ARREARS"].includes(account.state)) {
+      throw new ValidationError(
+        `Cannot process repayment for loan in ${account.state} state. Must be ACTIVE or ACTIVE_IN_ARREARS.`
+      );
     }
 
     // Validate amount
@@ -1307,16 +1308,7 @@ export class LoanAccountService {
   }
 
   async applyFee(id: string, input: FeeInput, actor: string, tenantId = "default") {
-    const account = await this.getByIdRaw(id, tenantId);
-
-    // Must be in ACTIVE or ACTIVE_IN_ARREARS state
-    if (!["ACTIVE", "ACTIVE_IN_ARREARS"].includes(account.state)) {
-      throw new ValidationError(
-        `Cannot apply fee to loan in ${account.state} state. Must be ACTIVE or ACTIVE_IN_ARREARS.`
-      );
-    }
-
-    // Check idempotency
+    // Check idempotency first
     if (input.idempotency_key) {
       const existing = await this.db
         .select()
@@ -1325,6 +1317,15 @@ export class LoanAccountService {
       if (existing.length > 0) {
         return this.toApiTransaction(existing[0]);
       }
+    }
+
+    const account = await this.getByIdRaw(id, tenantId);
+
+    // Must be in ACTIVE or ACTIVE_IN_ARREARS state
+    if (!["ACTIVE", "ACTIVE_IN_ARREARS"].includes(account.state)) {
+      throw new ValidationError(
+        `Cannot apply fee to loan in ${account.state} state. Must be ACTIVE or ACTIVE_IN_ARREARS.`
+      );
     }
 
     // Validate amount

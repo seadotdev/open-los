@@ -36,6 +36,7 @@ interface TestStep {
     actor?: string;
     method: string;
     path: string;
+    headers?: Record<string, string>;
     json?: Record<string, unknown>;
     multipart?: Record<string, unknown>;
   };
@@ -149,6 +150,7 @@ let sharedApp: Awaited<ReturnType<typeof createAppWithDb>>["app"] | null = null;
 let sharedCtx: Awaited<ReturnType<typeof createAppWithDb>>["ctx"] | null = null;
 let sharedVars: Map<string, string> = new Map();
 let sharedNow: string = "";
+let sharedTenantId: string = "default";
 const dbFilesToCleanup: string[] = [];
 
 export function runSuite(suiteFile: string) {
@@ -175,12 +177,16 @@ export function runSuite(suiteFile: string) {
         let app: Awaited<ReturnType<typeof createAppWithDb>>["app"];
         let ctx: Awaited<ReturnType<typeof createAppWithDb>>["ctx"];
         let vars: Map<string, string>;
+        let tenantId: string;
 
         if (!resetDb && sharedApp && sharedCtx) {
           // Reuse app/ctx but update the time
           app = sharedApp;
           ctx = sharedCtx;
           vars = sharedVars;
+          // Use this test's tenant if specified, otherwise keep the shared one
+          tenantId = testCase.arrange?.seed?.tenant?.id ?? sharedTenantId;
+          sharedTenantId = tenantId;
           // Update the shared time for services to use
           sharedNow = now;
         } else {
@@ -197,11 +203,13 @@ export function runSuite(suiteFile: string) {
           app = created.app;
           ctx = created.ctx;
           vars = new Map<string, string>();
+          tenantId = testCase.arrange?.seed?.tenant?.id ?? "default";
 
           // Store for potential reuse
           sharedApp = app;
           sharedCtx = ctx;
           sharedVars = vars;
+          sharedTenantId = tenantId;
         }
 
         // Seed users into app context for role-based permissions
@@ -263,6 +271,8 @@ export function runSuite(suiteFile: string) {
           const url = `http://localhost${httpDef.path}`;
           const headers: Record<string, string> = {
             "X-Actor": httpDef.actor ?? "system",
+            "X-Tenant-Id": tenantId,
+            ...(httpDef.headers ?? {}),
           };
 
           const fetchInit: RequestInit = {

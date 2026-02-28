@@ -312,7 +312,7 @@ export const loanAccounts = sqliteTable("loan_accounts", {
 
   // Mambu-style identifiers
   encoded_key: text("encoded_key").notNull().unique(), // UUID for API compatibility
-  account_id: text("account_id").notNull().unique(), // Human-readable (e.g., "LN-00001")
+  account_id: text("account_id").notNull(), // Human-readable (e.g., "LN-00001") — unique per tenant
 
   // Relationships
   deal_id: text("deal_id").references(() => deals.id), // Link to originating deal

@@ -198,20 +198,21 @@ arrange:
   seed:
     tenant: { id: "t1" }
     users:
-      - { id: "u_analyst", role: "analyst" }
+      - { id: "u_originator", role: "originator" }
       - { id: "u_manager", role: "credit_lead" }
 
 steps:
   # Create a deal
   - id: create_deal
     http:
-      actor: "u_analyst"
+      actor: "u_originator"
       method: POST
       path: /v1/deals
       json:
         borrower_name: "GateCo Ltd"
         jurisdiction: "US"
         requested_amount: 50000000
+        purpose: "Expansion capital"
     expect:
       status: 201
       save:
@@ -233,7 +234,7 @@ steps:
   # Attempt to advance stage — should be blocked (428)
   - id: attempt_advance
     http:
-      actor: "u_analyst"
+      actor: "u_originator"
       method: POST
       path: /v1/deals/${deal_id}/stage-transitions
       json:
@@ -277,7 +278,7 @@ steps:
   # Now retry with the approved gate record ID
   - id: advance_with_approval
     http:
-      actor: "u_analyst"
+      actor: "u_originator"
       method: POST
       path: /v1/deals/${deal_id}/stage-transitions
       headers:
@@ -519,16 +520,19 @@ arrange:
   seed:
     tenant: { id: "t1" }
     users:
-      - { id: "u_analyst", role: "analyst" }
+      - { id: "u_originator", role: "originator" }
 
 steps:
   - id: create_deal
     http:
-      actor: "u_analyst"
+      actor: "u_originator"
       method: POST
       path: /v1/deals
       json:
         borrower_name: "AutoCo"
+        jurisdiction: "US"
+        requested_amount: 50000000
+        purpose: "Working capital"
     expect:
       status: 201
       save:
@@ -537,7 +541,7 @@ steps:
   # Create auto-mode gate — should add no friction
   - id: create_auto_gate
     http:
-      actor: "u_analyst"
+      actor: "u_originator"
       method: POST
       path: /v1/gates/policies
       json:
@@ -549,7 +553,7 @@ steps:
   # Advance should succeed immediately
   - id: advance_stage
     http:
-      actor: "u_analyst"
+      actor: "u_originator"
       method: POST
       path: /v1/deals/${deal_id}/stage-transitions
       json:
@@ -572,17 +576,20 @@ arrange:
   seed:
     tenant: { id: "t1" }
     users:
-      - { id: "u_analyst", role: "analyst" }
+      - { id: "u_originator", role: "originator" }
       - { id: "u_cro", role: "chief_risk_officer" }
 
 steps:
   - id: create_deal
     http:
-      actor: "u_analyst"
+      actor: "u_originator"
       method: POST
       path: /v1/deals
       json:
         borrower_name: "BypassCo"
+        jurisdiction: "US"
+        requested_amount: 25000000
+        purpose: "Acquisition finance"
     expect:
       status: 201
       save:
@@ -601,7 +608,7 @@ steps:
 
   - id: trigger_gate
     http:
-      actor: "u_analyst"
+      actor: "u_originator"
       method: POST
       path: /v1/deals/${deal_id}/stage-transitions
       json:
@@ -627,7 +634,7 @@ steps:
   # Now the advance should work with the bypassed gate
   - id: advance_with_bypass
     http:
-      actor: "u_analyst"
+      actor: "u_originator"
       method: POST
       path: /v1/deals/${deal_id}/stage-transitions
       headers:
