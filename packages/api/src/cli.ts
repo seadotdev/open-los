@@ -22,6 +22,7 @@ import {
   DepositAccountService,
   ApprovalGateService,
   ApprovalService,
+  TenantSettingsService,
 } from "@open-los/core";
 import { createApp } from "./server.js";
 import type { AppContext } from "./server.js";
@@ -44,7 +45,8 @@ async function main() {
   const auditService = new AuditService(db);
   const dealService = new DealService(db, auditService, clock);
   const documentService = new DocumentService(db, auditService, clock);
-  const stageService = new StageService(db, auditService, clock);
+  const tenantSettingsService = new TenantSettingsService(db, clock);
+  const stageService = new StageService(db, auditService, clock, tenantSettingsService);
   const entityService = new EntityService(db, auditService, clock);
   const relationshipService = new RelationshipService(db, auditService, clock);
   const templateService = new TemplateService();
@@ -96,6 +98,7 @@ async function main() {
     depositAccountService,
     approvalGateService,
     approvalService,
+    tenantSettingsService,
     getNow: clock,
     users: new Map(),
     llmConfig,

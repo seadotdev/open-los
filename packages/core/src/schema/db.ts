@@ -403,6 +403,15 @@ export async function migrateDatabase(db: Database) {
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_gate_records_tenant_status ON approval_gate_records(tenant_id, status)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_gate_records_deal ON approval_gate_records(deal_id)`);
 
+  // ─── Tenant Settings Table ────────────────────────────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS tenant_settings (
+    tenant_id TEXT PRIMARY KEY,
+    disabled_guards TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`);
+
   // ─── Sandbox Tables ─────────────────────────────────────────────────────────
 
   await db.run(sql`CREATE TABLE IF NOT EXISTS sandboxes (

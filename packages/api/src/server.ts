@@ -23,6 +23,7 @@ import {
   AppError,
   ApprovalGateService,
   ApprovalService,
+  TenantSettingsService,
 } from "@open-los/core";
 import type { Database } from "@open-los/core";
 import { dealRoutes } from "./routes/deals.js";
@@ -41,6 +42,7 @@ import { facilityRoutes } from "./routes/facilities.js";
 import { sandboxRoutes } from "./routes/sandboxes.js";
 import { depositRoutes } from "./routes/deposits.js";
 import { gateRoutes } from "./routes/gates.js";
+import { settingsRoutes } from "./routes/settings.js";
 import { chatRoutes } from "./routes/chat.js";
 
 export interface LLMConfig {
@@ -69,6 +71,7 @@ export interface AppContext {
   depositAccountService: DepositAccountService;
   approvalGateService: ApprovalGateService;
   approvalService: ApprovalService;
+  tenantSettingsService: TenantSettingsService;
   getNow: () => string;
   users?: Map<string, { id: string; role: string }>;
   llmConfig?: LLMConfig;
@@ -107,6 +110,7 @@ export function createApp(ctx: AppContext) {
   app.route("/v1", sandboxRoutes(ctx));
   app.route("/v1", depositRoutes(ctx));
   app.route("/v1", gateRoutes(ctx));
+  app.route("/v1", settingsRoutes(ctx));
 
   // Chat bot webhook routes (Slack, Teams)
   app.route("/chat", chatRoutes(ctx));
@@ -143,15 +147,16 @@ export function createApp(ctx: AppContext) {
   return app;
 }
 
-export async function createAppWithDb(getNow?: () => string) {
-  const db = createDatabase(":memory:");
+export async function createAppWithDb(getNow?: () => string, dbUrl?: string) {
+  const db = createDatabase(dbUrl ?? ":memory:");
   await migrateDatabase(db);
 
   const clock = getNow ?? (() => new Date().toISOString());
   const auditService = new AuditService(db);
   const dealService = new DealService(db, auditService, clock);
   const documentService = new DocumentService(db, auditService, clock);
-  const stageService = new StageService(db, auditService, clock);
+  const tenantSettingsService = new TenantSettingsService(db, clock);
+  const stageService = new StageService(db, auditService, clock, tenantSettingsService);
   const entityService = new EntityService(db, auditService, clock);
   const relationshipService = new RelationshipService(db, auditService, clock);
   const templateService = new TemplateService();
@@ -203,6 +208,7 @@ export async function createAppWithDb(getNow?: () => string) {
     depositAccountService,
     approvalGateService,
     approvalService,
+    tenantSettingsService,
     getNow: clock,
     users: new Map(),
     llmConfig,

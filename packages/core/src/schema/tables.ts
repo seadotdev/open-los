@@ -577,6 +577,16 @@ export const approvalGateRecords = sqliteTable("approval_gate_records", {
   updated_at: text("updated_at"),
 });
 
+// ─── Tenant Settings Table ──────────────────────────────────────────────────────
+// Per-tenant configuration: which optional stage guards are disabled, etc.
+
+export const tenantSettings = sqliteTable("tenant_settings", {
+  tenant_id: text("tenant_id").primaryKey(),
+  disabled_guards: text("disabled_guards", { mode: "json" }), // string[]
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at"),
+});
+
 // ─── Sandbox Version Control Tables ─────────────────────────────────────────────
 // Sandboxes are isolated workspaces for experimental/exploratory work.
 // Each sandbox has its own git branch for version control.

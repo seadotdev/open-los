@@ -57,6 +57,7 @@ export {
   sandboxEntities,
   approvalGatePolicies,
   approvalGateRecords,
+  tenantSettings,
 } from "./schema/tables.js";
 export { DealService } from "./services/deal.js";
 export type { CreateDealInput, UpdateDealInput } from "./services/deal.js";
@@ -131,6 +132,8 @@ export type {
   GateCheckResult,
   ApprovalDecision,
 } from "./services/approval-gate.js";
+export { TenantSettingsService } from "./services/tenant-settings.js";
+export type { TenantSettingsInput } from "./services/tenant-settings.js";
 export { SandboxService, InMemoryGitProvider } from "./services/sandbox.js";
 export type {
   CreateSandboxInput,

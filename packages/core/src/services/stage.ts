@@ -1,7 +1,8 @@
 import { eq, asc } from "drizzle-orm";
 import type { Database } from "../schema/db.js";
-import { deals, documents, stageTransitions } from "../schema/tables.js";
+import { deals, documents, spreads, stageTransitions } from "../schema/tables.js";
 import type { AuditService } from "./audit.js";
+import type { TenantSettingsService } from "./tenant-settings.js";
 import {
   StageGuardError,
   InvalidTransitionError,
@@ -28,34 +29,38 @@ const TRANSITION_ROLES: Record<string, string[]> = {
 export interface GuardContext {
   deal: Record<string, unknown>;
   docCount: number;
+  spreadCount: number;
 }
 
 /** Stage guard configuration */
 export interface StageGuard {
   item: string;
+  category: "core" | "optional";
   check: (ctx: GuardContext) => boolean;
 }
 
 /**
  * Stage guards configuration: defines what must be satisfied before entering each stage.
- * Each guard has an item name and a check function that receives the guard context.
+ * Each guard has an item name, a category (core guards are always enforced,
+ * optional guards can be disabled per tenant), and a check function.
  */
 export const STAGE_GUARDS: Record<string, StageGuard[]> = {
   origination: [
-    { item: "borrower_name", check: (ctx) => !!ctx.deal.borrower_name },
-    { item: "jurisdiction", check: (ctx) => !!ctx.deal.jurisdiction },
-    { item: "requested_amount", check: (ctx) => ctx.deal.requested_amount != null },
-    { item: "purpose", check: (ctx) => !!ctx.deal.purpose },
+    { item: "borrower_name", category: "core", check: (ctx) => !!ctx.deal.borrower_name },
+    { item: "jurisdiction", category: "core", check: (ctx) => !!ctx.deal.jurisdiction },
+    { item: "requested_amount", category: "core", check: (ctx) => ctx.deal.requested_amount != null },
+    { item: "purpose", category: "core", check: (ctx) => !!ctx.deal.purpose },
   ],
   underwriting: [
-    { item: "origination_outcome_proceed", check: (ctx) => ctx.deal.origination_outcome === "proceed" },
-    { item: "documents_uploaded", check: (ctx) => ctx.docCount >= 1 },
+    { item: "origination_outcome_proceed", category: "core", check: (ctx) => ctx.deal.origination_outcome === "proceed" },
+    { item: "documents_uploaded", category: "optional", check: (ctx) => ctx.docCount >= 1 },
+    { item: "spread_created", category: "optional", check: (ctx) => ctx.spreadCount >= 1 },
   ],
   closing: [
-    { item: "deal_in_underwriting", check: (ctx) => ctx.deal.stage === "underwriting" },
+    { item: "deal_in_underwriting", category: "core", check: (ctx) => ctx.deal.stage === "underwriting" },
   ],
   monitoring: [
-    { item: "deal_in_closing", check: (ctx) => ctx.deal.stage === "closing" },
+    { item: "deal_in_closing", category: "core", check: (ctx) => ctx.deal.stage === "closing" },
   ],
 };
 
@@ -72,11 +77,16 @@ export interface UserContext {
 }
 
 export class StageService {
+  private tenantSettingsService?: TenantSettingsService;
+
   constructor(
     private db: Database,
     private audit: AuditService,
-    private getNow: () => string
-  ) {}
+    private getNow: () => string,
+    tenantSettingsService?: TenantSettingsService,
+  ) {
+    this.tenantSettingsService = tenantSettingsService;
+  }
 
   async transition(
     dealId: string,
@@ -135,7 +145,13 @@ export class StageService {
         .from(documents)
         .where(eq(documents.deal_id, dealId));
 
-      const checklist = this.getChecklist(deal, toStage, docRows.length);
+      const spreadRows = await tx
+        .select()
+        .from(spreads)
+        .where(eq(spreads.deal_id, dealId));
+
+      const tenantId = (deal as Record<string, unknown>).tenant_id as string | undefined;
+      const checklist = await this.getChecklist(deal, toStage, docRows.length, spreadRows.length, tenantId);
       const unsatisfied = checklist.filter((c) => !c.satisfied);
 
       if (unsatisfied.length > 0) {
@@ -227,20 +243,36 @@ export class StageService {
     return rows;
   }
 
-  private getChecklist(
+  private async getChecklist(
     deal: Record<string, unknown>,
     toStage: string,
-    docCount: number
-  ): Array<{ item: string; satisfied: boolean }> {
+    docCount: number,
+    spreadCount: number = 0,
+    tenantId?: string,
+  ): Promise<Array<{ item: string; satisfied: boolean }>> {
     const guards = STAGE_GUARDS[toStage];
     if (!guards) {
       return [];
     }
 
-    const ctx: GuardContext = { deal, docCount };
-    return guards.map((guard) => ({
-      item: guard.item,
-      satisfied: guard.check(ctx),
-    }));
+    // Look up disabled guards for this tenant (optional guards only)
+    let disabledGuards: Set<string> = new Set();
+    if (tenantId && this.tenantSettingsService) {
+      disabledGuards = await this.tenantSettingsService.getDisabledGuards(tenantId);
+    }
+
+    const ctx: GuardContext = { deal, docCount, spreadCount };
+    return guards
+      .filter((guard) => {
+        // Core guards are always enforced; optional guards can be disabled
+        if (guard.category === "optional" && disabledGuards.has(guard.item)) {
+          return false;
+        }
+        return true;
+      })
+      .map((guard) => ({
+        item: guard.item,
+        satisfied: guard.check(ctx),
+      }));
   }
 }

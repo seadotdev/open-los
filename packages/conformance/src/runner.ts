@@ -1,8 +1,8 @@
-import { readFileSync } from "fs";
+import { readFileSync, unlinkSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { parseAllDocuments } from "yaml";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import { createAppWithDb } from "@open-los/api";
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
@@ -149,11 +149,20 @@ let sharedApp: Awaited<ReturnType<typeof createAppWithDb>>["app"] | null = null;
 let sharedCtx: Awaited<ReturnType<typeof createAppWithDb>>["ctx"] | null = null;
 let sharedVars: Map<string, string> = new Map();
 let sharedNow: string = "";
+const dbFilesToCleanup: string[] = [];
 
 export function runSuite(suiteFile: string) {
   const content = readFileSync(resolve(ROOT, suiteFile), "utf-8");
   const docs = parseAllDocuments(content);
   const parsed = docs.map((d) => d.toJSON()).filter((d) => d && d.test);
+
+  // Clean up temporary DB files after all tests in this suite
+  afterAll(() => {
+    for (const file of dbFilesToCleanup) {
+      try { unlinkSync(file); } catch {}
+    }
+    dbFilesToCleanup.length = 0;
+  });
 
   for (const testCase of parsed as TestCase[]) {
     describe(testCase.meta?.name ?? testCase.test, () => {
@@ -175,10 +184,16 @@ export function runSuite(suiteFile: string) {
           // Update the shared time for services to use
           sharedNow = now;
         } else {
-          // Create fresh app/ctx/vars with a dynamic clock
+          // Create fresh app/ctx/vars with a dynamic clock.
+          // Use a unique file-backed DB per fresh app so each reset_db: true
+          // starts from a truly empty database.  The default ":memory:" is
+          // normalised to a fixed file path by createDatabase, which causes
+          // data from previous tests / runs to leak across resets.
           sharedNow = now;
           const dynamicClock = () => sharedNow;
-          const created = await createAppWithDb(dynamicClock);
+          const dbFile = `openlos-test-${crypto.randomUUID()}.db`;
+          dbFilesToCleanup.push(dbFile);
+          const created = await createAppWithDb(dynamicClock, `file:./${dbFile}`);
           app = created.app;
           ctx = created.ctx;
           vars = new Map<string, string>();
