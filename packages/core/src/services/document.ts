@@ -120,6 +120,65 @@ export class DocumentService {
     return rows;
   }
 
+  async getById(dealId: string, docId: string, tenantId = "default") {
+    await this.ensureDealAccess(dealId, tenantId);
+    const rows = await this.db
+      .select({
+        id: documents.id,
+        deal_id: documents.deal_id,
+        doc_type: documents.doc_type,
+        phase: documents.phase,
+        filename: documents.filename,
+        label: documents.label,
+        mime_type: documents.mime_type,
+        size_bytes: documents.size_bytes,
+        checksum: documents.checksum,
+        version: documents.version,
+        source: documents.source,
+        created_at: documents.created_at,
+        created_by: documents.created_by,
+      })
+      .from(documents)
+      .where(and(eq(documents.id, docId), eq(documents.deal_id, dealId)));
+
+    if (rows.length === 0) {
+      throw new NotFoundError(`Document ${docId} not found`);
+    }
+    return rows[0];
+  }
+
+  async getContent(docId: string, tenantId = "default"): Promise<{ doc_type: string; filename: string; content_base64: string } | null> {
+    const rows = await this.db
+      .select({
+        id: documents.id,
+        deal_id: documents.deal_id,
+        doc_type: documents.doc_type,
+        filename: documents.filename,
+        content: documents.content,
+      })
+      .from(documents)
+      .where(eq(documents.id, docId));
+
+    if (rows.length === 0) return null;
+    const row = rows[0];
+
+    // Verify tenant access via the deal
+    await this.ensureDealAccess(row.deal_id, tenantId);
+
+    const content = row.content;
+    const base64 = content instanceof Buffer
+      ? content.toString("base64")
+      : content
+        ? Buffer.from(content as ArrayBuffer).toString("base64")
+        : "";
+
+    return {
+      doc_type: row.doc_type,
+      filename: row.filename,
+      content_base64: base64,
+    };
+  }
+
   private async ensureDealAccess(dealId: string, tenantId: string) {
     const rows = await this.db
       .select({ id: deals.id })

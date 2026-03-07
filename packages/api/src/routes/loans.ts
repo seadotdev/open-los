@@ -22,8 +22,8 @@ export function loanRoutes(ctx: AppContext) {
     return c.json(stripNulls(result), 201);
   });
 
-  // POST /v1/loans:search - search loan accounts
-  app.post("/loans\\:search", async (c) => {
+  // POST /v1/loans/search - search loan accounts
+  app.post("/loans/search", async (c) => {
     const tenantId = c.req.header("X-Tenant-Id") ?? "default";
     const body = await c.req.json();
     const result = await ctx.loanAccountService.search(
@@ -273,8 +273,8 @@ export function loanRoutes(ctx: AppContext) {
     return c.json(stripNulls(result), 200);
   });
 
-  // POST /v1/loans/transactions:search - search transactions across accounts
-  app.post("/loans/transactions\\:search", async (c) => {
+  // POST /v1/loans/transactions/search - search transactions across accounts
+  app.post("/loans/transactions/search", async (c) => {
     const tenantId = c.req.header("X-Tenant-Id") ?? "default";
     const body = await c.req.json();
 

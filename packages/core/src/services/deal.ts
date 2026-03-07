@@ -38,6 +38,10 @@ export class DealService {
       throw new ValidationError("borrower_name is required");
     }
 
+    if (input.requested_amount !== undefined && input.requested_amount !== null && input.requested_amount < 0) {
+      throw new ValidationError("requested_amount must be non-negative");
+    }
+
     const id = crypto.randomUUID();
     const now = this.getNow();
 

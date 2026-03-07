@@ -643,6 +643,31 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
         return `${type}:${name}`
       }).join(', ')
       : 'none'
+
+    // Fetch document contents for financial docs (bank_statement, pnl)
+    let docContentsSection = ''
+    if (Array.isArray(docs)) {
+      const financialDocs = docs.filter((d: any) =>
+        ['bank_statement', 'pnl'].includes(d.doc_type)
+      ).slice(0, 10)
+
+      const contentParts: string[] = []
+      for (const doc of financialDocs) {
+        try {
+          const contentResult = await this.los.documents.getContent(doc.id)
+          if (contentResult?.content_base64) {
+            const decoded = Buffer.from(contentResult.content_base64, 'base64').toString('utf-8')
+            contentParts.push(`### ${doc.doc_type}: ${doc.filename}\n${decoded}`)
+          }
+        } catch {
+          // Non-fatal: content retrieval may not be available
+        }
+      }
+      if (contentParts.length > 0) {
+        docContentsSection = '\n## Document Contents\n' + contentParts.join('\n\n')
+      }
+    }
+
     const dealContext = JSON.stringify({
       borrower_name: deal.borrower_name,
       jurisdiction: deal.jurisdiction,
@@ -667,7 +692,7 @@ APR must be in DECIMAL form (0.095 = 9.5%). Maximum APR is 0.55.`
 ## Documents: ${docList}
 ## Borrower Group + Deal Context (JSON)
 ${dealContext}
-## Rules baseline: ${rulesBaseline.action} (risk grade: ${rulesBaseline.risk_grade}, confidence: ${rulesBaseline.confidence}) — for reference, make your own assessment`
+## Rules baseline: ${rulesBaseline.action} (risk grade: ${rulesBaseline.risk_grade}, confidence: ${rulesBaseline.confidence}) — for reference, make your own assessment${docContentsSection}`
 
     const decisionSchema = {
       type: 'object' as const,

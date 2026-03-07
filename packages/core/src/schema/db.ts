@@ -275,7 +275,7 @@ export async function migrateDatabase(db: Database) {
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL DEFAULT 'default',
     encoded_key TEXT NOT NULL UNIQUE,
-    account_id TEXT NOT NULL UNIQUE,
+    account_id TEXT NOT NULL,
     deal_id TEXT REFERENCES deals(id),
     facility_id TEXT REFERENCES facilities(id),
     account_holder_type TEXT NOT NULL,
@@ -399,9 +399,19 @@ export async function migrateDatabase(db: Database) {
     updated_at TEXT
   )`);
 
+  await db.run(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_loan_accounts_tenant_account_id ON loan_accounts(tenant_id, account_id)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_gate_policies_tenant_action ON approval_gate_policies(tenant_id, action)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_gate_records_tenant_status ON approval_gate_records(tenant_id, status)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_gate_records_deal ON approval_gate_records(deal_id)`);
+
+  // ─── Tenant Settings Table ────────────────────────────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS tenant_settings (
+    tenant_id TEXT PRIMARY KEY,
+    disabled_guards TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`);
 
   // ─── Sandbox Tables ─────────────────────────────────────────────────────────
 

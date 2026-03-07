@@ -1719,7 +1719,7 @@ steps:
       json:
         type: "APPROVAL"
     expect:
-      status: 400
+      status: 409
       json_path_assertions:
         - path: "$.error.code"
           eq: "INVALID_TRANSITION"
@@ -1889,7 +1889,7 @@ steps:
     http:
       actor: "u_lender"
       method: POST
-      path: /v1/loans:search
+      path: /v1/loans/search
       json:
         filterCriteria:
           - field: "state"
@@ -1905,7 +1905,7 @@ steps:
     http:
       actor: "u_lender"
       method: POST
-      path: /v1/loans:search
+      path: /v1/loans/search
       json:
         filterCriteria:
           - field: "state"

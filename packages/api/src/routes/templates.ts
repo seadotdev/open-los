@@ -15,11 +15,12 @@ export function templateRoutes(ctx: AppContext) {
 
   // POST /v1/templates/render
   app.post("/templates/render", async (c) => {
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
     const body = await c.req.json();
     const { template_id, deal_id, overrides } = body;
 
     // Get the deal
-    const deal = await ctx.dealService.getById(deal_id);
+    const deal = await ctx.dealService.getById(deal_id, tenantId);
 
     // Convert deal to context object
     const dealContext: Record<string, unknown> = {

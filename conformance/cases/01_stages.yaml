@@ -134,6 +134,21 @@ steps:
       json_contains:
         origination_outcome: "proceed"
 
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: transition_to_underwriting
     http:
       actor: "u_underwriter"
@@ -224,6 +239,21 @@ steps:
     expect:
       status: 200
 
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: to_underwriting
     http:
       actor: "u_underwriter"
@@ -325,6 +355,21 @@ steps:
     expect:
       status: 200
 
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: to_underwriting
     http:
       actor: "u_underwriter"
@@ -441,6 +486,21 @@ steps:
     expect:
       status: 200
 
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: to_underwriting
     http:
       actor: "u_underwriter"
@@ -738,6 +798,21 @@ steps:
     expect:
       status: 200
 
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: to_underwriting
     http:
       actor: "u_underwriter"
@@ -1011,6 +1086,21 @@ steps:
     expect:
       status: 200
 
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: to_underwriting
     http:
       actor: "u_underwriter"
@@ -1423,6 +1513,21 @@ steps:
     expect:
       status: 200
 
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: transition_succeeds
     http:
       actor: "u_underwriter"
@@ -1563,6 +1668,21 @@ steps:
     expect:
       status: 200
 
+
+  - id: create_spread
+    http:
+      actor: "u_credit_lead"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: credit_lead_overrides
     http:
       actor: "u_credit_lead"
@@ -1868,6 +1988,21 @@ steps:
     expect:
       status: 200
 
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: transition
     http:
       actor: "u_underwriter"
@@ -1950,6 +2085,21 @@ steps:
     expect:
       status: 200
 
+
+  - id: create_spread
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/spread
+      json:
+        entity_id: "e_placeholder"
+        period: "FY2024"
+        line_items:
+          - { category: "revenue", label: "Revenue", amount: 1000000 }
+          - { category: "cogs", label: "COGS", amount: 600000 }
+          - { category: "operating_expense", label: "OpEx", amount: 200000 }
+    expect:
+      status: 200
   - id: to_underwriting
     http:
       actor: "u_underwriter"
@@ -2121,6 +2271,95 @@ steps:
       status: 200
 
   - id: try_underwriting_no_docs
+    http:
+      actor: "u_underwriter"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "underwriting"
+    expect:
+      status: 409
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "STAGE_GUARD_FAILED"
+
+  - id: verify_unchanged
+    http:
+      actor: "u_originator"
+      method: GET
+      path: /v1/deals/${deal_id}
+    expect:
+      status: 200
+      json_contains:
+        stage: "origination"
+
+# ─── 7.3b: no spread blocks underwriting ─────────────────────────────────────
+---
+test: guard_no_spread_blocks_underwriting
+meta:
+  name: "Transition to underwriting blocked when no spread created"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
+      - { id: "u_underwriter", role: "underwriter" }
+
+steps:
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "NoSpread Corp"
+        jurisdiction: "GB"
+        requested_amount: 15000000
+        purpose: "Equipment purchase"
+        borrower_registration_number: "NS-001"
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: to_origination
+    http:
+      actor: "u_originator"
+      method: POST
+      path: /v1/deals/${deal_id}/stage-transitions
+      json:
+        to_stage: "origination"
+    expect:
+      status: 200
+
+  - id: upload_document
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals/${deal_id}/documents
+      json:
+        doc_type: "accounts"
+        filename: "financials.csv"
+        content_base64: "cmV2ZW51ZSxjb3N0X29mX2dvb2RzLG5ldF9pbmNvbWUKMTAwMDAwMCw2MDAwMDAsNDAwMDAw"
+    expect:
+      status: 202
+
+  - id: set_proceed
+    http:
+      actor: "u_originator"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        origination_outcome: "proceed"
+    expect:
+      status: 200
+
+  - id: try_underwriting_no_spread
     http:
       actor: "u_underwriter"
       method: POST

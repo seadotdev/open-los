@@ -15,10 +15,11 @@ export function relationshipRoutes(ctx: AppContext) {
 
   // GET /v1/deals/:dealId/borrower-group
   app.get("/deals/:dealId/borrower-group", async (c) => {
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
     const dealId = c.req.param("dealId");
 
     // Get the deal to find the primary_entity_id
-    const deal = await ctx.dealService.getById(dealId);
+    const deal = await ctx.dealService.getById(dealId, tenantId);
 
     if (!deal.primary_entity_id) {
       return c.json({ entities: [], relationships: [] }, 200);

@@ -298,10 +298,10 @@ steps:
       json:
         to_stage: "closing"
     expect:
-      status: 400
+      status: 409
       json_path_assertions:
         - path: "$.error.code"
-          exists: true
+          eq: "INVALID_TRANSITION"
 
 ---
 test: error_invalid_loan_state_transition
@@ -362,7 +362,7 @@ steps:
       json:
         type: "APPROVAL"
     expect:
-      status: 400
+      status: 409
       json_path_assertions:
         - path: "$.error.code"
           eq: "INVALID_TRANSITION"
@@ -382,12 +382,12 @@ arrange:
   seed:
     tenant: { id: "t1" }
     users:
-      - { id: "u_broker", role: "broker" }
+      - { id: "u_originator", role: "originator" }
 
 steps:
   - id: create_deal
     http:
-      actor: "u_broker"
+      actor: "u_originator"
       method: POST
       path: /v1/deals
       json:
@@ -399,16 +399,16 @@ steps:
 
   - id: transition_without_required_fields
     http:
-      actor: "u_broker"
+      actor: "u_originator"
       method: POST
       path: /v1/deals/${deal_id}/stage-transitions
       json:
         to_stage: "origination"
     expect:
-      status: 400
+      status: 409
       json_path_assertions:
-        - path: "$.error"
-          exists: true
+        - path: "$.error.code"
+          eq: "STAGE_GUARD_FAILED"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 5: Immutability Errors (405)

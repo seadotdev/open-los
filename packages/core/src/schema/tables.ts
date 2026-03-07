@@ -312,7 +312,7 @@ export const loanAccounts = sqliteTable("loan_accounts", {
 
   // Mambu-style identifiers
   encoded_key: text("encoded_key").notNull().unique(), // UUID for API compatibility
-  account_id: text("account_id").notNull().unique(), // Human-readable (e.g., "LN-00001")
+  account_id: text("account_id").notNull(), // Human-readable (e.g., "LN-00001") — unique per tenant
 
   // Relationships
   deal_id: text("deal_id").references(() => deals.id), // Link to originating deal
@@ -573,6 +573,16 @@ export const approvalGateRecords = sqliteTable("approval_gate_records", {
   // Expiry for time-bound gates
   expires_at: text("expires_at"),
 
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at"),
+});
+
+// ─── Tenant Settings Table ──────────────────────────────────────────────────────
+// Per-tenant configuration: which optional stage guards are disabled, etc.
+
+export const tenantSettings = sqliteTable("tenant_settings", {
+  tenant_id: text("tenant_id").primaryKey(),
+  disabled_guards: text("disabled_guards", { mode: "json" }), // string[]
   created_at: text("created_at").notNull(),
   updated_at: text("updated_at"),
 });
