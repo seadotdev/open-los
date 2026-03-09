@@ -377,6 +377,24 @@ export class LosClient {
     return this.request('GET', `/v1/deals/${dealId}/ratios`);
   }
 
+  async evaluateDeal(
+    dealId: string,
+    options?: {
+      mode?: 'full' | 'rules_only';
+      provider?: string;
+      allow_rules_fallback?: boolean;
+    }
+  ): Promise<unknown> {
+    return this.request('POST', `/v1/deals/${dealId}/evaluate`, { body: options || {} });
+  }
+
+  async checkGuards(
+    dealId: string,
+    toStage: string
+  ): Promise<{ checklist: Array<{ item: string; satisfied: boolean }> }> {
+    return this.request('GET', `/v1/deals/${dealId}/guards`, { query: { to_stage: toStage } });
+  }
+
   // === MONITORING ===
 
   async ingestMonitoringData(

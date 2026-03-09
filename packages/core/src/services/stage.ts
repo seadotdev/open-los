@@ -151,7 +151,7 @@ export class StageService {
         .where(eq(spreads.deal_id, dealId));
 
       const tenantId = (deal as Record<string, unknown>).tenant_id as string | undefined;
-      const checklist = await this.getChecklist(deal, toStage, docRows.length, spreadRows.length, tenantId);
+      const checklist = await this._evaluateGuards(deal, toStage, docRows.length, spreadRows.length, tenantId);
       const unsatisfied = checklist.filter((c) => !c.satisfied);
 
       if (unsatisfied.length > 0) {
@@ -243,7 +243,25 @@ export class StageService {
     return rows;
   }
 
-  private async getChecklist(
+  /**
+   * Public entry point: fetch deal + counts and return the guard checklist.
+   */
+  async getChecklist(
+    dealId: string,
+    toStage: string,
+    tenantId?: string,
+  ): Promise<Array<{ item: string; satisfied: boolean }>> {
+    const rows = await this.db.select().from(deals).where(eq(deals.id, dealId));
+    if (rows.length === 0) {
+      return [];
+    }
+    const deal = rows[0];
+    const docRows = await this.db.select().from(documents).where(eq(documents.deal_id, dealId));
+    const spreadRows = await this.db.select().from(spreads).where(eq(spreads.deal_id, dealId));
+    return this._evaluateGuards(deal, toStage, docRows.length, spreadRows.length, tenantId);
+  }
+
+  private async _evaluateGuards(
     deal: Record<string, unknown>,
     toStage: string,
     docCount: number,

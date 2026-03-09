@@ -215,11 +215,42 @@ export function info(message: string): void {
 }
 
 /**
- * Handle command errors consistently
+ * Known guard fix hints — maps unsatisfied guard items to actionable CLI commands.
+ */
+const GUARD_HINTS: Record<string, string> = {
+  origination_outcome_proceed: 'Fix: los deal update <id> --outcome proceed',
+  borrower_name:               'Fix: los deal update <id> --borrower <name>',
+  jurisdiction:                'Fix: los deal update <id> --jurisdiction <code>',
+  requested_amount:            'Fix: los deal update <id> --amount <amount>',
+  purpose:                     'Fix: los deal update <id> --purpose <text>',
+  documents_uploaded:          'Fix: los doc upload <dealId> --type <type> --file <path>  (or --data)',
+  spread_created:              'Fix: los spread create <dealId> --period TTM --metrics \'{"revenue":...}\'',
+};
+
+/**
+ * Handle command errors consistently.
+ * For stage guard errors, prints the unsatisfied items with fix hints.
  */
 export function handleError(err: unknown): never {
   if (err instanceof Error) {
-    error(err.message);
+    // Check if the error message was parsed from a structured API response
+    // that includes guard details. The client.ts extracts error.message but
+    // we can detect guard failures by the "Stage guard failed:" prefix.
+    const msg = err.message;
+    if (msg.startsWith('Stage guard failed:')) {
+      console.error(colorize('✗', 'red'), msg);
+      // Extract guard names from "Stage guard failed: item1, item2"
+      const guardPart = msg.replace('Stage guard failed:', '').trim();
+      const guards = guardPart.split(',').map((g: string) => g.trim());
+      for (const guard of guards) {
+        const hint = GUARD_HINTS[guard];
+        if (hint) {
+          console.error(colorize('  →', 'yellow'), hint);
+        }
+      }
+      process.exit(1);
+    }
+    error(msg);
   }
   error(String(err));
 }

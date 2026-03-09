@@ -189,6 +189,63 @@ export function registerDealCommands(program: Command): void {
       }
     });
 
+  // Evaluate deal
+  deal
+    .command('evaluate <id>')
+    .description('Run underwriting evaluation on a deal')
+    .option('-m, --mode <mode>', 'Evaluation mode (full or rules_only)', 'rules_only')
+    .option('--provider <provider>', 'LLM provider (anthropic/openrouter/openai/vercel)')
+    .option('--allow-fallback', 'Allow rules fallback if LLM fails')
+    .action(async (id, opts, cmd) => {
+      try {
+        const globals = getGlobalOptions(cmd.optsWithGlobals() as GlobalOptions);
+        const client = getClient({ baseUrl: globals.apiUrl, actor: globals.actor, tenantId: globals.tenantId });
+
+        const result = await client.evaluateDeal(id, {
+          mode: opts.mode,
+          provider: opts.provider,
+          allow_rules_fallback: opts.allowFallback,
+        });
+
+        console.log(formatOutput(result, globals.format));
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
+  // Check guards
+  deal
+    .command('check-guards <id>')
+    .description('Check stage guard requirements without advancing')
+    .requiredOption('-t, --to <stage>', 'Target stage to check guards for')
+    .action(async (id, opts, cmd) => {
+      try {
+        const globals = getGlobalOptions(cmd.optsWithGlobals() as GlobalOptions);
+        const client = getClient({ baseUrl: globals.apiUrl, actor: globals.actor, tenantId: globals.tenantId });
+
+        const result = await client.checkGuards(id, opts.to);
+
+        if (globals.format === 'table') {
+          const checklist = result.checklist || [];
+          const allSatisfied = checklist.every((c: { satisfied: boolean }) => c.satisfied);
+          if (allSatisfied) {
+            success(`All guards satisfied for stage ${opts.to}`);
+          } else {
+            const unsatisfied = checklist.filter((c: { satisfied: boolean }) => !c.satisfied);
+            console.error(`Unsatisfied guards for ${opts.to}:`);
+            for (const guard of unsatisfied) {
+              console.error(`  ✗ ${guard.item}`);
+            }
+          }
+          console.log(formatOutput(checklist, globals.format));
+        } else {
+          console.log(formatOutput(result, globals.format));
+        }
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
   // Stage history
   deal
     .command('history <id>')

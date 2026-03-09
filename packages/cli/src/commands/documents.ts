@@ -20,19 +20,33 @@ export function registerDocumentCommands(program: Command): void {
   doc
     .command('upload <dealId>')
     .description('Upload a document to a deal')
-    .requiredOption('-f, --file <path>', 'File path')
+    .option('-f, --file <path>', 'File path')
+    .option('-d, --data <json>', 'Inline JSON data (will be base64-encoded automatically)')
     .requiredOption('-t, --type <type>', 'Document type (e.g., financial_statements, tax_returns)')
     .option('-n, --name <name>', 'Override filename')
     .option('-m, --mime <type>', 'Override MIME type')
     .action(async (dealId, opts, cmd) => {
       try {
+        if (!opts.file && !opts.data) {
+          throw new Error('Either --file or --data is required');
+        }
+
         const globals = getGlobalOptions(cmd.optsWithGlobals() as GlobalOptions);
         const client = getClient({ baseUrl: globals.apiUrl, actor: globals.actor, tenantId: globals.tenantId });
 
-        // Read file and convert to base64
-        const content = readFileSync(opts.file);
-        const base64Content = content.toString('base64');
-        const filename = opts.name || basename(opts.file);
+        let base64Content: string;
+        let filename: string;
+
+        if (opts.data) {
+          // Inline data mode: base64-encode the provided string
+          base64Content = Buffer.from(opts.data).toString('base64');
+          filename = opts.name || `${opts.type}.json`;
+        } else {
+          // File mode: read from disk
+          const content = readFileSync(opts.file);
+          base64Content = content.toString('base64');
+          filename = opts.name || basename(opts.file);
+        }
 
         // Detect MIME type if not specified
         let mimeType = opts.mime;

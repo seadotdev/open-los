@@ -45,5 +45,20 @@ export function stageRoutes(ctx: AppContext) {
     return c.json(stripNulls({ transitions }), 200);
   });
 
+  // GET /v1/deals/:dealId/guards?to_stage=<stage>
+  // Check stage guard requirements without actually advancing
+  app.get("/deals/:dealId/guards", async (c) => {
+    const dealId = c.req.param("dealId");
+    const toStage = c.req.query("to_stage");
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
+
+    if (!toStage) {
+      return c.json({ error: "to_stage query parameter is required" }, 400);
+    }
+
+    const checklist = await ctx.stageService.getChecklist(dealId, toStage, tenantId);
+    return c.json({ checklist }, 200);
+  });
+
   return app;
 }
