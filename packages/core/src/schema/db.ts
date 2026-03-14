@@ -99,6 +99,7 @@ export async function migrateDatabase(db: Database) {
     lei TEXT,
     jurisdiction TEXT,
     identifiers TEXT,
+    tags TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT,
     deleted_at TEXT
@@ -494,6 +495,46 @@ export async function migrateDatabase(db: Database) {
     created_at TEXT NOT NULL
   )`);
 
+  // ─── Entity Resolution & AML/KYC Screening Tables ──────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS screening_results (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    entity_id TEXT NOT NULL REFERENCES entities(id),
+    source TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    external_id TEXT,
+    external_name TEXT,
+    match_confidence REAL,
+    match_method TEXT,
+    candidates TEXT,
+    matched_identifiers TEXT,
+    risk_signals TEXT,
+    initiated_by TEXT NOT NULL,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    review_notes TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS reference_entities (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    source TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    legal_name TEXT,
+    jurisdiction TEXT,
+    entity_type TEXT,
+    status TEXT,
+    identifiers TEXT,
+    metadata TEXT,
+    indexed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`);
+
   // ─── Indexes for Performance ─────────────────────────────────────────────────────
 
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_deals_tenant_stage ON deals(tenant_id, stage)`);
@@ -507,6 +548,10 @@ export async function migrateDatabase(db: Database) {
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_covenants_deal ON covenants(deal_id)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_covenant_tests_covenant ON covenant_tests(covenant_id)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_spreads_deal ON spreads(deal_id)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_screening_entity ON screening_results(entity_id)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_screening_tenant_status ON screening_results(tenant_id, status)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_reference_source_extid ON reference_entities(source, external_id)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_reference_tenant_source ON reference_entities(tenant_id, source)`);
 }
 
 export { schema };
