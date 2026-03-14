@@ -17,6 +17,12 @@ export interface CreateEntityInput {
     authority?: string;
     confidence?: number;
   }>;
+  tags?: Array<{
+    dimension: string;
+    tag: string;
+    confidence?: number;
+    source?: string;
+  }>;
 }
 
 export interface UpdateEntityInput {
@@ -70,6 +76,7 @@ export class EntityService {
       lei: input.lei ?? null,
       jurisdiction: input.jurisdiction ?? null,
       identifiers: input.identifiers ?? null,
+      tags: input.tags ?? null,
       created_at: now,
       updated_at: now,
       deleted_at: null,

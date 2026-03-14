@@ -78,6 +78,7 @@ export const entities = sqliteTable("entities", {
   lei: text("lei"),
   jurisdiction: text("jurisdiction"),
   identifiers: text("identifiers", { mode: "json" }), // array of {scheme, value, authority?, confidence?}
+  tags: text("tags", { mode: "json" }), // array of {dimension, tag, confidence?, source?} — business categorisation tag cloud
   created_at: text("created_at").notNull(),
   updated_at: text("updated_at"),
   deleted_at: text("deleted_at"), // null = active, ISO timestamp = soft deleted
@@ -583,6 +584,99 @@ export const approvalGateRecords = sqliteTable("approval_gate_records", {
 export const tenantSettings = sqliteTable("tenant_settings", {
   tenant_id: text("tenant_id").primaryKey(),
   disabled_guards: text("disabled_guards", { mode: "json" }), // string[]
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at"),
+});
+
+// ─── Entity Resolution & AML/KYC Screening Tables ──────────────────────────────
+// Entity resolution matches internal entities against external open data sources
+// (S&P Capital IQ via DUNL.org, Companies House, GLEIF LEI, etc.)
+// Used for KYC onboarding, AML screening, and ongoing monitoring.
+
+export const screeningResults = sqliteTable("screening_results", {
+  id: text("id").primaryKey(),
+  tenant_id: text("tenant_id").notNull().default("default"),
+
+  // Which internal entity was screened
+  entity_id: text("entity_id")
+    .notNull()
+    .references(() => entities.id),
+
+  // Screening type and data source
+  source: text("source").notNull(),
+  // "dunl_spiq"         - S&P Capital IQ via DUNL.org
+  // "companies_house"   - UK Companies House
+  // "gleif_lei"         - GLEIF LEI registry
+  // "opencorporates"    - OpenCorporates
+  // "internal"          - Trained on lender's own entity data
+
+  // Resolution status
+  status: text("status").notNull().default("pending"),
+  // "pending"     - screening initiated but not yet completed
+  // "matched"     - high-confidence match found
+  // "partial"     - possible matches found, needs review
+  // "unmatched"   - no match found
+  // "confirmed"   - human confirmed the match
+  // "rejected"    - human rejected the proposed match
+  // "error"       - screening failed
+
+  // Top match details
+  external_id: text("external_id"),          // e.g., S&P Capital IQ ID "100000148560"
+  external_name: text("external_name"),      // canonical name from source
+  match_confidence: real("match_confidence"), // 0.0 – 1.0
+  match_method: text("match_method"),        // "exact_id" | "name_fuzzy" | "qmd_hybrid" | "lei_match"
+
+  // All candidate matches (top N)
+  candidates: text("candidates", { mode: "json" }),
+  // Array of { external_id, name, confidence, identifiers: {}, metadata: {} }
+
+  // Matched identifiers cross-reference
+  matched_identifiers: text("matched_identifiers", { mode: "json" }),
+  // { lei?: string, spiq_id?: string, companies_house_number?: string, jurisdiction?: string, ... }
+
+  // AML/KYC risk signals from the match
+  risk_signals: text("risk_signals", { mode: "json" }),
+  // { sanctions_hit: boolean, pep_hit: boolean, adverse_media: boolean, jurisdiction_risk?: string }
+
+  // Who initiated and reviewed
+  initiated_by: text("initiated_by").notNull(),
+  reviewed_by: text("reviewed_by"),
+  reviewed_at: text("reviewed_at"),
+  review_notes: text("review_notes"),
+
+  // Lifecycle
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at"),
+});
+
+// Reference data cache — stores external entity records for offline/fast matching
+export const referenceEntities = sqliteTable("reference_entities", {
+  id: text("id").primaryKey(),
+  tenant_id: text("tenant_id").notNull().default("default"),
+
+  // Source and external identifier
+  source: text("source").notNull(),       // "dunl_spiq" | "companies_house" | "gleif_lei"
+  external_id: text("external_id").notNull(), // The ID within the source system
+
+  // Entity data
+  name: text("name").notNull(),
+  legal_name: text("legal_name"),
+  jurisdiction: text("jurisdiction"),
+  entity_type: text("entity_type"),       // "company" | "person" | "fund" | "government"
+  status: text("status"),                 // "active" | "inactive" | "dissolved"
+
+  // Cross-reference identifiers
+  identifiers: text("identifiers", { mode: "json" }),
+  // { lei?: string, spiq_id?: string, companies_house?: string, duns?: string, isin?: string, ... }
+
+  // Additional metadata from source
+  metadata: text("metadata", { mode: "json" }),
+  // { industry?, address?, incorporation_date?, parent_company?, ... }
+
+  // QMD indexing status
+  indexed_at: text("indexed_at"),         // When last indexed for search
+
+  // Lifecycle
   created_at: text("created_at").notNull(),
   updated_at: text("updated_at"),
 });

@@ -8,6 +8,7 @@ import {
   AuditService,
   StageService,
   EntityService,
+  EntityResolutionService,
   RelationshipService,
   TemplateService,
   ArtifactService,
@@ -45,6 +46,7 @@ import { depositRoutes } from "./routes/deposits.js";
 import { gateRoutes } from "./routes/gates.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { chatRoutes } from "./routes/chat.js";
+import { screeningRoutes } from "./routes/screening.js";
 
 export interface AppContext {
   db: Database;
@@ -53,6 +55,7 @@ export interface AppContext {
   auditService: AuditService;
   stageService: StageService;
   entityService: EntityService;
+  entityResolutionService: EntityResolutionService;
   relationshipService: RelationshipService;
   templateService: TemplateService;
   artifactService: ArtifactService;
@@ -165,6 +168,7 @@ export function createApp(ctx: AppContext) {
   app.route("/v1", depositRoutes(ctx));
   app.route("/v1", gateRoutes(ctx));
   app.route("/v1", settingsRoutes(ctx));
+  app.route("/v1", screeningRoutes(ctx));
 
   // Chat bot webhook routes (Slack, Teams)
   app.route("/chat", chatRoutes(ctx));
@@ -212,6 +216,7 @@ export async function createAppWithDb(getNow?: () => string, dbUrl?: string) {
   const tenantSettingsService = new TenantSettingsService(db, clock);
   const stageService = new StageService(db, auditService, clock, tenantSettingsService);
   const entityService = new EntityService(db, auditService, clock);
+  const entityResolutionService = new EntityResolutionService(db, auditService, clock);
   const relationshipService = new RelationshipService(db, auditService, clock);
   const templateService = new TemplateService();
   const artifactService = new ArtifactService(db, auditService, templateService, clock);
@@ -237,6 +242,7 @@ export async function createAppWithDb(getNow?: () => string, dbUrl?: string) {
     auditService,
     stageService,
     entityService,
+    entityResolutionService,
     relationshipService,
     templateService,
     artifactService,

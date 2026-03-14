@@ -1,0 +1,973 @@
+version: "0.1.0"
+suite: entity_resolution
+description: >
+  Entity resolution and AML/KYC screening: import reference data from open
+  sources (S&P Capital IQ via DUNL.org, Companies House, GLEIF LEI), resolve
+  entities against reference data, screen entities, and confirm/reject matches.
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 1. Import reference data
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 1: Import S&P Capital IQ reference data ────────────────────────────
+---
+test: import_reference_data
+meta:
+  name: "Import S&P Capital IQ reference data from DUNL.org"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc."
+            legal_name: "Apple Inc."
+            jurisdiction: "US"
+            entity_type: "company"
+            status: "active"
+            identifiers:
+              lei: "HWUPKR0MPOU8FGXBT394"
+              spiq_id: "100000148560"
+            metadata:
+              industry: "Technology Hardware"
+              city: "Cupertino"
+              country: "US"
+          - external_id: "100000230001"
+            name: "Microsoft Corporation"
+            legal_name: "Microsoft Corporation"
+            jurisdiction: "US"
+            entity_type: "company"
+            status: "active"
+            identifiers:
+              lei: "INR2EJN1ERAN0W5ZP974"
+              spiq_id: "100000230001"
+            metadata:
+              industry: "Software"
+              city: "Redmond"
+              country: "US"
+          - external_id: "100000560032"
+            name: "Barclays PLC"
+            legal_name: "Barclays PLC"
+            jurisdiction: "GB"
+            entity_type: "company"
+            status: "active"
+            identifiers:
+              lei: "213800LBQA1Y9L22JB70"
+              spiq_id: "100000560032"
+              companies_house: "48839"
+            metadata:
+              industry: "Banking"
+              city: "London"
+              country: "GB"
+    expect:
+      status: 201
+      json_contains:
+        imported: 3
+        source: "dunl_spiq"
+
+# ─── Test 2: Reference data stats ───────────────────────────────────────────
+---
+test: reference_data_stats
+meta:
+  name: "Get reference data statistics"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc."
+            jurisdiction: "US"
+            identifiers:
+              lei: "HWUPKR0MPOU8FGXBT394"
+    expect:
+      status: 201
+
+  - id: stats
+    http:
+      actor: "u_compliance"
+      method: GET
+      path: /v1/reference-data/stats
+    expect:
+      status: 200
+      json_contains:
+        total: 1
+      json_path_assertions:
+        - path: "$.by_source.dunl_spiq"
+          eq: 1
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2. Resolve entities (stateless lookup)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 3: Resolve entity by name ──────────────────────────────────────────
+---
+test: resolve_entity_by_name
+meta:
+  name: "Resolve a company name against reference data"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc."
+            jurisdiction: "US"
+            identifiers:
+              lei: "HWUPKR0MPOU8FGXBT394"
+              spiq_id: "100000148560"
+          - external_id: "100000230001"
+            name: "Microsoft Corporation"
+            jurisdiction: "US"
+            identifiers:
+              lei: "INR2EJN1ERAN0W5ZP974"
+    expect:
+      status: 201
+
+  - id: resolve
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/resolve
+      json:
+        name: "Apple Inc"
+        source: "dunl_spiq"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.candidates.length"
+          gte: 1
+        - path: "$.candidates[0].name"
+          eq: "Apple Inc."
+        - path: "$.candidates[0].confidence"
+          gte: 0.8
+        - path: "$.source"
+          eq: "dunl_spiq"
+
+# ─── Test 4: Resolve with LEI exact match ────────────────────────────────────
+---
+test: resolve_by_lei
+meta:
+  name: "Resolve by LEI returns perfect confidence match"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000560032"
+            name: "Barclays PLC"
+            jurisdiction: "GB"
+            identifiers:
+              lei: "213800LBQA1Y9L22JB70"
+    expect:
+      status: 201
+
+  - id: resolve
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/resolve
+      json:
+        name: "Barclays"
+        lei: "213800LBQA1Y9L22JB70"
+        source: "dunl_spiq"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.candidates.length"
+          eq: 1
+        - path: "$.candidates[0].confidence"
+          eq: 1
+        - path: "$.candidates[0].external_id"
+          eq: "100000560032"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. Screen entities
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 5: Screen entity against reference data ───────────────────────────
+---
+test: screen_entity_matched
+meta:
+  name: "Screen an entity and get a high-confidence match"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import_ref
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc."
+            jurisdiction: "US"
+            identifiers:
+              lei: "HWUPKR0MPOU8FGXBT394"
+              spiq_id: "100000148560"
+    expect:
+      status: 201
+
+  - id: create_entity
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Apple Inc."
+        lei: "HWUPKR0MPOU8FGXBT394"
+        jurisdiction: "US"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: screen
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities/${entity_id}/screen
+      json:
+        sources: ["dunl_spiq"]
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$[0].status"
+          eq: "matched"
+        - path: "$[0].match_confidence"
+          eq: 1
+        - path: "$[0].external_id"
+          eq: "100000148560"
+        - path: "$[0].source"
+          eq: "dunl_spiq"
+
+# ─── Test 6: Screen entity with no match ────────────────────────────────────
+---
+test: screen_entity_unmatched
+meta:
+  name: "Screen an entity with no reference data match"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: create_entity
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Totally Unknown XYZ Corp"
+        jurisdiction: "ZZ"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: screen
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities/${entity_id}/screen
+      json:
+        sources: ["dunl_spiq"]
+    expect:
+      status: 201
+      json_path_assertions:
+        - path: "$[0].status"
+          eq: "unmatched"
+        - path: "$[0].source"
+          eq: "dunl_spiq"
+
+# ─── Test 7: Get screening results for entity ──────────────────────────────
+---
+test: get_screening_results
+meta:
+  name: "Retrieve screening results for an entity"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import_ref
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc."
+            jurisdiction: "US"
+            identifiers:
+              lei: "HWUPKR0MPOU8FGXBT394"
+    expect:
+      status: 201
+
+  - id: create_entity
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Apple Inc."
+        lei: "HWUPKR0MPOU8FGXBT394"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: screen
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities/${entity_id}/screen
+      json: {}
+    expect:
+      status: 201
+
+  - id: get_results
+    http:
+      actor: "u_compliance"
+      method: GET
+      path: /v1/entities/${entity_id}/screening
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.screenings.length"
+          gte: 1
+        - path: "$.screenings[0].entity_id"
+          eq: "${entity_id}"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. Review screening results
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 8: Confirm a screening match ──────────────────────────────────────
+---
+test: confirm_screening_match
+meta:
+  name: "Compliance officer confirms a screening match"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import_ref
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000560032"
+            name: "Barclays PLC"
+            jurisdiction: "GB"
+            identifiers:
+              lei: "213800LBQA1Y9L22JB70"
+              spiq_id: "100000560032"
+              companies_house: "48839"
+    expect:
+      status: 201
+
+  - id: create_entity
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Barclays PLC"
+        lei: "213800LBQA1Y9L22JB70"
+        jurisdiction: "GB"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: screen
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities/${entity_id}/screen
+      json:
+        sources: ["dunl_spiq"]
+    expect:
+      status: 201
+      save:
+        screening_id: "$[0].id"
+
+  - id: confirm
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/screening/${screening_id}/review
+      json:
+        status: "confirmed"
+        notes: "Verified against Companies House records"
+    expect:
+      status: 200
+      json_contains:
+        status: "confirmed"
+        reviewed_by: "u_compliance"
+      json_path_assertions:
+        - path: "$.reviewed_at"
+          exists: true
+        - path: "$.review_notes"
+          eq: "Verified against Companies House records"
+
+# ─── Test 9: Reject a screening match ──────────────────────────────────────
+---
+test: reject_screening_match
+meta:
+  name: "Compliance officer rejects a screening match"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import_ref
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc."
+            jurisdiction: "US"
+            identifiers:
+              lei: "HWUPKR0MPOU8FGXBT394"
+    expect:
+      status: 201
+
+  - id: create_entity
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Apple Ltd"
+        jurisdiction: "GB"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: screen
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities/${entity_id}/screen
+      json:
+        sources: ["dunl_spiq"]
+    expect:
+      status: 201
+      save:
+        screening_id: "$[0].id"
+
+  - id: reject
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/screening/${screening_id}/review
+      json:
+        status: "rejected"
+        notes: "Different company - UK subsidiary not US parent"
+    expect:
+      status: 200
+      json_contains:
+        status: "rejected"
+        reviewed_by: "u_compliance"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 5. Search reference data
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 10: Search reference entities ─────────────────────────────────────
+---
+test: search_reference_data
+meta:
+  name: "Search reference entities by name"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc."
+            jurisdiction: "US"
+          - external_id: "100000230001"
+            name: "Microsoft Corporation"
+            jurisdiction: "US"
+          - external_id: "100000560032"
+            name: "Barclays PLC"
+            jurisdiction: "GB"
+    expect:
+      status: 201
+
+  - id: search
+    http:
+      actor: "u_compliance"
+      method: GET
+      path: /v1/reference-data/search?q=Apple
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.results.length"
+          eq: 1
+        - path: "$.results[0].name"
+          eq: "Apple Inc."
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6. Train on internal data
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 11: Train reference data on internal entities ─────────────────────
+---
+test: train_on_internal_data
+meta:
+  name: "Import existing entities as internal reference data for dedup"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: create_entity_1
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Acme Corp"
+        lei: "529900T8BM49AURSDO55"
+        jurisdiction: "US"
+    expect:
+      status: 201
+
+  - id: create_entity_2
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Globex Inc"
+        jurisdiction: "US"
+    expect:
+      status: 201
+
+  - id: train
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/train
+    expect:
+      status: 200
+      json_contains:
+        imported: 2
+        total_entities: 2
+        source: "internal"
+
+  - id: resolve_internal
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/resolve
+      json:
+        name: "Acme Corporation"
+        source: "internal"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.candidates.length"
+          gte: 1
+        - path: "$.candidates[0].name"
+          eq: "Acme Corp"
+        - path: "$.candidates[0].confidence"
+          gte: 0.5
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 7. Validation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 12: Resolve with missing name fails ──────────────────────────────
+---
+test: resolve_missing_name
+meta:
+  name: "Resolve request with missing name returns 400"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: resolve
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/resolve
+      json:
+        jurisdiction: "US"
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+# ─── Test 13: Screen non-existent entity fails ─────────────────────────────
+---
+test: screen_nonexistent_entity
+meta:
+  name: "Screen a non-existent entity returns 404"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: screen
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities/00000000-0000-0000-0000-000000000000/screen
+      json: {}
+    expect:
+      status: 404
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "NOT_FOUND"
+
+# ─── Test 14: Invalid source fails validation ──────────────────────────────
+---
+test: invalid_source
+meta:
+  name: "Resolve with invalid source returns 400"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: resolve
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/resolve
+      json:
+        name: "Test Corp"
+        source: "invalid_source"
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+# ─── Test 15: Import with empty records fails ──────────────────────────────
+---
+test: import_empty_records
+meta:
+  name: "Import with empty records array returns 400"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records: []
+    expect:
+      status: 400
+      json_schema: "schemas/error.schema.json"
+      json_contains:
+        error:
+          code: "VALIDATION_ERROR"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 8. Screening with audit trail
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 16: Screening creates audit event when linked to deal ──────────────
+---
+test: screening_audit_trail
+meta:
+  name: "Screening an entity linked to a deal produces an audit event"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker", role: "broker" }
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import_ref
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc."
+            jurisdiction: "US"
+            identifiers:
+              lei: "HWUPKR0MPOU8FGXBT394"
+    expect:
+      status: 201
+
+  - id: create_deal
+    http:
+      actor: "u_broker"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Apple Inc."
+    expect:
+      status: 201
+      save:
+        deal_id: "$.id"
+
+  - id: create_entity
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Apple Inc."
+        lei: "HWUPKR0MPOU8FGXBT394"
+    expect:
+      status: 201
+      save:
+        entity_id: "$.id"
+
+  - id: link_entity
+    http:
+      actor: "u_compliance"
+      method: PATCH
+      path: /v1/deals/${deal_id}
+      json:
+        primary_entity_id: "${entity_id}"
+    expect:
+      status: 200
+
+  - id: screen
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/entities/${entity_id}/screen
+      json:
+        sources: ["dunl_spiq"]
+    expect:
+      status: 201
+
+  - id: check_audit
+    http:
+      actor: "u_compliance"
+      method: GET
+      path: /v1/deals/${deal_id}/audit
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.events[?(@.type=='ENTITY_SCREENED')]"
+          exists: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 9. Upsert reference data
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Test 17: Re-import updates existing records ────────────────────────────
+---
+test: reimport_updates_existing
+meta:
+  name: "Re-importing reference data updates existing records"
+  now: "2026-01-15T10:00:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_compliance", role: "compliance" }
+
+steps:
+  - id: import_first
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc."
+            jurisdiction: "US"
+    expect:
+      status: 201
+      json_contains:
+        imported: 1
+        updated: 0
+
+  - id: import_second
+    http:
+      actor: "u_compliance"
+      method: POST
+      path: /v1/reference-data/import
+      json:
+        source: "dunl_spiq"
+        records:
+          - external_id: "100000148560"
+            name: "Apple Inc. (Updated)"
+            jurisdiction: "US"
+    expect:
+      status: 201
+      json_contains:
+        imported: 0
+        updated: 1
+
+  - id: search_updated
+    http:
+      actor: "u_compliance"
+      method: GET
+      path: /v1/reference-data/search?q=Apple
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.results[0].name"
+          eq: "Apple Inc. (Updated)"

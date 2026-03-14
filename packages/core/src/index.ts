@@ -58,6 +58,8 @@ export {
   approvalGatePolicies,
   approvalGateRecords,
   tenantSettings,
+  screeningResults,
+  referenceEntities,
 } from "./schema/tables.js";
 export { DealService } from "./services/deal.js";
 export type { CreateDealInput, UpdateDealInput } from "./services/deal.js";
@@ -69,6 +71,20 @@ export { StageService, STAGE_GUARDS } from "./services/stage.js";
 export type { UserContext, GuardContext, StageGuard } from "./services/stage.js";
 export { EntityService } from "./services/entity.js";
 export type { CreateEntityInput, UpdateEntityInput } from "./services/entity.js";
+export { EntityResolutionService } from "./services/entity-resolution.js";
+export { DEFAULT_DIMENSIONS, validateEntityTags } from "./services/entity-categories.js";
+export type { CategoryDimension, CategoryTag, EntityTag } from "./services/entity-categories.js";
+export type {
+  ScreenEntityInput,
+  ReviewScreeningInput,
+  ImportReferenceDataInput,
+  ResolveInput,
+  MatchCandidate,
+  RiskSignals,
+  ScreeningSource,
+  ScreeningStatus,
+  MatchMethod,
+} from "./services/entity-resolution.js";
 export { RelationshipService } from "./services/relationship.js";
 export type { CreateRelationshipInput } from "./services/relationship.js";
 export { TemplateService } from "./services/template.js";
