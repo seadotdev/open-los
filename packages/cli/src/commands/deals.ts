@@ -141,6 +141,7 @@ export function registerDealCommands(program: Command): void {
     .description('Advance deal to the next stage')
     .requiredOption('-t, --to <stage>', 'Target stage (origination/underwriting/closing/monitoring)')
     .option('-r, --rationale <text>', 'Rationale for transition')
+    .option('--gate-record-id <id>', 'Approved gate record to authorize this transition')
     .option('--override', 'Override failed guards')
     .option('--override-rationale <text>', 'Rationale for override')
     .action(async (id, opts, cmd) => {
@@ -155,6 +156,7 @@ export function registerDealCommands(program: Command): void {
         const result = await client.advanceStage(id, {
           to_stage: opts.to,
           rationale: opts.rationale,
+          gate_record_id: opts.gateRecordId,
           override: opts.override,
           override_rationale: opts.overrideRationale,
         });

@@ -133,9 +133,14 @@ export class LosClient {
       rationale?: string;
       override?: boolean;
       override_rationale?: string;
+      gate_record_id?: string;
     }
   ): Promise<unknown> {
-    return this.request('POST', `/v1/deals/${dealId}/stage-transitions`, { body: data });
+    const { gate_record_id, ...body } = data;
+    return this.request('POST', `/v1/deals/${dealId}/stage-transitions`, {
+      body,
+      headers: gate_record_id ? { 'X-Gate-Record-Id': gate_record_id } : undefined,
+    });
   }
 
   async listStageTransitions(dealId: string): Promise<{ transitions: unknown[] }> {
