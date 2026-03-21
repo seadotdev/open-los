@@ -69,6 +69,12 @@ export { StageService, STAGE_GUARDS } from "./services/stage.js";
 export type { UserContext, GuardContext, StageGuard } from "./services/stage.js";
 export { EntityService } from "./services/entity.js";
 export type { CreateEntityInput, UpdateEntityInput } from "./services/entity.js";
+export { EntityResolutionService, LocalEntityResolutionBackend } from "./services/entity-resolution.js";
+export type {
+  EntityResolutionQuery,
+  EntityResolutionCandidate,
+  EntityResolutionBackend,
+} from "./services/entity-resolution.js";
 export { RelationshipService } from "./services/relationship.js";
 export type { CreateRelationshipInput } from "./services/relationship.js";
 export { TemplateService } from "./services/template.js";
@@ -146,3 +152,5 @@ export type {
   EntityOrigin,
   GitProvider,
 } from "./services/sandbox.js";
+export { createCoreServiceGraph } from "./services/service-graph.js";
+export type { CoreServiceGraph, CreateCoreServiceGraphOptions } from "./services/service-graph.js";

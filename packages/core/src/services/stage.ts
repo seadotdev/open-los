@@ -1,4 +1,4 @@
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, and } from "drizzle-orm";
 import type { Database } from "../schema/db.js";
 import { deals, documents, spreads, stageTransitions } from "../schema/tables.js";
 import type { AuditService } from "./audit.js";
@@ -8,6 +8,7 @@ import {
   InvalidTransitionError,
   ForbiddenError,
   OverrideRequiredError,
+  NotFoundError,
 } from "./errors.js";
 
 const VALID_TRANSITIONS: Record<string, string> = {
@@ -92,12 +93,16 @@ export class StageService {
     dealId: string,
     input: TransitionInput,
     actor: string,
-    user?: UserContext
+    user?: UserContext,
+    tenantId = "default",
   ) {
     return this.db.transaction(async (tx) => {
-      const rows = await tx.select().from(deals).where(eq(deals.id, dealId));
+      const rows = await tx
+        .select()
+        .from(deals)
+        .where(and(eq(deals.id, dealId), eq(deals.tenant_id, tenantId)));
       if (rows.length === 0) {
-        throw new InvalidTransitionError(`Deal ${dealId} not found`);
+        throw new NotFoundError(`Deal ${dealId} not found`);
       }
       const deal = rows[0];
       const fromStage = deal.stage;
@@ -150,8 +155,8 @@ export class StageService {
         .from(spreads)
         .where(eq(spreads.deal_id, dealId));
 
-      const tenantId = (deal as Record<string, unknown>).tenant_id as string | undefined;
-      const checklist = await this.getChecklist(deal, toStage, docRows.length, spreadRows.length, tenantId);
+      const dealTenantId = (deal as Record<string, unknown>).tenant_id as string | undefined;
+      const checklist = await this.getChecklist(deal, toStage, docRows.length, spreadRows.length, dealTenantId);
       const unsatisfied = checklist.filter((c) => !c.satisfied);
 
       if (unsatisfied.length > 0) {
@@ -213,7 +218,7 @@ export class StageService {
       await tx
         .update(deals)
         .set({ stage: toStage, updated_at: now })
-        .where(eq(deals.id, dealId));
+        .where(and(eq(deals.id, dealId), eq(deals.tenant_id, tenantId)));
 
       // Record audit event
       await this.audit.record(
@@ -233,7 +238,16 @@ export class StageService {
     });
   }
 
-  async listByDeal(dealId: string) {
+  async listByDeal(dealId: string, tenantId = "default") {
+    const dealRows = await this.db
+      .select({ id: deals.id })
+      .from(deals)
+      .where(and(eq(deals.id, dealId), eq(deals.tenant_id, tenantId)));
+
+    if (dealRows.length === 0) {
+      throw new NotFoundError(`Deal ${dealId} not found`);
+    }
+
     const rows = await this.db
       .select()
       .from(stageTransitions)

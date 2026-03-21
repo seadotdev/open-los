@@ -13,6 +13,37 @@ export function registerEntityCommands(program: Command): void {
     .command('entity')
     .description('Manage entities (companies and people)');
 
+  entity
+    .command('resolve')
+    .description('Resolve an incoming entity against existing records')
+    .option('-n, --name <name>', 'Entity name')
+    .option('--reg-number <number>', 'Registration number')
+    .option('-j, --jurisdiction <code>', 'Jurisdiction')
+    .option('--lei <lei>', 'Legal Entity Identifier')
+    .option('-l, --limit <n>', 'Limit candidates', '5')
+    .action(async (opts, cmd) => {
+      try {
+        const globals = getGlobalOptions(cmd.optsWithGlobals() as GlobalOptions);
+        const client = getClient({ baseUrl: globals.apiUrl, actor: globals.actor, tenantId: globals.tenantId });
+
+        const result = await client.resolveEntity({
+          name: opts.name,
+          registration_number: opts.regNumber,
+          jurisdiction: opts.jurisdiction,
+          lei: opts.lei,
+          limit: parseInt(opts.limit, 10),
+        });
+
+        if (globals.format === 'table') {
+          console.log(formatOutput(result.candidates, globals.format));
+        } else {
+          console.log(formatOutput(result, globals.format));
+        }
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
   // Create entity
   entity
     .command('create')
@@ -69,8 +100,9 @@ export function registerEntityCommands(program: Command): void {
 
         if (globals.format === 'table') {
           console.log(formatOutput(result.entities, globals.format));
-          if (result.next_cursor) {
-            console.log(`\nNext cursor: ${result.next_cursor}`);
+          const nextCursor = result.next_cursor ?? result.cursor;
+          if (nextCursor) {
+            console.log(`\nNext cursor: ${nextCursor}`);
           }
         } else {
           console.log(formatOutput(result, globals.format));

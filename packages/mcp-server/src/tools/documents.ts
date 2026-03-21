@@ -34,8 +34,19 @@ export async function handleDocumentUpload(
     actor?: string;
   }
 ) {
-  const { deal_id: dealId, tenant_id = "default", actor = "mcp-agent", ...body } = params;
-  return ctx.documentService.upload(dealId, body, actor, tenant_id);
+  const {
+    deal_id: dealId,
+    tenant_id = "default",
+    actor = "mcp-agent",
+    content,
+    ...body
+  } = params;
+  return ctx.documentService.upload(
+    dealId,
+    { ...body, content_base64: content },
+    actor,
+    tenant_id
+  );
 }
 
 export async function handleDocumentList(

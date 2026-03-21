@@ -1,28 +1,7 @@
 #!/usr/bin/env node
 import { serve } from "@hono/node-server";
 import {
-  createDatabase,
-  migrateDatabase,
-  DealService,
-  DocumentService,
-  AuditService,
-  StageService,
-  EntityService,
-  RelationshipService,
-  TemplateService,
-  ArtifactService,
-  SpreadService,
-  CovenantService,
-  MonitoringService,
-  EmailService,
-  LoanAccountService,
-  FacilityService,
-  SandboxService,
-  InMemoryGitProvider,
-  DepositAccountService,
-  ApprovalGateService,
-  ApprovalService,
-  TenantSettingsService,
+  createCoreServiceGraph,
 } from "@open-los/core";
 import { createApp, buildLLMConfigFromEnv } from "./server.js";
 import type { AppContext } from "./server.js";
@@ -35,59 +14,15 @@ async function main() {
   console.log(`  Database: ${DB_PATH}`);
   console.log(`  Port: ${PORT}`);
 
-  // Create database
-  const db = createDatabase(DB_PATH);
-  await migrateDatabase(db);
+  // Create database + service graph
+  const core = await createCoreServiceGraph({ dbUrl: DB_PATH });
   console.log(`  Database migrated`);
-
-  // Create services
-  const clock = () => new Date().toISOString();
-  const auditService = new AuditService(db);
-  const dealService = new DealService(db, auditService, clock);
-  const documentService = new DocumentService(db, auditService, clock);
-  const tenantSettingsService = new TenantSettingsService(db, clock);
-  const stageService = new StageService(db, auditService, clock, tenantSettingsService);
-  const entityService = new EntityService(db, auditService, clock);
-  const relationshipService = new RelationshipService(db, auditService, clock);
-  const templateService = new TemplateService();
-  const artifactService = new ArtifactService(db, auditService, templateService, clock);
-  const spreadService = new SpreadService(db, auditService, clock);
-  const covenantService = new CovenantService(db, auditService, clock);
-  const monitoringService = new MonitoringService(db, auditService, clock);
-  const emailService = new EmailService(db, auditService, clock);
-  const loanAccountService = new LoanAccountService(db, auditService, clock);
-  const facilityService = new FacilityService(db, auditService, clock);
-  const depositAccountService = new DepositAccountService(db, clock);
-  const gitProvider = new InMemoryGitProvider();
-  const sandboxService = new SandboxService(db, auditService, gitProvider, clock);
-  const approvalGateService = new ApprovalGateService(db, auditService, clock);
-  const approvalService = new ApprovalService(db, auditService, clock);
 
   // LLM config from environment (optional — only needed for mode: "full")
   const llmConfig = buildLLMConfigFromEnv();
 
   const ctx: AppContext = {
-    db,
-    dealService,
-    documentService,
-    auditService,
-    stageService,
-    entityService,
-    relationshipService,
-    templateService,
-    artifactService,
-    spreadService,
-    covenantService,
-    monitoringService,
-    emailService,
-    loanAccountService,
-    facilityService,
-    sandboxService,
-    depositAccountService,
-    approvalGateService,
-    approvalService,
-    tenantSettingsService,
-    getNow: clock,
+    ...core,
     users: new Map(),
     llmConfig,
   };
@@ -96,7 +31,7 @@ async function main() {
   const app = createApp(ctx);
 
   // Health check
-  app.get("/health", (c) => c.json({ status: "ok", timestamp: clock() }));
+  app.get("/health", (c) => c.json({ status: "ok", timestamp: core.getNow() }));
 
   // Chat bot status
   const chatPlatforms: string[] = [];

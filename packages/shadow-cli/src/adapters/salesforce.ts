@@ -124,7 +124,7 @@ export class SalesforceAdapter implements ShadowAdapter {
   // ── Schema Discovery ──────────────────────────────────────────
 
   async discoverSchema(): Promise<ExternalSchema> {
-    this.requireConfig();
+    const config = this.getConfig();
     const objects: ExternalObjectSchema[] = [];
 
     for (const objectName of LENDING_OBJECTS) {
@@ -150,13 +150,13 @@ export class SalesforceAdapter implements ShadowAdapter {
     }
 
     // Also discover nCino objects if namespace is configured
-    if (this.config?.ncinoNamespace) {
+    if (config.ncinoNamespace) {
       const ncinoObjects = [
-        `${this.config.ncinoNamespace}__Loan__c`,
-        `${this.config.ncinoNamespace}__Legal_Entities__c`,
-        `${this.config.ncinoNamespace}__Covenant2__c`,
-        `${this.config.ncinoNamespace}__Collateral__c`,
-        `${this.config.ncinoNamespace}__Product_Package__c`,
+        `${config.ncinoNamespace}__Loan__c`,
+        `${config.ncinoNamespace}__Legal_Entities__c`,
+        `${config.ncinoNamespace}__Covenant2__c`,
+        `${config.ncinoNamespace}__Collateral__c`,
+        `${config.ncinoNamespace}__Product_Package__c`,
       ];
 
       for (const objectName of ncinoObjects) {
@@ -164,7 +164,7 @@ export class SalesforceAdapter implements ShadowAdapter {
           const fields = await this.discoverFields(objectName);
           const objectSchema: ExternalObjectSchema = {
             apiName: objectName,
-            label: objectName.replace(`${this.config.ncinoNamespace}__`, "").replace("__c", ""),
+            label: objectName.replace(`${config.ncinoNamespace}__`, "").replace("__c", ""),
             fields,
           };
 
@@ -189,7 +189,7 @@ export class SalesforceAdapter implements ShadowAdapter {
   }
 
   async discoverFields(objectType: string): Promise<ExternalFieldSchema[]> {
-    this.requireConfig();
+    this.getConfig();
 
     // TODO: Call Salesforce Describe API
     // GET /services/data/vXX.0/sobjects/{objectType}/describe/
@@ -207,7 +207,7 @@ export class SalesforceAdapter implements ShadowAdapter {
   }
 
   async sampleRecords(objectType: string, limit = 10): Promise<ExternalRecord[]> {
-    this.requireConfig();
+    this.getConfig();
 
     // TODO: SOQL query
     // SELECT Id, ... FROM {objectType} ORDER BY LastModifiedDate DESC LIMIT {limit}
@@ -218,7 +218,7 @@ export class SalesforceAdapter implements ShadowAdapter {
   // ── Inbound ───────────────────────────────────────────────────
 
   async fetchRecords(query: FetchQuery): Promise<FetchResult> {
-    this.requireConfig();
+    this.getConfig();
 
     // TODO: Build and execute SOQL query
     // Use Bulk API 2.0 for large datasets (>2000 records)
@@ -235,7 +235,7 @@ export class SalesforceAdapter implements ShadowAdapter {
   }
 
   async fetchRecord(objectType: string, externalId: string): Promise<ExternalRecord | null> {
-    this.requireConfig();
+    this.getConfig();
 
     // TODO: GET /services/data/vXX.0/sobjects/{objectType}/{externalId}
 
@@ -243,7 +243,7 @@ export class SalesforceAdapter implements ShadowAdapter {
   }
 
   async countRecords(objectType: string): Promise<number> {
-    this.requireConfig();
+    this.getConfig();
 
     // TODO: SELECT COUNT() FROM {objectType}
 
@@ -270,7 +270,7 @@ export class SalesforceAdapter implements ShadowAdapter {
   // ── Outbound ──────────────────────────────────────────────────
 
   async pushRecord(objectType: string, externalId: string | null, data: Record<string, unknown>): Promise<PushResult> {
-    this.requireConfig();
+    this.getConfig();
 
     // TODO: If externalId is null → POST (create), else PATCH (update)
     // POST   /services/data/vXX.0/sobjects/{objectType}/
@@ -280,7 +280,7 @@ export class SalesforceAdapter implements ShadowAdapter {
   }
 
   async pushBatch(objectType: string, records: Array<{ externalId: string | null; data: Record<string, unknown> }>): Promise<BatchPushResult> {
-    this.requireConfig();
+    this.getConfig();
 
     // TODO: Use Composite API or Bulk API 2.0
     // POST /services/data/vXX.0/composite/sobjects
@@ -304,8 +304,9 @@ export class SalesforceAdapter implements ShadowAdapter {
 
   // ── Private ───────────────────────────────────────────────────
 
-  private requireConfig(): asserts this is { config: SalesforceConfig } {
+  private getConfig(): SalesforceConfig {
     if (!this.config) throw new Error("Adapter not initialized");
+    return this.config;
   }
 
   private async authenticate(): Promise<void> {

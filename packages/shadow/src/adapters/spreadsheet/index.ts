@@ -39,9 +39,9 @@ export {
 // =============================================================================
 
 import { SpreadsheetAdapter, SpreadsheetConnectionConfig } from "./types";
-import { ExcelAdapter } from "./excel-adapter";
-import { GoogleSheetsAdapter } from "./google-sheets-adapter";
-import { SharePointAdapter } from "./sharepoint-adapter";
+import { ExcelAdapter, registerExcelAdapter } from "./excel-adapter";
+import { GoogleSheetsAdapter, registerGoogleSheetsAdapter } from "./google-sheets-adapter";
+import { SharePointAdapter, registerSharePointAdapter } from "./sharepoint-adapter";
 
 /**
  * Create an adapter based on connection configuration

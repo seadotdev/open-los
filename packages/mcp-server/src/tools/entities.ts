@@ -28,6 +28,15 @@ export const entityListSchema = {
   tenant_id: z.string().optional().default("default"),
 };
 
+export const entityResolveSchema = {
+  name: z.string().optional(),
+  registration_number: z.string().optional(),
+  jurisdiction: z.string().optional(),
+  lei: z.string().optional(),
+  limit: z.number().optional(),
+  tenant_id: z.string().optional().default("default"),
+};
+
 export const entityUpdateSchema = {
   id: z.string(),
   name: z.string().optional(),
@@ -72,6 +81,21 @@ export async function handleEntityList(
 ) {
   const { tenant_id = "default", ...filters } = params;
   return ctx.entityService.list(tenant_id, filters);
+}
+
+export async function handleEntityResolve(
+  ctx: ServiceContext,
+  params: {
+    name?: string;
+    registration_number?: string;
+    jurisdiction?: string;
+    lei?: string;
+    limit?: number;
+    tenant_id?: string;
+  }
+) {
+  const { tenant_id = "default", ...query } = params;
+  return ctx.entityResolutionService.resolve(query, tenant_id);
 }
 
 export async function handleEntityUpdate(
@@ -127,6 +151,19 @@ export function registerEntityTools(server: McpServer, ctx: ServiceContext) {
     async (params) => {
       try {
         return toolResult(await handleEntityList(ctx, params));
+      } catch (err) {
+        return toolError(err);
+      }
+    }
+  );
+
+  server.tool(
+    "entity.resolve",
+    "Resolve an incoming entity against existing tenant-scoped entities",
+    entityResolveSchema,
+    async (params) => {
+      try {
+        return toolResult(await handleEntityResolve(ctx, params));
       } catch (err) {
         return toolError(err);
       }

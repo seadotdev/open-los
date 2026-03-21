@@ -704,8 +704,11 @@ export class ApprovalGateService {
   /**
    * Build gate check context from a deal.
    */
-  async buildDealContext(dealId: string): Promise<GateCheckContext> {
-    const dealRows = await this.db.select().from(deals).where(eq(deals.id, dealId));
+  async buildDealContext(dealId: string, tenantId = "default"): Promise<GateCheckContext> {
+    const dealRows = await this.db
+      .select()
+      .from(deals)
+      .where(and(eq(deals.id, dealId), eq(deals.tenant_id, tenantId)));
     if (dealRows.length === 0) {
       return { deal_id: dealId };
     }

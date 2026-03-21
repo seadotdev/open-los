@@ -17,6 +17,7 @@ export const stageTransitionSchema = {
 
 export const stageHistorySchema = {
   deal_id: z.string(),
+  tenant_id: z.string().optional().default("default"),
 };
 
 // Handlers
@@ -46,7 +47,7 @@ export async function handleStageTransition(
     : "deal.stage_advance";
 
   // Check approval gate before proceeding
-  const gateContext = await ctx.approvalGateService.buildDealContext(dealId);
+  const gateContext = await ctx.approvalGateService.buildDealContext(dealId, tenantId);
   await ctx.approvalGateService.check(
     gateAction,
     gateContext,
@@ -57,14 +58,14 @@ export async function handleStageTransition(
 
   // In sandbox mode, the actor is the authorized user
   const user = { id: actor, role: "credit_lead" };
-  return ctx.stageService.transition(dealId, body, actor, user);
+  return ctx.stageService.transition(dealId, body, actor, user, tenantId);
 }
 
 export async function handleStageHistory(
   ctx: ServiceContext,
-  params: { deal_id: string }
+  params: { deal_id: string; tenant_id?: string }
 ) {
-  return ctx.stageService.listByDeal(params.deal_id);
+  return ctx.stageService.listByDeal(params.deal_id, params.tenant_id ?? "default");
 }
 
 // MCP registration

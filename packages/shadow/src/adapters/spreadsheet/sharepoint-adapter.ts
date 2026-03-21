@@ -324,7 +324,7 @@ export class SharePointAdapter implements SpreadsheetAdapter {
         .select("id,fields,createdDateTime,lastModifiedDateTime")
         .get();
 
-      const item = response as SharePointListItem;
+      const item = response as unknown as SharePointListItem;
       const columns = await this.getListColumns(list.id);
       const columnMap = new Map(columns.map((c) => [c.name, c.displayName]));
 
@@ -363,14 +363,14 @@ export class SharePointAdapter implements SpreadsheetAdapter {
     let nextLink: string | null = null;
 
     do {
-      const request = nextLink
+      const request: GraphRequest = nextLink
         ? this.graphClient!.api(nextLink)
         : this.graphClient!
             .api(`/sites/${this.siteId}/lists/${list.id}/items`)
             .select("id")
             .top(5000);
 
-      const response = await request.get();
+      const response: GraphResponse = await request.get();
       count += (response.value || []).length;
       nextLink = response["@odata.nextLink"] || null;
     } while (nextLink);
@@ -598,7 +598,7 @@ export class SharePointAdapter implements SpreadsheetAdapter {
       .select("id,name,displayName,webUrl")
       .get();
 
-    return response as SharePointSite;
+    return response as unknown as SharePointSite;
   }
 
   private async getList(nameOrId: string): Promise<SharePointList> {
@@ -611,7 +611,7 @@ export class SharePointAdapter implements SpreadsheetAdapter {
       .select("id,name,displayName,list")
       .get();
 
-    const list = response as SharePointList;
+    const list = response as unknown as SharePointList;
     this.lists.set(nameOrId, list);
     this.lists.set(list.id, list);
 

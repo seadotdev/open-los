@@ -292,6 +292,7 @@ export const WorkflowStepSchema = z.object({
     "test_covenant",
     "create_facility",
     "create_loan",
+    "approve_loan",
     "disburse_loan",
     "record_repayment",
     "ingest_transactions",

@@ -54,48 +54,19 @@ export function createChatRoutes(config: ChatConfig): Hono {
         return c.json({ challenge: body.challenge });
       }
 
-      // Delegate to Chat SDK's Slack adapter
-      await bot.handleWebhook("slack", {
-        headers: Object.fromEntries(c.req.raw.headers.entries()),
-        body,
-      });
-
-      return c.json({ ok: true });
+      return bot.webhooks.slack(c.req.raw);
     });
 
     // Slack interactive components (buttons, modals)
-    app.post("/slack/actions", async (c) => {
-      const body = await c.req.json();
-      await bot.handleWebhook("slack", {
-        headers: Object.fromEntries(c.req.raw.headers.entries()),
-        body,
-        type: "action",
-      });
-      return c.json({ ok: true });
-    });
+    app.post("/slack/actions", (c) => bot.webhooks.slack(c.req.raw));
 
     // Slack slash commands
-    app.post("/slack/commands", async (c) => {
-      const body = await c.req.parseBody();
-      await bot.handleWebhook("slack", {
-        headers: Object.fromEntries(c.req.raw.headers.entries()),
-        body,
-        type: "command",
-      });
-      return c.json({ response_type: "in_channel" });
-    });
+    app.post("/slack/commands", (c) => bot.webhooks.slack(c.req.raw));
   }
 
   // Teams webhook routes
   if (config.teams) {
-    app.post("/teams/messages", async (c) => {
-      const body = await c.req.json();
-      await bot.handleWebhook("teams", {
-        headers: Object.fromEntries(c.req.raw.headers.entries()),
-        body,
-      });
-      return c.json({ ok: true });
-    });
+    app.post("/teams/messages", (c) => bot.webhooks.teams(c.req.raw));
   }
 
   return app;

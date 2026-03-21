@@ -10,7 +10,7 @@
 
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 import { runExperiment } from './runners/index.js';
 import type { ExperimentConfig } from './types.js';
@@ -51,7 +51,7 @@ Available experiment presets in config:
   // Import config
   let config: typeof import('../config.example.js');
   try {
-    config = await import('../config.js');
+    config = await import(pathToFileURL(configPath).href);
   } catch (error) {
     console.error('Error loading config:', error);
     process.exit(1);

@@ -1,51 +1,11 @@
 import {
-  createDatabase,
-  migrateDatabase,
-  DealService,
-  DocumentService,
-  AuditService,
-  StageService,
-  EntityService,
-  RelationshipService,
-  TemplateService,
-  ArtifactService,
-  SpreadService,
-  CovenantService,
-  MonitoringService,
-  EmailService,
-  LoanAccountService,
-  FacilityService,
-  SandboxService,
-  InMemoryGitProvider,
-  DepositAccountService,
-  ApprovalGateService,
-  ApprovalService,
+  createCoreServiceGraph,
 } from "@open-los/core";
-import type { Database } from "@open-los/core";
+import type { CoreServiceGraph } from "@open-los/core";
 import type { LLMConfig, LLMProvider, LLMRouteConfig } from "@open-los/agent";
 
-export interface ServiceContext {
-  db: Database;
-  dealService: DealService;
-  documentService: DocumentService;
-  auditService: AuditService;
-  stageService: StageService;
-  entityService: EntityService;
-  relationshipService: RelationshipService;
-  templateService: TemplateService;
-  artifactService: ArtifactService;
-  spreadService: SpreadService;
-  covenantService: CovenantService;
-  monitoringService: MonitoringService;
-  emailService: EmailService;
-  loanAccountService: LoanAccountService;
-  facilityService: FacilityService;
-  sandboxService: SandboxService;
-  depositAccountService: DepositAccountService;
-  approvalGateService: ApprovalGateService;
-  approvalService: ApprovalService;
+export interface ServiceContext extends CoreServiceGraph {
   llmConfig?: LLMConfig;
-  getNow: () => string;
 }
 
 const LLM_PROVIDER_ORDER: LLMProvider[] = ["anthropic", "openrouter", "openai", "vercel"];
@@ -110,65 +70,15 @@ function buildLLMConfigFromEnv(): LLMConfig | undefined {
 export async function createServiceContext(
   dbPath?: string
 ): Promise<ServiceContext> {
-  const resolvedPath = dbPath ?? process.env.OPEN_LOS_DB_PATH ?? ":memory:";
-  const db = createDatabase(resolvedPath);
-  await migrateDatabase(db);
-
-  const clock = () => new Date().toISOString();
-  const auditService = new AuditService(db);
-  const dealService = new DealService(db, auditService, clock);
-  const documentService = new DocumentService(db, auditService, clock);
-  const stageService = new StageService(db, auditService, clock);
-  const entityService = new EntityService(db, auditService, clock);
-  const relationshipService = new RelationshipService(db, auditService, clock);
-  const templateService = new TemplateService();
-  const artifactService = new ArtifactService(
-    db,
-    auditService,
-    templateService,
-    clock
-  );
-  const spreadService = new SpreadService(db, auditService, clock);
-  const covenantService = new CovenantService(db, auditService, clock);
-  const monitoringService = new MonitoringService(db, auditService, clock);
-  const emailService = new EmailService(db, auditService, clock);
-  const loanAccountService = new LoanAccountService(db, auditService, clock);
-  const facilityService = new FacilityService(db, auditService, clock);
-  const depositAccountService = new DepositAccountService(db, clock);
-  const gitProvider = new InMemoryGitProvider();
-  const sandboxService = new SandboxService(
-    db,
-    auditService,
-    gitProvider,
-    clock
-  );
-  const approvalGateService = new ApprovalGateService(db, auditService, clock);
-  const approvalService = new ApprovalService(db, auditService, clock);
+  const core = await createCoreServiceGraph({
+    dbUrl: dbPath ?? process.env.OPEN_LOS_DB_PATH ?? ":memory:",
+  });
 
   // LLM config from environment (optional — only needed for mode: "full")
   const llmConfig: LLMConfig | undefined = buildLLMConfigFromEnv();
 
   return {
-    db,
-    dealService,
-    documentService,
-    auditService,
-    stageService,
-    entityService,
-    relationshipService,
-    templateService,
-    artifactService,
-    spreadService,
-    covenantService,
-    monitoringService,
-    emailService,
-    loanAccountService,
-    facilityService,
-    sandboxService,
-    depositAccountService,
-    approvalGateService,
-    approvalService,
+    ...core,
     llmConfig,
-    getNow: clock,
   };
 }

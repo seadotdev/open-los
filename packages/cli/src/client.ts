@@ -112,7 +112,7 @@ export class LosClient {
     stage?: string;
     limit?: number;
     cursor?: string;
-  }): Promise<{ deals: unknown[]; next_cursor?: string }> {
+  }): Promise<{ deals: unknown[]; cursor?: string; next_cursor?: string }> {
     return this.request('GET', '/v1/deals', { query: options });
   }
 
@@ -133,9 +133,14 @@ export class LosClient {
       rationale?: string;
       override?: boolean;
       override_rationale?: string;
+      gate_record_id?: string;
     }
   ): Promise<unknown> {
-    return this.request('POST', `/v1/deals/${dealId}/stage-transitions`, { body: data });
+    const { gate_record_id, ...body } = data;
+    return this.request('POST', `/v1/deals/${dealId}/stage-transitions`, {
+      body,
+      headers: gate_record_id ? { 'X-Gate-Record-Id': gate_record_id } : undefined,
+    });
   }
 
   async listStageTransitions(dealId: string): Promise<{ transitions: unknown[] }> {
@@ -158,8 +163,18 @@ export class LosClient {
     type?: string;
     limit?: number;
     cursor?: string;
-  }): Promise<{ entities: unknown[]; next_cursor?: string }> {
+  }): Promise<{ entities: unknown[]; cursor?: string; next_cursor?: string }> {
     return this.request('GET', '/v1/entities', { query: options });
+  }
+
+  async resolveEntity(data: {
+    name?: string;
+    registration_number?: string;
+    jurisdiction?: string;
+    lei?: string;
+    limit?: number;
+  }): Promise<{ candidates: unknown[] }> {
+    return this.request('POST', '/v1/entities/resolve', { body: data });
   }
 
   async getEntity(entityId: string): Promise<unknown> {

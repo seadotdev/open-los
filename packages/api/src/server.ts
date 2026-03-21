@@ -1,31 +1,10 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
-  createDatabase,
-  migrateDatabase,
-  DealService,
-  DocumentService,
-  AuditService,
-  StageService,
-  EntityService,
-  RelationshipService,
-  TemplateService,
-  ArtifactService,
-  SpreadService,
-  CovenantService,
-  MonitoringService,
-  EmailService,
-  LoanAccountService,
-  FacilityService,
-  SandboxService,
-  InMemoryGitProvider,
-  DepositAccountService,
   AppError,
-  ApprovalGateService,
-  ApprovalService,
-  TenantSettingsService,
+  createCoreServiceGraph,
 } from "@open-los/core";
-import type { Database } from "@open-los/core";
+import type { CoreServiceGraph } from "@open-los/core";
 import type { LLMConfig, LLMProvider, LLMRouteConfig } from "@open-los/agent";
 import { dealRoutes } from "./routes/deals.js";
 import { documentRoutes } from "./routes/documents.js";
@@ -46,28 +25,7 @@ import { gateRoutes } from "./routes/gates.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { chatRoutes } from "./routes/chat.js";
 
-export interface AppContext {
-  db: Database;
-  dealService: DealService;
-  documentService: DocumentService;
-  auditService: AuditService;
-  stageService: StageService;
-  entityService: EntityService;
-  relationshipService: RelationshipService;
-  templateService: TemplateService;
-  artifactService: ArtifactService;
-  spreadService: SpreadService;
-  covenantService: CovenantService;
-  monitoringService: MonitoringService;
-  emailService: EmailService;
-  loanAccountService: LoanAccountService;
-  facilityService: FacilityService;
-  sandboxService: SandboxService;
-  depositAccountService: DepositAccountService;
-  approvalGateService: ApprovalGateService;
-  approvalService: ApprovalService;
-  tenantSettingsService: TenantSettingsService;
-  getNow: () => string;
+export interface AppContext extends CoreServiceGraph {
   users?: Map<string, { id: string; role: string }>;
   llmConfig?: LLMConfig;
 }
@@ -202,56 +160,13 @@ export function createApp(ctx: AppContext) {
 }
 
 export async function createAppWithDb(getNow?: () => string, dbUrl?: string) {
-  const db = createDatabase(dbUrl ?? ":memory:");
-  await migrateDatabase(db);
-
-  const clock = getNow ?? (() => new Date().toISOString());
-  const auditService = new AuditService(db);
-  const dealService = new DealService(db, auditService, clock);
-  const documentService = new DocumentService(db, auditService, clock);
-  const tenantSettingsService = new TenantSettingsService(db, clock);
-  const stageService = new StageService(db, auditService, clock, tenantSettingsService);
-  const entityService = new EntityService(db, auditService, clock);
-  const relationshipService = new RelationshipService(db, auditService, clock);
-  const templateService = new TemplateService();
-  const artifactService = new ArtifactService(db, auditService, templateService, clock);
-  const spreadService = new SpreadService(db, auditService, clock);
-  const covenantService = new CovenantService(db, auditService, clock);
-  const monitoringService = new MonitoringService(db, auditService, clock);
-  const emailService = new EmailService(db, auditService, clock);
-  const loanAccountService = new LoanAccountService(db, auditService, clock);
-  const facilityService = new FacilityService(db, auditService, clock);
-  const depositAccountService = new DepositAccountService(db, clock);
-  const gitProvider = new InMemoryGitProvider();
-  const sandboxService = new SandboxService(db, auditService, gitProvider, clock);
-  const approvalGateService = new ApprovalGateService(db, auditService, clock);
-  const approvalService = new ApprovalService(db, auditService, clock);
+  const core = await createCoreServiceGraph({ dbUrl, getNow });
 
   // LLM config from environment (optional — only needed for mode: "full")
   const llmConfig: LLMConfig | undefined = buildLLMConfigFromEnv();
 
   const ctx: AppContext = {
-    db,
-    dealService,
-    documentService,
-    auditService,
-    stageService,
-    entityService,
-    relationshipService,
-    templateService,
-    artifactService,
-    spreadService,
-    covenantService,
-    monitoringService,
-    emailService,
-    loanAccountService,
-    facilityService,
-    sandboxService,
-    depositAccountService,
-    approvalGateService,
-    approvalService,
-    tenantSettingsService,
-    getNow: clock,
+    ...core,
     users: new Map(),
     llmConfig,
   };

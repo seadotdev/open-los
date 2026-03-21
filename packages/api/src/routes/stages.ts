@@ -17,7 +17,7 @@ export function stageRoutes(ctx: AppContext) {
     const gateAction = body.override ? "deal.stage_override" : "deal.stage_advance";
 
     // Check approval gate before proceeding
-    const gateContext = await ctx.approvalGateService.buildDealContext(dealId);
+    const gateContext = await ctx.approvalGateService.buildDealContext(dealId, tenantId);
     await ctx.approvalGateService.check(
       gateAction,
       gateContext,
@@ -33,7 +33,8 @@ export function stageRoutes(ctx: AppContext) {
       dealId,
       body,
       actor,
-      user
+      user,
+      tenantId
     );
     return c.json(stripNulls(transition), 200);
   });
@@ -41,7 +42,8 @@ export function stageRoutes(ctx: AppContext) {
   // GET /v1/deals/:dealId/stage-transitions
   app.get("/deals/:dealId/stage-transitions", async (c) => {
     const dealId = c.req.param("dealId");
-    const transitions = await ctx.stageService.listByDeal(dealId);
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
+    const transitions = await ctx.stageService.listByDeal(dealId, tenantId);
     return c.json(stripNulls({ transitions }), 200);
   });
 
