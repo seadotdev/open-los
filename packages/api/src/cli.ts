@@ -30,8 +30,22 @@ async function main() {
   // Create app
   const app = createApp(ctx);
 
-  // Health check
-  app.get("/health", (c) => c.json({ status: "ok", timestamp: core.getNow() }));
+  // Health check — includes LLM capability info for preflight
+  app.get("/health", (c) => {
+    const providers = llmConfig
+      ? Object.keys(llmConfig.apiKeys)
+      : [];
+    return c.json({
+      status: "ok",
+      timestamp: core.getNow(),
+      llm: {
+        configured: providers.length > 0,
+        providers,
+        defaultProvider: llmConfig?.defaultProvider ?? null,
+        defaultModel: llmConfig?.defaultModel ?? null,
+      },
+    });
+  });
 
   // Chat bot status
   const chatPlatforms: string[] = [];
