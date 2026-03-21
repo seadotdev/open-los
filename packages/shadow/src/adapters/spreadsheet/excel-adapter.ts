@@ -417,9 +417,9 @@ export class ExcelAdapter implements SpreadsheetAdapter {
         if (rowNumber === 1) return; // Skip header
         if (rowsAnalyzed >= 100) return;
 
-        const cell = row.values[colNumber] as Cell | undefined;
+        const cell = row.values[colNumber];
         if (cell !== undefined && cell !== null) {
-          const value = typeof cell === "object" && "text" in cell ? cell.text : String(cell);
+          const value = typeof cell === "object" && "text" in cell ? String(cell.text) : String(cell);
           if (value !== "") {
             nonEmptyCount++;
             if (sampleValues.length < 5) {

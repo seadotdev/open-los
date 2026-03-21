@@ -451,7 +451,7 @@ async function executeStep(
 function detectCapabilityGap(
   step: WorkflowStep,
   response: { status: number; data: unknown }
-): StepResult["capabilityGap"] {
+): NonNullable<StepResult["capabilityGap"]> {
   if (response.status === 404) {
     const errorData = response.data as any;
     const message = errorData?.error?.message || errorData?.message || "";

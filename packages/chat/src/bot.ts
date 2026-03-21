@@ -10,9 +10,6 @@ import { createSlackAdapter } from "@chat-adapter/slack";
 import { createTeamsAdapter } from "@chat-adapter/teams";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { createRedisState } from "@chat-adapter/state-redis";
-import type { CoreServices } from "@open-los/agent";
-import { createAgentServices, createLLMClient } from "@open-los/agent";
-import type { LLMClient } from "@open-los/agent";
 import { handleMention } from "./handlers/mention.js";
 import { handleMessage } from "./handlers/message.js";
 import { registerSlashCommands } from "./handlers/commands.js";
@@ -24,7 +21,6 @@ export function createChatBot(config: ChatConfig): Chat {
 
   if (config.slack) {
     adapters.slack = createSlackAdapter({
-      appToken: config.slack.appToken,
       botToken: config.slack.botToken,
       signingSecret: config.slack.signingSecret,
     });

@@ -30,6 +30,9 @@ steps:
       path: /v1/deals
       json:
         borrower_name: "Tenant 1 Corp"
+        jurisdiction: "US"
+        requested_amount: 5000000
+        purpose: "working_capital"
     expect:
       status: 201
       save:
@@ -61,6 +64,7 @@ arrange:
     tenant: { id: "t2" }
     users:
       - { id: "u_broker_t2", role: "broker" }
+      - { id: "u_originator_t2", role: "originator" }
 
 steps:
   # Create deal in tenant 2
@@ -87,6 +91,94 @@ steps:
           eq: 1
         - path: "$.deals[0].borrower_name"
           eq: "Tenant 2 Corp"
+
+---
+test: tenant_cross_tenant_stage_transition_blocked
+meta:
+  name: "Tenant cannot transition another tenant's deal"
+  now: "2026-01-15T10:05:00Z"
+
+arrange:
+  reset_db: false
+  seed:
+    tenant: { id: "t2" }
+    users:
+      - { id: "u_originator_t2", role: "originator" }
+
+steps:
+  - id: transition_other_tenant_deal
+    http:
+      actor: "u_originator_t2"
+      method: POST
+      path: /v1/deals/${deal_id_t1}/stage-transitions
+      json:
+        to_stage: "origination"
+        rationale: "Cross-tenant transition attempt"
+    expect:
+      status: 404
+
+---
+test: tenant_stage_history_isolation_setup
+meta:
+  name: "Stage history setup creates a transition in tenant 1"
+  now: "2026-01-15T10:10:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_broker_t1", role: "broker" }
+      - { id: "u_originator_t1", role: "originator" }
+
+steps:
+  - id: create_deal_for_history
+    http:
+      actor: "u_broker_t1"
+      method: POST
+      path: /v1/deals
+      json:
+        borrower_name: "Tenant 1 History Corp"
+        jurisdiction: "US"
+        requested_amount: 7500000
+        purpose: "growth_capital"
+    expect:
+      status: 201
+      save:
+        history_deal_id_t1: "$.id"
+
+  - id: transition_deal_for_history
+    http:
+      actor: "u_originator_t1"
+      method: POST
+      path: /v1/deals/${history_deal_id_t1}/stage-transitions
+      json:
+        to_stage: "origination"
+        rationale: "Valid tenant 1 transition"
+    expect:
+      status: 200
+
+---
+test: tenant_cross_tenant_stage_history_blocked
+meta:
+  name: "Tenant cannot view another tenant's stage history"
+  now: "2026-01-15T10:15:00Z"
+
+arrange:
+  reset_db: false
+  seed:
+    tenant: { id: "t2" }
+    users:
+      - { id: "u_originator_t2_history", role: "originator" }
+
+steps:
+  - id: get_other_tenant_stage_history
+    http:
+      actor: "u_originator_t2_history"
+      method: GET
+      path: /v1/deals/${history_deal_id_t1}/stage-transitions
+    expect:
+      status: 404
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 2: Tenant Isolation - Entities
@@ -167,6 +259,100 @@ steps:
           eq: 1
         - path: "$.entities[0].name"
           eq: "Tenant 2 Entity"
+
+---
+test: tenant_entity_resolution_setup
+meta:
+  name: "Entity resolution setup creates matching entities in two tenants"
+  now: "2026-01-15T10:05:00Z"
+
+arrange:
+  reset_db: true
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_resolution_t1", role: "analyst" }
+
+steps:
+  - id: create_resolution_entity_t1
+    http:
+      actor: "u_resolution_t1"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Acme Holdings Ltd"
+        registration_number: "12345678"
+        jurisdiction: "GB"
+    expect:
+      status: 201
+      save:
+        resolution_entity_t1: "$.id"
+
+---
+test: tenant_entity_resolution_cross_tenant_fixture
+meta:
+  name: "Other tenants can create the same incoming identifier without leaking matches"
+  now: "2026-01-15T10:05:00Z"
+
+arrange:
+  reset_db: false
+  seed:
+    tenant: { id: "t2" }
+    users:
+      - { id: "u_resolution_t2", role: "analyst" }
+
+steps:
+  - id: create_resolution_entity_t2
+    http:
+      actor: "u_resolution_t2"
+      method: POST
+      path: /v1/entities
+      json:
+        type: "company"
+        name: "Acme Holdings Ltd"
+        registration_number: "12345678"
+        jurisdiction: "GB"
+    expect:
+      status: 201
+      save:
+        resolution_entity_t2: "$.id"
+
+---
+test: tenant_entity_resolution_scoped
+meta:
+  name: "Entity resolution only returns same-tenant candidates"
+  now: "2026-01-15T10:05:00Z"
+
+arrange:
+  reset_db: false
+  seed:
+    tenant: { id: "t1" }
+    users:
+      - { id: "u_resolution_t1_lookup", role: "analyst" }
+
+steps:
+  - id: resolve_entity_t1
+    http:
+      actor: "u_resolution_t1_lookup"
+      method: POST
+      path: /v1/entities/resolve
+      json:
+        registration_number: "12345678"
+        jurisdiction: "GB"
+    expect:
+      status: 200
+      json_path_assertions:
+        - path: "$.candidates.length"
+          eq: 1
+        - path: "$.candidates[0].entity_id"
+          eq: "${resolution_entity_t1}"
+        - path: "$.candidates[0].score"
+          eq: 1
+        - path: "$.candidates[0].source"
+          eq: "local_entities"
+        - path: "$.candidates[0].match_reasons[0]"
+          eq: "exact_registration_number"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 3: Tenant Isolation - Loans

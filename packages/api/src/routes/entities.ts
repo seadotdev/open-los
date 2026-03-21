@@ -24,6 +24,14 @@ export function entityRoutes(ctx: AppContext) {
     return c.json(stripNulls(result), 200);
   });
 
+  // POST /v1/entities/resolve
+  app.post("/entities/resolve", async (c) => {
+    const tenantId = c.req.header("X-Tenant-Id") ?? "default";
+    const body = await c.req.json();
+    const result = await ctx.entityResolutionService.resolve(body, tenantId);
+    return c.json(stripNulls(result), 200);
+  });
+
   // GET /v1/entities/:entityId
   app.get("/entities/:entityId", async (c) => {
     const entityId = c.req.param("entityId");

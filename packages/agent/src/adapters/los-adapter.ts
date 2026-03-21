@@ -26,8 +26,8 @@ export interface CoreServices {
     getContent?(docId: string, tenantId?: string): Promise<any>
   }
   stageService: {
-    transition(dealId: string, input: any, actor: string, user?: any): Promise<any>
-    listByDeal(dealId: string): Promise<any>
+    transition(dealId: string, input: any, actor: string, user?: any, tenantId?: string): Promise<any>
+    listByDeal(dealId: string, tenantId?: string): Promise<any>
   }
   entityService: {
     create(input: any, actor: string, dealId?: string, tenantId?: string): Promise<any>
@@ -154,7 +154,8 @@ export function createAgentServices(
           dealId,
           { to_stage: stage, rationale: params?.rationale, override: params?.override, override_rationale: params?.override_rationale },
           params?.actor ?? actor,
-          params?.actor ? undefined : { id: actor, role: 'credit_lead' }
+          params?.actor ? undefined : { id: actor, role: 'credit_lead' },
+          tenantId,
         )
       },
     },
@@ -163,7 +164,12 @@ export function createAgentServices(
       async create(params: any) {
         return ctx.documentService.upload(
           params.deal_id,
-          { doc_type: params.doc_type ?? params.type, filename: params.filename, phase: params.phase, content_base64: params.content_base64 },
+          {
+            doc_type: params.doc_type ?? params.type,
+            filename: params.filename,
+            phase: params.phase,
+            content_base64: params.content_base64 ?? params.content,
+          },
           actor,
           tenantId
         )

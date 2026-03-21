@@ -112,7 +112,7 @@ export class LosClient {
     stage?: string;
     limit?: number;
     cursor?: string;
-  }): Promise<{ deals: unknown[]; next_cursor?: string }> {
+  }): Promise<{ deals: unknown[]; cursor?: string; next_cursor?: string }> {
     return this.request('GET', '/v1/deals', { query: options });
   }
 
@@ -158,8 +158,18 @@ export class LosClient {
     type?: string;
     limit?: number;
     cursor?: string;
-  }): Promise<{ entities: unknown[]; next_cursor?: string }> {
+  }): Promise<{ entities: unknown[]; cursor?: string; next_cursor?: string }> {
     return this.request('GET', '/v1/entities', { query: options });
+  }
+
+  async resolveEntity(data: {
+    name?: string;
+    registration_number?: string;
+    jurisdiction?: string;
+    lei?: string;
+    limit?: number;
+  }): Promise<{ candidates: unknown[] }> {
+    return this.request('POST', '/v1/entities/resolve', { body: data });
   }
 
   async getEntity(entityId: string): Promise<unknown> {

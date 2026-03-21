@@ -19,6 +19,7 @@ import type {
   FieldMapping,
   FieldMappingSuggestion,
   CanonicalEntity,
+  TransformRule,
   TransformType,
 } from "./types.js";
 
@@ -61,6 +62,33 @@ export const OBJECT_MAPPINGS: Record<string, { entity: CanonicalEntity; confiden
   CreditArrangement:         [{ entity: "facilities", confidence: 0.90 }],
   LoanProduct:               [{ entity: "facilities", confidence: 0.75 }],
 };
+
+const TRANSFORM_TYPES: readonly TransformType[] = [
+  "none",
+  "uppercase",
+  "lowercase",
+  "trim",
+  "parse_date",
+  "parse_currency",
+  "parse_percentage",
+  "to_minor_units",
+  "from_minor_units",
+  "stage_normalize",
+  "stage_denormalize",
+  "lookup",
+  "picklist_map",
+  "concatenate",
+  "split",
+  "regex_extract",
+  "expression",
+];
+
+function toTransformRule(transform?: string): TransformRule | undefined {
+  if (!transform) return undefined;
+  return TRANSFORM_TYPES.includes(transform as TransformType)
+    ? { type: transform as TransformType }
+    : undefined;
+}
 
 // =============================================================================
 // Field-Level Mapping Patterns
@@ -283,7 +311,7 @@ export function generateMappingProposal(
         sourceField: field.apiName,
         targetEntity: suggestion.targetEntity,
         targetField: suggestion.targetField,
-        transform: suggestion.transform ? { type: suggestion.transform } : undefined,
+        transform: toTransformRule(suggestion.transform),
         direction: "inbound",
         isMatchKey: field.apiName === "Id" || field.apiName === "id" || field.apiName === "hs_object_id",
         enabled: suggestion.confidence >= 0.7,

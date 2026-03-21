@@ -68,8 +68,9 @@ export function registerDealCommands(program: Command): void {
 
         if (globals.format === 'table') {
           console.log(formatOutput(result.deals, globals.format));
-          if (result.next_cursor) {
-            console.log(`\nNext cursor: ${result.next_cursor}`);
+          const nextCursor = result.next_cursor ?? result.cursor;
+          if (nextCursor) {
+            console.log(`\nNext cursor: ${nextCursor}`);
           }
         } else {
           console.log(formatOutput(result, globals.format));

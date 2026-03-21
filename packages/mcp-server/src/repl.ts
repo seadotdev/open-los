@@ -2,7 +2,7 @@ import * as readline from "node:readline";
 import { createServiceContext } from "./context.js";
 import type { ServiceContext } from "./context.js";
 import { formatJson, formatError } from "./helpers.js";
-import { handleEntityCreate, handleEntityGet, handleEntityList, handleEntityUpdate, handleEntityDelete } from "./tools/entities.js";
+import { handleEntityCreate, handleEntityGet, handleEntityList, handleEntityResolve, handleEntityUpdate, handleEntityDelete } from "./tools/entities.js";
 import { handleDealCreate, handleDealGet, handleDealUpdate, handleDealList } from "./tools/deals.js";
 import { handleStageTransition, handleStageHistory } from "./tools/stages.js";
 import { handleDocumentUpload, handleDocumentList } from "./tools/documents.js";
@@ -141,6 +141,14 @@ async function dispatch(
           return handleEntityGet(ctx, { id: resolveAlias(state, resolvedRest[0] ?? flags.id ?? ""), tenant_id });
         case "list":
           return handleEntityList(ctx, { type: flags.t ?? flags.type, tenant_id });
+        case "resolve":
+          return handleEntityResolve(ctx, {
+            name: flags.n ?? flags.name,
+            registration_number: flags["reg-number"] ?? flags.registration_number,
+            lei: flags.lei,
+            jurisdiction: flags.j ?? flags.jurisdiction,
+            tenant_id,
+          });
         case "update":
           return handleEntityUpdate(ctx, {
             id: resolveAlias(state, resolvedRest[0] ?? flags.id ?? ""),
@@ -151,7 +159,7 @@ async function dispatch(
         case "delete":
           return handleEntityDelete(ctx, { id: resolveAlias(state, resolvedRest[0] ?? flags.id ?? ""), tenant_id });
         default:
-          throw new Error(`Unknown entity action: ${action}. Try: create, get, list, update, delete`);
+          throw new Error(`Unknown entity action: ${action}. Try: create, get, list, resolve, update, delete`);
       }
 
     case "deal":
@@ -393,7 +401,7 @@ async function dispatch(
 function printHelp() {
   console.log(`
 Commands:
-  entity create|get|list|update|delete    Manage entities
+  entity create|get|list|resolve|update|delete  Manage entities
   deal create|get|update|list|advance|history  Manage deals
   deals                                   Shorthand for deal list
   entities                                Shorthand for entity list

@@ -672,7 +672,7 @@ export function toolCallsToCli(toolCalls: ToolCall[]): string {
           flagParts.push(`--${argName.replace(/_/g, "-")} ${quoteIfNeeded(String(argValue))}`);
         } else if (flag === "$positional") {
           positionals.push(String(argValue));
-        } else if (flag === "--override" && (argValue === "true" || argValue === true)) {
+        } else if (flag === "--override" && String(argValue) === "true") {
           flagParts.push("--override");
         } else {
           flagParts.push(`${flag} ${quoteIfNeeded(String(argValue))}`);

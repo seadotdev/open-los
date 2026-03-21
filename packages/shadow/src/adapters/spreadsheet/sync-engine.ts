@@ -19,6 +19,7 @@ import {
   TargetEntity,
   CellValue,
   SpreadsheetRowTracking,
+  ValidationRule,
 } from "./types";
 import {
   findBestFieldMapping,
@@ -803,7 +804,7 @@ export class SpreadsheetSyncEngine {
    */
   private validateValue(
     value: CellValue,
-    validation: FieldMapping["validations"][0]
+    validation: ValidationRule
   ): boolean {
     const strValue = value === null ? "" : String(value);
 
