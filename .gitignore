@@ -25,6 +25,7 @@ yarn-error.log*
 !.env.example
 .claude/
 .entire/
+.superset/
 
 # OS files
 .DS_Store
