@@ -2,6 +2,7 @@
   "name": "@open-los/agent",
   "version": "0.1.0",
   "description": "Loan Origination Agent Service - outcome-oriented interface on top of open-los",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
