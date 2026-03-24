@@ -23,6 +23,8 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
+.claude/
+.entire/
 
 # OS files
 .DS_Store
@@ -43,3 +45,11 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Local/generated artifacts
+*.db
+packages/conformance/node_modules/
+packages/simulation/results/
+docs/auto-docs/generated/**
+!docs/auto-docs/generated/
+!docs/auto-docs/generated/.gitkeep

@@ -2,6 +2,7 @@
   "name": "@open-los/chat",
   "version": "0.1.0",
   "description": "Chat interface for Open LOS — control your loan origination system from Slack, Teams, and more",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
