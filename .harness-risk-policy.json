@@ -1,0 +1,47 @@
+{
+  "version": "1",
+  "riskTierRules": {
+    "high": [
+      "packages/api/src/routes/chat.ts",
+      "packages/api/src/routes/underwriting.ts",
+      "packages/core/src/**",
+      "packages/api/src/db/schema.ts",
+      ".github/workflows/**",
+      "scripts/risk-policy-*.mjs"
+    ],
+    "low": ["**"]
+  },
+  "mergePolicy": {
+    "high": {
+      "requiredChecks": [
+        "risk-policy-gate",
+        "harness-smoke",
+        "Browser Evidence",
+        "CI Pipeline"
+      ]
+    },
+    "low": {
+      "requiredChecks": ["risk-policy-gate", "CI Pipeline"]
+    }
+  },
+  "docsDriftRules": {
+    "controlPlanePaths": [
+      ".harness-risk-policy.json",
+      ".github/workflows/**",
+      "scripts/risk-policy-*.mjs",
+      "scripts/verify-browser-evidence.mjs"
+    ],
+    "requiredDocs": ["docs/AI_NATIVE_ARCHITECTURE.md", "docs/README.md"]
+  },
+  "evidenceRules": {
+    "uiPaths": ["frontend/**"],
+    "requiredManifest": "artifacts/browser-evidence/manifest.json",
+    "requiredFlows": ["traditional-home", "experimental-home"]
+  },
+  "reviewAgent": {
+    "requiredForTiers": ["high"],
+    "checkName": "Code Review Agent",
+    "timeoutMinutes": 20,
+    "botLogin": "coderabbitai[bot]"
+  }
+}

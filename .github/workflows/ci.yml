@@ -1,13 +1,15 @@
-name: CI
+name: CI Pipeline
 
 on:
-  pull_request:
-    branches: [main]
+  workflow_run:
+    workflows: ["risk-policy-gate"]
+    types: [completed]
   push:
     branches: [main]
 
 jobs:
   test:
+    if: github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
 
     steps:

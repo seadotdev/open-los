@@ -163,3 +163,24 @@ Large documents (>30KB) that require time investment:
 1. **Flat structure**: Most documents are at root level, making navigation difficult
 2. **Duplicate content**: Two versions of AI_NATIVE_ARCHITECTURE exist
 3. **Nested docs folder**: `docs/docs/` contains a misplaced file that should be in architecture/
+
+---
+
+## Harness Engineering Control Plane
+
+The repository now includes a deterministic review control-plane for pull requests:
+
+- `/.harness-risk-policy.json` is the machine-readable contract for risk tiers, required checks, docs-drift safeguards, and evidence requirements.
+- `/.github/workflows/risk-policy-gate.yml` runs preflight gating before expensive CI fanout jobs.
+- `/.github/workflows/review-agent-rerun.yml` is the single canonical rerun comment writer with SHA dedupe.
+- `/.github/workflows/review-agent-auto-resolve-threads.yml` auto-resolves bot-only review threads after a clean rerun.
+- `/scripts/risk-policy-gate.mjs` and `/scripts/verify-browser-evidence.mjs` provide deterministic local/CI policy evaluation.
+
+Use these commands locally when validating the loop:
+
+```bash
+npm run harness:risk-tier
+npm run harness-smoke
+npm run harness:ui:pre-pr
+npm run harness:weekly-metrics
+```
