@@ -219,6 +219,103 @@ export const communications = sqliteTable("communications", {
   created_at: text("created_at").notNull(),
 });
 
+// ─── Decision Trace Tables ────────────────────────────────────────────────────
+// Captures the full reasoning chain for significant decisions.
+// Modeled after the three-memory-type architecture: decision traces are the
+// "reasoning memory" layer — structured provenance for every decision.
+
+export const decisionTraces = sqliteTable("decision_traces", {
+  id: text("id").primaryKey(),
+  tenant_id: text("tenant_id").notNull().default("default"),
+  deal_id: text("deal_id")
+    .notNull()
+    .references(() => deals.id),
+
+  // What triggered this trace
+  trigger: text("trigger").notNull(),
+  // "stage_transition" | "covenant_test" | "document_review" | "risk_assessment"
+  // "monitoring_alert" | "approval_decision" | "manual_query" | "spread_analysis"
+
+  // The task / question being reasoned about
+  task: text("task").notNull(),
+
+  // Who/what initiated the reasoning
+  actor: text("actor").notNull(),
+
+  // Final outcome summary
+  outcome: text("outcome"),
+
+  // Structured outcome (for machine-readable results)
+  outcome_data: text("outcome_data", { mode: "json" }),
+  // e.g., { action: "approve", risk_grade: "B+", confidence: 0.85 }
+
+  // Optional link to the AI conversation that produced this trace
+  conversation_id: text("conversation_id"),
+
+  // Causal chaining — traces can reference prior traces
+  parent_trace_id: text("parent_trace_id"),
+
+  // Lifecycle
+  status: text("status").notNull().default("in_progress"),
+  // "in_progress" | "completed" | "failed" | "abandoned"
+
+  // Aggregate cost tracking
+  total_duration_ms: integer("total_duration_ms"),
+  total_tokens_in: integer("total_tokens_in"),
+  total_tokens_out: integer("total_tokens_out"),
+
+  created_at: text("created_at").notNull(),
+  completed_at: text("completed_at"),
+});
+
+export const traceSteps = sqliteTable("trace_steps", {
+  id: text("id").primaryKey(),
+  trace_id: text("trace_id")
+    .notNull()
+    .references(() => decisionTraces.id),
+
+  seq: integer("seq").notNull(), // ordering within the trace
+
+  // Step type following the ReAct pattern
+  type: text("type").notNull(),
+  // "thought"     — reasoning / hypothesis
+  // "action"      — tool call or mutation
+  // "observation"  — result evaluation
+  // "retrieval"   — data fetch from existing records
+
+  // Human-readable content
+  content: text("content"),
+
+  // Tool call details (for action/retrieval steps)
+  tool_name: text("tool_name"),
+  tool_input: text("tool_input", { mode: "json" }),
+  tool_output: text("tool_output", { mode: "json" }),
+
+  // Timing
+  duration_ms: integer("duration_ms"),
+
+  created_at: text("created_at").notNull(),
+});
+
+export const traceEvidence = sqliteTable("trace_evidence", {
+  id: text("id").primaryKey(),
+  step_id: text("step_id")
+    .notNull()
+    .references(() => traceSteps.id),
+
+  // What this evidence references
+  ref_type: text("ref_type").notNull(),
+  // "entity" | "document" | "spread" | "covenant" | "alert" | "bank_transaction"
+  // | "loan_account" | "facility" | "stage_transition" | "approval_gate"
+
+  ref_id: text("ref_id").notNull(), // the referenced record's ID
+
+  // Why this evidence was relevant
+  relevance: text("relevance"), // brief explanation
+
+  created_at: text("created_at").notNull(),
+});
+
 // ─── AI Conversation Tables ─────────────────────────────────────────────────────
 
 export const aiConversations = sqliteTable("ai_conversations", {

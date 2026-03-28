@@ -24,6 +24,7 @@ import { depositRoutes } from "./routes/deposits.js";
 import { gateRoutes } from "./routes/gates.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { chatRoutes } from "./routes/chat.js";
+import { decisionTraceRoutes } from "./routes/decision-traces.js";
 
 export interface AppContext extends CoreServiceGraph {
   users?: Map<string, { id: string; role: string }>;
@@ -123,6 +124,7 @@ export function createApp(ctx: AppContext) {
   app.route("/v1", depositRoutes(ctx));
   app.route("/v1", gateRoutes(ctx));
   app.route("/v1", settingsRoutes(ctx));
+  app.route("/v1", decisionTraceRoutes(ctx));
 
   // Chat bot webhook routes (Slack, Teams)
   app.route("/chat", chatRoutes(ctx));

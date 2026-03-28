@@ -464,6 +464,49 @@ export async function migrateDatabase(db: Database) {
     deleted_at TEXT
   )`);
 
+  // ─── Decision Trace Tables ────────────────────────────────────────────────────
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS decision_traces (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    deal_id TEXT NOT NULL REFERENCES deals(id),
+    trigger TEXT NOT NULL,
+    task TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    outcome TEXT,
+    outcome_data TEXT,
+    conversation_id TEXT,
+    parent_trace_id TEXT,
+    status TEXT NOT NULL DEFAULT 'in_progress',
+    total_duration_ms INTEGER,
+    total_tokens_in INTEGER,
+    total_tokens_out INTEGER,
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS trace_steps (
+    id TEXT PRIMARY KEY,
+    trace_id TEXT NOT NULL REFERENCES decision_traces(id),
+    seq INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    content TEXT,
+    tool_name TEXT,
+    tool_input TEXT,
+    tool_output TEXT,
+    duration_ms INTEGER,
+    created_at TEXT NOT NULL
+  )`);
+
+  await db.run(sql`CREATE TABLE IF NOT EXISTS trace_evidence (
+    id TEXT PRIMARY KEY,
+    step_id TEXT NOT NULL REFERENCES trace_steps(id),
+    ref_type TEXT NOT NULL,
+    ref_id TEXT NOT NULL,
+    relevance TEXT,
+    created_at TEXT NOT NULL
+  )`);
+
   // ─── AI Conversation Tables ─────────────────────────────────────────────────────
 
   await db.run(sql`CREATE TABLE IF NOT EXISTS ai_conversations (
@@ -507,6 +550,12 @@ export async function migrateDatabase(db: Database) {
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_covenants_deal ON covenants(deal_id)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_covenant_tests_covenant ON covenant_tests(covenant_id)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS idx_spreads_deal ON spreads(deal_id)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_decision_traces_deal ON decision_traces(deal_id)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_decision_traces_tenant ON decision_traces(tenant_id, created_at)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_decision_traces_trigger ON decision_traces(trigger)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_trace_steps_trace ON trace_steps(trace_id, seq)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_trace_evidence_step ON trace_evidence(step_id)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS idx_trace_evidence_ref ON trace_evidence(ref_type, ref_id)`);
 }
 
 export { schema };

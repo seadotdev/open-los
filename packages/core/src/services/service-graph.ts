@@ -6,6 +6,7 @@ import { ArtifactService } from "./artifact.js";
 import { AuditService } from "./audit.js";
 import { CovenantService } from "./covenant.js";
 import { DealService } from "./deal.js";
+import { DecisionTraceService } from "./decision-trace.js";
 import { DepositAccountService } from "./deposit-account.js";
 import { DocumentService } from "./document.js";
 import { EmailService } from "./email.js";
@@ -43,6 +44,7 @@ export interface CoreServiceGraph {
   approvalGateService: ApprovalGateService;
   approvalService: ApprovalService;
   tenantSettingsService: TenantSettingsService;
+  decisionTraceService: DecisionTraceService;
   getNow: () => string;
 }
 
@@ -84,6 +86,7 @@ export async function createCoreServiceGraph(
   const sandboxService = new SandboxService(db, auditService, gitProvider, clock);
   const approvalGateService = new ApprovalGateService(db, auditService, clock);
   const approvalService = new ApprovalService(db, auditService, clock);
+  const decisionTraceService = new DecisionTraceService(db, clock);
 
   return {
     db,
@@ -107,6 +110,7 @@ export async function createCoreServiceGraph(
     approvalGateService,
     approvalService,
     tenantSettingsService,
+    decisionTraceService,
     getNow: clock,
   };
 }

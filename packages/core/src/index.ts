@@ -58,6 +58,9 @@ export {
   approvalGatePolicies,
   approvalGateRecords,
   tenantSettings,
+  decisionTraces,
+  traceSteps,
+  traceEvidence,
 } from "./schema/tables.js";
 export { DealService } from "./services/deal.js";
 export type { CreateDealInput, UpdateDealInput } from "./services/deal.js";
@@ -140,6 +143,18 @@ export type {
 } from "./services/approval-gate.js";
 export { TenantSettingsService } from "./services/tenant-settings.js";
 export type { TenantSettingsInput } from "./services/tenant-settings.js";
+export { DecisionTraceService } from "./services/decision-trace.js";
+export type {
+  TraceTrigger,
+  TraceStepType,
+  TraceStatus,
+  EvidenceRefType,
+  StartTraceInput,
+  AddStepInput,
+  AddEvidenceInput,
+  CompleteTraceInput,
+  TraceQuery,
+} from "./services/decision-trace.js";
 export { SandboxService, InMemoryGitProvider } from "./services/sandbox.js";
 export type {
   CreateSandboxInput,
