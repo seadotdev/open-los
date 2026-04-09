@@ -117,15 +117,16 @@ This design follows conventional enterprise software patterns:
 
 ## Comparison
 
-| Aspect | Experimental (Activity Feed) | Traditional (LOS) |
-|--------|------------------------------|-------------------|
-| **Primary Paradigm** | Feed-based, reactive | Navigation-based, exploratory |
-| **Information Architecture** | Flat, algorithmic | Hierarchical, user-driven |
-| **AI Integration** | Embedded, conversational | Optional, supplementary |
-| **Navigation** | Minimal filters | Full sidebar menu |
-| **Data Presentation** | Cards, inline context | Tables, detail views |
-| **Theme** | Dark | Light |
-| **Target Users** | Power users, AI-native orgs | Traditional lenders |
+| Aspect | Experimental (Activity Feed) | Traditional (LOS) | Minimal (Config-Driven) |
+|--------|------------------------------|-------------------|------------------------|
+| **Primary Paradigm** | Feed-based, reactive | Navigation-based, exploratory | Config-driven, operational |
+| **Information Architecture** | Flat, algorithmic | Hierarchical, user-driven | Three views, pipeline-first |
+| **AI Integration** | Embedded, conversational | Optional, supplementary | Panel + inline recommendations |
+| **Navigation** | Minimal filters | Full sidebar menu | Three tabs |
+| **Data Presentation** | Cards, inline context | Tables, detail views | Kanban + decision cards |
+| **Theme** | Dark | Light | Dark (configurable) |
+| **Target Users** | Power users, AI-native orgs | Traditional lenders | Fast bootstrap, any industry |
+| **Customization** | Edit HTML | Edit HTML | Edit config.js only |
 
 ---
 
@@ -149,7 +150,12 @@ frontend/
 │   ├── index.html
 │   ├── styles.css
 │   └── app.js
-└── traditional/
+├── traditional/
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+└── minimal/
+    ├── config.js       # Edit this to customize
     ├── index.html
     ├── styles.css
     └── app.js
@@ -189,6 +195,107 @@ Both designs use consistent design tokens that can be extracted for a design sys
 --status-warning: #f59e0b;
 --status-error: #ef4444;
 --status-info: #3b82f6;
+```
+
+---
+
+## 3. Minimal: Config-Driven Dashboard
+
+**Location:** `frontend/minimal/`
+
+### Design Philosophy
+
+A zero-friction dashboard that bootstraps from a single configuration file. The idea is that someone completes the sentence:
+
+> "I need to take documents from **[X]** industry and decision criteria are **[Y]**, and I would want to review them when **[Z]** happens; otherwise, pass through."
+
+…and the config file translates that sentence into a working operational dashboard connected to the Open LOS backend.
+
+### Quick Start
+
+1. Edit `minimal/config.js` to match your use case
+2. Open `minimal/index.html` in a browser (or serve it)
+3. If the API is running (`npm run dev` in the repo root), data flows in live. Otherwise, demo data renders automatically.
+
+### Configuration
+
+Everything lives in `config.js`. Key sections:
+
+| Config Section | Maps to… |
+|----------------|----------|
+| `industry`, `documentTypes` | "documents from **X** industry" |
+| `decisionCriteria` | "decision criteria are **Y**" |
+| `reviewTriggers` | "review when **Z** happens" |
+| `passThrough` | "otherwise, pass through" |
+| `stages` | Pipeline columns (fully customizable) |
+| `journeyTypes` | What kinds of cases flow through |
+| `api` | Connection to Open LOS backend |
+| `display` | Theme, default view, card style |
+
+### Example: Spinning Up for a New Industry
+
+```javascript
+// config.js — Equipment Leasing example
+const LOS_CONFIG = {
+  name: "Equipment Leasing Ops",
+  currency: "USD",
+  industry: "Equipment Leasing",
+  documentTypes: [
+    { id: "lease_application", label: "Lease Application", required: true },
+    { id: "equipment_quote",   label: "Equipment Quote",   required: true },
+    { id: "financials",        label: "Financial Statements", required: true },
+    { id: "insurance",         label: "Insurance Certificate", required: false },
+  ],
+  stages: [
+    { id: "intake",      label: "Intake",      color: "#6366f1" },
+    { id: "credit",      label: "Credit",      color: "#3b82f6" },
+    { id: "approval",    label: "Approval",    color: "#f59e0b" },
+    { id: "funded",      label: "Funded",      color: "#10b981" },
+  ],
+  decisionCriteria: [
+    { id: "credit_score", label: "Credit Score", thresholds: { autoApprove: 700, autoDecline: 500 } },
+    { id: "equipment_value", label: "Equipment Value", thresholds: { autoApprove: null, autoDecline: null } },
+  ],
+  reviewTriggers: [
+    { id: "high_value", label: "High Value", description: "Lease amount exceeds $500K", severity: "high" },
+    { id: "new_customer", label: "New Customer", description: "No prior relationship", severity: "medium" },
+  ],
+  passThrough: {
+    enabled: true,
+    rules: ["Credit score above 700", "Existing customer", "Lease under $500K"],
+    autoAction: "approve",
+  },
+  // ...rest of config
+};
+```
+
+### UI Components
+
+| Component | Purpose |
+|-----------|---------|
+| KPI Strip | 4 key metrics at a glance |
+| Pipeline Board | Kanban columns driven by `config.stages` |
+| Pass-Through Bar | Shows STP status and rule count |
+| Decisions Queue | Filterable list of pending human decisions |
+| Activity Feed | Chronological AI + human action stream |
+| AI Panel | Conversational assistant (Ctrl+K) |
+
+### Key Characteristics
+
+- **Config-first** — Change `config.js`, refresh, get a new dashboard
+- **API-connected** — Fetches live data from Open LOS; falls back to demo data
+- **Three views** — Dashboard, Decisions, Activity (no deep navigation)
+- **Dark/light themes** — Set `display.theme` in config
+- **Polling** — Auto-refreshes data at configurable intervals
+- **Zero dependencies** — Vanilla HTML/CSS/JS, no build step
+
+### File Structure
+```
+frontend/minimal/
+├── config.js    # The only file you edit to customize
+├── index.html   # Shell markup
+├── styles.css   # Design tokens + components
+└── app.js       # Rendering logic driven by config
 ```
 
 ---
