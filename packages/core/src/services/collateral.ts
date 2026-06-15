@@ -1,4 +1,4 @@
-import { eq, and, desc, or } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import type { Database } from "../schema/db.js";
 import { collateralItems, collateralValuations, deals } from "../schema/tables.js";
 import type { AuditService } from "./audit.js";
@@ -364,26 +364,21 @@ export class CollateralService {
     // Validate collateral exists
     await this.getItemById(collateralId, dealId);
 
-    let query = this.db
-      .select()
-      .from(collateralValuations)
-      .where(
-        and(
-          eq(collateralValuations.collateral_item_id, collateralId),
-          eq(collateralValuations.deal_id, dealId)
-        )
-      );
+    let whereConditions = [
+      eq(collateralValuations.collateral_item_id, collateralId),
+      eq(collateralValuations.deal_id, dealId),
+    ];
 
     // Filter by purpose if provided
     if (filters?.purpose) {
-      const purposes = Array.isArray(filters.purpose)
-        ? filters.purpose
-        : [filters.purpose];
-      const purposeFilters = purposes.map((p) => eq(collateralValuations.purpose, p));
-      if (purposeFilters.length > 0) {
-        query = query.where(or(...purposeFilters));
-      }
+      const purpose = Array.isArray(filters.purpose) ? filters.purpose[0] : filters.purpose;
+      whereConditions.push(eq(collateralValuations.purpose, purpose));
     }
+
+    let query = this.db
+      .select()
+      .from(collateralValuations)
+      .where(and(...whereConditions));
 
     const limit = filters?.limit ?? 50;
     const rows = (await query
@@ -410,23 +405,20 @@ export class CollateralService {
     // Validate collateral exists
     await this.getItemById(collateralId, dealId);
 
+    let whereConditions = [
+      eq(collateralValuations.collateral_item_id, collateralId),
+      eq(collateralValuations.deal_id, dealId),
+    ];
+
+    if (purpose) {
+      const purposeValue = Array.isArray(purpose) ? purpose[0] : purpose;
+      whereConditions.push(eq(collateralValuations.purpose, purposeValue));
+    }
+
     let query = this.db
       .select()
       .from(collateralValuations)
-      .where(
-        and(
-          eq(collateralValuations.collateral_item_id, collateralId),
-          eq(collateralValuations.deal_id, dealId)
-        )
-      );
-
-    if (purpose) {
-      const purposes = Array.isArray(purpose) ? purpose : [purpose];
-      const purposeFilters = purposes.map((p) => eq(collateralValuations.purpose, p));
-      if (purposeFilters.length > 0) {
-        query = query.where(or(...purposeFilters));
-      }
-    }
+      .where(and(...whereConditions));
 
     const rows = (await query.orderBy(
       desc(collateralValuations.created_at)
