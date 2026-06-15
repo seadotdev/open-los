@@ -1,4 +1,4 @@
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, or } from "drizzle-orm";
 import type { Database } from "../schema/db.js";
 import { collateralItems, collateralValuations, deals } from "../schema/tables.js";
 import type { AuditService } from "./audit.js";
@@ -379,7 +379,10 @@ export class CollateralService {
       const purposes = Array.isArray(filters.purpose)
         ? filters.purpose
         : [filters.purpose];
-      query = query.where(inArray(collateralValuations.purpose, purposes));
+      const purposeFilters = purposes.map((p) => eq(collateralValuations.purpose, p));
+      if (purposeFilters.length > 0) {
+        query = query.where(or(...purposeFilters));
+      }
     }
 
     const limit = filters?.limit ?? 50;
@@ -419,7 +422,10 @@ export class CollateralService {
 
     if (purpose) {
       const purposes = Array.isArray(purpose) ? purpose : [purpose];
-      query = query.where(inArray(collateralValuations.purpose, purposes));
+      const purposeFilters = purposes.map((p) => eq(collateralValuations.purpose, p));
+      if (purposeFilters.length > 0) {
+        query = query.where(or(...purposeFilters));
+      }
     }
 
     const rows = (await query.orderBy(
