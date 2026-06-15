@@ -694,3 +694,64 @@ export const sandboxEntities = sqliteTable("sandbox_entities", {
   updated_at: text("updated_at").notNull(),
   deleted_at: text("deleted_at"),
 });
+
+// ─── Collateral Tables ─────────────────────────────────────────────────────
+
+export const collateralItems = sqliteTable("collateral_items", {
+  id: text("id").primaryKey(),
+  deal_id: text("deal_id")
+    .notNull()
+    .references(() => deals.id),
+
+  // Asset identity
+  name: text("name").notNull(),
+  asset_type: text("asset_type").notNull(), // "real_estate" | "vehicle" | "inventory" | "equipment" | "other"
+  description: text("description"),
+
+  // Location / jurisdiction (for real estate compliance)
+  jurisdiction: text("jurisdiction"),
+  address: text("address"),
+
+  // Legal reference
+  collateral_reference: text("collateral_reference"),
+  secured_parties: text("secured_parties", { mode: "json" }), // [{name, role, priority}]
+
+  // Lifecycle
+  status: text("status").notNull().default("active"), // "active" | "released" | "substituted"
+
+  // Audit
+  created_at: text("created_at").notNull(),
+  updated_at: text("updated_at"),
+  deleted_at: text("deleted_at"),
+});
+
+export const collateralValuations = sqliteTable("collateral_valuations", {
+  id: text("id").primaryKey(),
+  collateral_item_id: text("collateral_item_id")
+    .notNull()
+    .references(() => collateralItems.id),
+
+  deal_id: text("deal_id")
+    .notNull()
+    .references(() => deals.id),
+
+  // Valuation amount (minor units)
+  value: integer("value").notNull(),
+
+  // Valuation context
+  purpose: text("purpose").notNull(), // "ltv" | "gdv" | "insurance" | "appraisal"
+  valuation_date: text("valuation_date").notNull(), // ISO date
+  valuation_method: text("valuation_method"), // "independent_appraisal" | "automated_valuation" | "comparable_sales" | "cost_approach"
+
+  // Source & authority
+  source: text("source"), // "borrower_provided" | "appraiser" | "bank_internal" | "regulatory"
+  appraiser: text("appraiser"),
+  confidence_level: text("confidence_level"), // "high" | "medium" | "low"
+
+  // Notes
+  notes: text("notes"),
+
+  // Audit
+  created_by: text("created_by").notNull(),
+  created_at: text("created_at").notNull(),
+});

@@ -1,7 +1,8 @@
 import { eq, and } from "drizzle-orm";
 import type { Database } from "../schema/db.js";
-import { covenants, covenantTests, waivers, deals, spreads } from "../schema/tables.js";
+import { covenants, covenantTests, waivers, deals, spreads, loanAccounts } from "../schema/tables.js";
 import type { AuditService } from "./audit.js";
+import type { CollateralService } from "./collateral.js";
 import { NotFoundError, ValidationError } from "./errors.js";
 import type { Ratios } from "./spread.js";
 
@@ -71,7 +72,8 @@ export class CovenantService {
   constructor(
     private db: Database,
     private audit: AuditService,
-    private getNow: () => string
+    private getNow: () => string,
+    private collateralService?: CollateralService
   ) {}
 
   async create(dealId: string, input: CreateCovenantInput, actor: string) {
@@ -239,8 +241,9 @@ export class CovenantService {
       }
 
       // Get actual value for the metric
-      let actualValue = this.getMetricValue(
+      let actualValue = await this.getMetricValue(
         covenant.metric,
+        dealId,
         latestSpread?.ratios as Ratios | null,
         latestSpread?.line_items as Array<{ category: string; label: string; amount: number }> | null
       );
@@ -341,14 +344,15 @@ export class CovenantService {
     return { results };
   }
 
-  private getMetricValue(
+  private async getMetricValue(
     metric: string,
+    dealId: string,
     ratios: Ratios | null,
     lineItems: Array<{ category: string; label: string; amount: number }> | null
-  ): number | null {
-    if (!ratios && !lineItems) return null;
-
+  ): Promise<number | null> {
     switch (metric) {
+      case "loan_to_value":
+        return await this.computeLTV(dealId);
       case "dscr":
         return ratios?.dscr ?? null;
       case "leverage":
@@ -371,6 +375,50 @@ export class CovenantService {
         return null;
       default:
         return null;
+    }
+  }
+
+  private async computeLTV(dealId: string): Promise<number | null> {
+    if (!this.collateralService) return null;
+
+    try {
+      // Get all active collateral items for deal
+      const items = await this.collateralService.listItems(dealId);
+      const activeItems = items.filter((item) => item.status === "active");
+
+      if (activeItems.length === 0) return null;
+
+      // Get total collateral value (latest ltv or gdv valuation)
+      let collateralValue = 0;
+      for (const item of activeItems) {
+        const valuation = await this.collateralService.getLatestValuation(
+          item.id,
+          dealId,
+          ["ltv", "gdv"]
+        );
+        if (valuation) {
+          collateralValue += valuation.value;
+        }
+      }
+
+      if (collateralValue === 0) return null;
+
+      // Get total loan disbursements across all loans in the deal
+      const loanRows = await this.db
+        .select({ principal_disbursed: loanAccounts.principal_disbursed })
+        .from(loanAccounts)
+        .where(eq(loanAccounts.deal_id, dealId));
+
+      const loanAmount = loanRows.reduce(
+        (sum, l) => sum + (l.principal_disbursed ?? 0),
+        0
+      );
+
+      // Return LTV = loanAmount / collateralValue
+      return collateralValue > 0 ? loanAmount / collateralValue : null;
+    } catch {
+      // If collateral service is not available or errors occur, return null
+      return null;
     }
   }
 

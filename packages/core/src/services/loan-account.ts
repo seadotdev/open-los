@@ -9,6 +9,7 @@ import {
   entities,
 } from "../schema/tables.js";
 import type { AuditService } from "./audit.js";
+import type { CovenantService } from "./covenant.js";
 import {
   NotFoundError,
   ValidationError,
@@ -166,7 +167,8 @@ export class LoanAccountService {
   constructor(
     private db: Database,
     private audit: AuditService,
-    private getNow: () => string
+    private getNow: () => string,
+    private covenantService?: CovenantService
   ) {}
 
   // ─── ID Generation ─────────────────────────────────────────────────────────
@@ -1157,6 +1159,18 @@ export class LoanAccountService {
           transaction_id: txId,
         },
       });
+
+      // Trigger covenant retest on disbursement (non-blocking)
+      if (this.covenantService) {
+        try {
+          await this.covenantService.test(account.deal_id, actor);
+        } catch (err) {
+          // Log but don't fail the disbursement
+          console.error(
+            `Covenant retest after disbursement failed: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
     }
 
     return this.toApiTransaction(transaction);

@@ -15,6 +15,7 @@ import { relationshipRoutes } from "./routes/relationships.js";
 import { templateRoutes } from "./routes/templates.js";
 import { underwritingRoutes } from "./routes/underwriting.js";
 import { covenantRoutes } from "./routes/covenants.js";
+import { collateralRoutes } from "./routes/collateral.js";
 import { monitoringRoutes } from "./routes/monitoring.js";
 import { emailRoutes } from "./routes/email.js";
 import { loanRoutes } from "./routes/loans.js";
@@ -115,6 +116,7 @@ export function createApp(ctx: AppContext) {
   app.route("/v1", templateRoutes(ctx));
   app.route("/v1", underwritingRoutes(ctx));
   app.route("/v1", covenantRoutes(ctx));
+  app.route("/v1", collateralRoutes(ctx));
   app.route("/v1", monitoringRoutes(ctx));
   app.route("/v1", emailRoutes(ctx));
   app.route("/v1", loanRoutes(ctx));
