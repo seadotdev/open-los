@@ -419,9 +419,7 @@ export class CollateralService {
 
     if (purpose) {
       const purposes = Array.isArray(purpose) ? purpose : [purpose];
-      query = query.where(
-        (collateralValuations.purpose as any).in(purposes)
-      );
+      query = query.where(inArray(collateralValuations.purpose, purposes));
     }
 
     const rows = (await query.orderBy(
