@@ -52,6 +52,8 @@ export {
   loanTransactions,
   repaymentSchedule,
   depositAccounts,
+  collateralItems,
+  collateralValuations,
   sandboxes,
   checkpoints,
   sandboxEntities,
@@ -83,6 +85,13 @@ export { ArtifactService } from "./services/artifact.js";
 export type { FreezeArtifactInput } from "./services/artifact.js";
 export { SpreadService, computeRatios } from "./services/spread.js";
 export type { CreateSpreadInput, LineItem, Ratios, MetricsInput } from "./services/spread.js";
+export { CollateralService } from "./services/collateral.js";
+export type {
+  CreateCollateralItemInput,
+  AddValuationInput,
+  CollateralItem,
+  CollateralValuation,
+} from "./services/collateral.js";
 export { CovenantService } from "./services/covenant.js";
 export type { CreateCovenantInput, CreateWaiverInput, CovenantTestResult } from "./services/covenant.js";
 export { MonitoringService } from "./services/monitoring.js";

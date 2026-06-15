@@ -4,6 +4,7 @@ import { ApprovalGateService } from "./approval-gate.js";
 import { ApprovalService } from "./approval.js";
 import { ArtifactService } from "./artifact.js";
 import { AuditService } from "./audit.js";
+import { CollateralService } from "./collateral.js";
 import { CovenantService } from "./covenant.js";
 import { DealService } from "./deal.js";
 import { DepositAccountService } from "./deposit-account.js";
@@ -33,6 +34,7 @@ export interface CoreServiceGraph {
   templateService: TemplateService;
   artifactService: ArtifactService;
   spreadService: SpreadService;
+  collateralService: CollateralService;
   covenantService: CovenantService;
   monitoringService: MonitoringService;
   emailService: EmailService;
@@ -74,10 +76,11 @@ export async function createCoreServiceGraph(
   const templateService = new TemplateService();
   const artifactService = new ArtifactService(db, auditService, templateService, clock);
   const spreadService = new SpreadService(db, auditService, clock);
-  const covenantService = new CovenantService(db, auditService, clock);
+  const collateralService = new CollateralService(db, auditService, clock);
+  const covenantService = new CovenantService(db, auditService, clock, collateralService);
   const monitoringService = new MonitoringService(db, auditService, clock);
   const emailService = new EmailService(db, auditService, clock);
-  const loanAccountService = new LoanAccountService(db, auditService, clock);
+  const loanAccountService = new LoanAccountService(db, auditService, clock, covenantService);
   const facilityService = new FacilityService(db, auditService, clock);
   const depositAccountService = new DepositAccountService(db, clock);
   const gitProvider = new InMemoryGitProvider();
@@ -97,6 +100,7 @@ export async function createCoreServiceGraph(
     templateService,
     artifactService,
     spreadService,
+    collateralService,
     covenantService,
     monitoringService,
     emailService,
