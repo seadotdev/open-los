@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import type { Database } from "../schema/db.js";
 import { collateralItems, collateralValuations, deals } from "../schema/tables.js";
 import type { AuditService } from "./audit.js";
@@ -379,7 +379,7 @@ export class CollateralService {
       const purposes = Array.isArray(filters.purpose)
         ? filters.purpose
         : [filters.purpose];
-      query = query.where((collateralValuations.purpose as any).in(purposes));
+      query = query.where(inArray(collateralValuations.purpose, purposes));
     }
 
     const limit = filters?.limit ?? 50;
